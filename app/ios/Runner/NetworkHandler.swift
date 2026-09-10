@@ -235,22 +235,31 @@ class NetworkHandler: NetworkHostPlatform {
 
     private func notifyMessage(_ message: String) {
         guard let api = flutterApi else { return }
-        Task {
-            do {
-                try await api.onMessageReceived(message: message)
-            } catch {
-                print("Failed to notify message: \(error)")
+        // Pigeon FlutterApi calls reach Dart over the binary messenger and must
+        // be invoked on the main thread. Network.framework handlers
+        // (stateUpdateHandler, receive completion) run on our private queue,
+        // so hop to main before calling into Flutter — same class of bug as
+        // the Android @UiThread crash this mirrors.
+        DispatchQueue.main.async {
+            Task {
+                do {
+                    try await api.onMessageReceived(message: message)
+                } catch {
+                    print("Failed to notify message: \(error)")
+                }
             }
         }
     }
 
     private func notifyState(_ state: String) {
         guard let api = flutterApi else { return }
-        Task {
-            do {
-                try await api.onConnectionStateChanged(state: state)
-            } catch {
-                print("Failed to notify state: \(error)")
+        DispatchQueue.main.async {
+            Task {
+                do {
+                    try await api.onConnectionStateChanged(state: state)
+                } catch {
+                    print("Failed to notify state: \(error)")
+                }
             }
         }
     }

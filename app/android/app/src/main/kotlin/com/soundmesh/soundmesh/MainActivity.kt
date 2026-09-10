@@ -228,18 +228,28 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     }
 
     private suspend fun notifyMessage(message: String) {
-        try {
-            flutterApi?.onMessageReceived(message)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to notify message", e)
+        // Pigeon-generated NetworkFlutterApi methods are annotated @UiThread and
+        // throw RuntimeException ("Methods marked with @UiThread must be executed
+        // on the main thread") when invoked from our IO/Default dispatcher
+        // coroutines. Always hop to Dispatchers.Main before calling into Flutter.
+        withContext(Dispatchers.Main) {
+            try {
+                flutterApi?.onMessageReceived(message)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify message", e)
+            }
         }
     }
 
     private suspend fun notifyState(state: String) {
-        try {
-            flutterApi?.onConnectionStateChanged(state)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to notify state", e)
+        // See notifyMessage: NetworkFlutterApi is @UiThread and must be called
+        // on the Android main thread, not from coroutine worker threads.
+        withContext(Dispatchers.Main) {
+            try {
+                flutterApi?.onConnectionStateChanged(state)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify state", e)
+            }
         }
     }
 }

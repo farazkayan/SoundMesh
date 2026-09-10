@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../core/theme/soundmesh_theme.dart';
 import '../../core/router/app_router.dart';
 import '../../application/providers/create_room_flow_provider.dart';
@@ -96,10 +97,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         SizedBox(height: 8),
         Text(
           'Choose a name for your room',
-          style: TextStyle(
-            color: SoundMeshColors.secondaryText,
-            fontSize: 14,
-          ),
+          style: TextStyle(color: SoundMeshColors.secondaryText, fontSize: 14),
         ),
       ],
     );
@@ -132,7 +130,10 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
             decoration: const InputDecoration(
               hintText: 'My Room',
               hintStyle: TextStyle(color: SoundMeshColors.mutedText),
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
               border: InputBorder.none,
             ),
             onChanged: (value) {
@@ -144,10 +145,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           const SizedBox(height: 8),
           Text(
             flowState.errorMessage!,
-            style: const TextStyle(
-              color: SoundMeshColors.error,
-              fontSize: 12,
-            ),
+            style: const TextStyle(color: SoundMeshColors.error, fontSize: 12),
           ),
         ],
       ],
@@ -165,7 +163,9 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: SoundMeshColors.accent,
           foregroundColor: SoundMeshColors.primaryText,
-          disabledBackgroundColor: SoundMeshColors.accent.withValues(alpha: 0.5),
+          disabledBackgroundColor: SoundMeshColors.accent.withValues(
+            alpha: 0.5,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -173,10 +173,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         ),
         child: const Text(
           'Create Room',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -189,10 +186,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       decoration: BoxDecoration(
         color: SoundMeshColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: SoundMeshColors.elevatedSurface,
-          width: 1,
-        ),
+        border: Border.all(color: SoundMeshColors.elevatedSurface, width: 1),
       ),
       child: Column(
         children: [
@@ -222,10 +216,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       decoration: BoxDecoration(
         color: SoundMeshColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: SoundMeshColors.success,
-          width: 1,
-        ),
+        border: Border.all(color: SoundMeshColors.success, width: 1),
       ),
       child: Column(
         children: [
@@ -271,10 +262,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
               ),
               child: const Text(
                 'Enter Room',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -365,10 +353,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
               ),
             );
           },
-          icon: const Icon(
-            Icons.copy_rounded,
-            color: SoundMeshColors.accent,
-          ),
+          icon: const Icon(Icons.copy_rounded, color: SoundMeshColors.accent),
         ),
       ],
     );
@@ -381,10 +366,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       decoration: BoxDecoration(
         color: SoundMeshColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: SoundMeshColors.error,
-          width: 1,
-        ),
+        border: Border.all(color: SoundMeshColors.error, width: 1),
       ),
       child: Column(
         children: [
@@ -396,10 +378,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           const SizedBox(height: 16),
           Text(
             flowState.errorMessage ?? 'An error occurred',
-            style: const TextStyle(
-              color: SoundMeshColors.error,
-              fontSize: 14,
-            ),
+            style: const TextStyle(color: SoundMeshColors.error, fontSize: 14),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -432,33 +411,35 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       decoration: BoxDecoration(
         color: SoundMeshColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: SoundMeshColors.elevatedSurface,
-          width: 1,
-        ),
+        border: Border.all(color: SoundMeshColors.elevatedSurface, width: 1),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            flowState.status == CreateRoomFlowStatus.hosted
-                ? Icons.rocket_launch_rounded
-                : Icons.info_outline_rounded,
-            size: 64,
-            color: flowState.status == CreateRoomFlowStatus.hosted
-                ? SoundMeshColors.accent
-                : SoundMeshColors.mutedText,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _getInstructionsText(flowState.status),
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: SoundMeshColors.secondaryText,
-              fontSize: 14,
+      // The content can exceed the space the parent Expanded grants when the
+      // hosted/connection panels above grow, so it must scroll instead of
+      // overflowing the Column.
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              flowState.status == CreateRoomFlowStatus.hosted
+                  ? Icons.rocket_launch_rounded
+                  : Icons.info_outline_rounded,
+              size: 64,
+              color: flowState.status == CreateRoomFlowStatus.hosted
+                  ? SoundMeshColors.accent
+                  : SoundMeshColors.mutedText,
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Text(
+              _getInstructionsText(flowState.status),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: SoundMeshColors.secondaryText,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
