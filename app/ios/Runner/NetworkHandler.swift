@@ -1,6 +1,88 @@
 import Foundation
 import Network
 
+internal final class FrameDecoder {
+    private let frameLength: Int
+    private let maxPayloadLength: Int
+    private var headerBuffer = Data()
+    private var payloadBuffer = Data()
+    private var payloadBytesRead = 0
+    private var expectedPayloadLength: Int?
+    private let onFrameStarted: () -> Void
+    private let onFrameCompleted: (Int) -> Void
+    private let onInvalidLength: (Int) -> Void
+
+    init(
+        frameLength: Int = 4,
+        maxPayloadLength: Int = 65_536,
+        onFrameStarted: @escaping () -> Void = {},
+        onFrameCompleted: @escaping (Int) -> Void = { _ in },
+        onInvalidLength: @escaping (Int) -> Void = { _ in }
+    ) {
+        self.frameLength = frameLength
+        self.maxPayloadLength = maxPayloadLength
+        self.onFrameStarted = onFrameStarted
+        self.onFrameCompleted = onFrameCompleted
+        self.onInvalidLength = onInvalidLength
+    }
+
+    func append(_ data: Data) -> [String] {
+        var remaining = data
+        var messages: [String] = []
+
+        while !remaining.isEmpty {
+            if let payloadLength = expectedPayloadLength {
+                let bytesToRead = min(payloadLength - payloadBytesRead, remaining.count)
+                payloadBuffer.append(Data(remaining.prefix(bytesToRead)))
+                payloadBytesRead += bytesToRead
+                remaining.removeFirst(bytesToRead)
+
+                if payloadBytesRead == payloadLength {
+                    if let message = String(data: payloadBuffer, encoding: .utf8) {
+                        messages.append(message)
+                    }
+                    reset()
+                    onFrameCompleted(payloadLength)
+                }
+            } else {
+                if headerBuffer.isEmpty {
+                    onFrameStarted()
+                }
+                let bytesToRead = min(frameLength - headerBuffer.count, remaining.count)
+                headerBuffer.append(Data(remaining.prefix(bytesToRead)))
+                remaining.removeFirst(bytesToRead)
+
+                if headerBuffer.count == frameLength {
+                    let payloadLength = readFrameLength()
+                    if payloadLength <= 0 || payloadLength > maxPayloadLength {
+                        onInvalidLength(payloadLength)
+                        reset()
+                        continue
+                    }
+                    expectedPayloadLength = payloadLength
+                    payloadBuffer.removeAll(keepingCapacity: true)
+                }
+            }
+        }
+
+        return messages
+    }
+
+    func reset() {
+        headerBuffer.removeAll(keepingCapacity: true)
+        payloadBuffer.removeAll(keepingCapacity: true)
+        payloadBytesRead = 0
+        expectedPayloadLength = nil
+    }
+
+    private func readFrameLength() -> Int {
+        return (Int(headerBuffer[0]) << 24)
+            | (Int(headerBuffer[1]) << 16)
+            | (Int(headerBuffer[2]) << 8)
+            | Int(headerBuffer[3])
+    }
+}
+
 class NetworkHandler: NetworkHostPlatform {
     private var listener: NWListener?
     private var connection: NWConnection?
@@ -167,61 +249,75 @@ class NetworkHandler: NetworkHostPlatform {
         return address
     }
 
+    private var frameDecoder: FrameDecoder?
+    private var isReading = false
+    private var readGeneration = 0
+
     private func startReading() {
-        readNextFrame()
+        guard let conn = connection, conn.state == .ready, !isReading else { return }
+
+        readGeneration += 1
+        let generation = readGeneration
+        frameDecoder = FrameDecoder(
+            onFrameStarted: {
+                print("NetworkHandler: Starting new frame read: headerBytesRead=0, payloadBytesRead=0")
+            },
+            onFrameCompleted: { payloadLength in
+                print("NetworkHandler: Frame read complete: payloadLength=\(payloadLength), payloadBytesRead=0")
+            },
+            onInvalidLength: { frameLength in
+                print("NetworkHandler: Invalid frame length: \(frameLength), resetting frame state")
+            }
+        )
+        isReading = true
+        readNextChunk(conn, generation: generation)
     }
 
-    private func readNextFrame() {
-        guard let conn = connection, conn.state == .ready else { return }
+    private func readNextChunk(_ conn: NWConnection, generation: Int) {
+        guard isReading, readGeneration == generation, connection === conn, conn.state == .ready else {
+            return
+        }
 
-        conn.receive(minimumIncompleteLength: 1, maximumLength: frameLength) { [weak self] content, _, isComplete, error in
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] content, _, isComplete, error in
+            guard let self = self,
+                  self.isReading,
+                  self.readGeneration == generation,
+                  self.connection === conn else {
+                return
+            }
+
+            var shouldContinue = true
+            if let data = content, !data.isEmpty {
+                let messages = self.frameDecoder?.append(data) ?? []
+                for message in messages {
+                    self.notifyMessage(message)
+                }
+            }
+
             if let error = error {
-                print("Read error: \(error)")
-                return
+                print("NetworkHandler: Read error: \(error)")
+                shouldContinue = false
+            } else if isComplete {
+                shouldContinue = false
+            } else if content == nil || content?.isEmpty == true {
+                print("NetworkHandler: Read returned no data before connection completion")
+                shouldContinue = false
             }
 
-            if isComplete {
-                self?.notifyState("disconnected")
-                return
+            if shouldContinue {
+                self.readNextChunk(conn, generation: generation)
+            } else {
+                self.finishReading(generation: generation)
+                self.notifyState("disconnected")
             }
-
-            guard let lengthData = content, lengthData.count == self?.frameLength else {
-                self?.readNextFrame()
-                return
-            }
-
-            let length = lengthData.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
-
-            if length == 0 || length > 65536 {
-                print("Invalid frame length: \(length)")
-                self?.readNextFrame()
-                return
-            }
-
-            self?.readPayload(length: Int(length))
         }
     }
 
-    private func readPayload(length: Int) {
-        guard let conn = connection, conn.state == .ready else { return }
-
-        conn.receive(minimumIncompleteLength: length, maximumLength: length) { [weak self] content, _, isComplete, error in
-            if let error = error {
-                print("Read payload error: \(error)")
-                return
-            }
-
-            if isComplete {
-                self?.notifyState("disconnected")
-                return
-            }
-
-            if let data = content, let message = String(data: data, encoding: .utf8) {
-                self?.notifyMessage(message)
-            }
-
-            self?.readNextFrame()
-        }
+    private func finishReading(generation: Int) {
+        guard readGeneration == generation else { return }
+        isReading = false
+        frameDecoder = nil
+        print("NetworkHandler: Resetting frame state: headerBytesRead=0, payloadBytesRead=0")
     }
 
     private func stopAll() {
