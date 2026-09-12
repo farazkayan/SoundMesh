@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/soundmesh_theme.dart';
 import '../../application/providers/create_room_flow_provider.dart';
@@ -167,10 +168,76 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            if (isHost) _buildHostAddressInfo(createState),
             _buildMessageLog(screenState.messageLog),
             _buildMessageInput(screenState),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHostAddressInfo(CreateRoomFlowState flowState) {
+    final address =
+        '${flowState.localIpAddress ?? '...'}:${flowState.port ?? 8765}';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: SoundMeshColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SoundMeshColors.elevatedSurface, width: 1),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.dns_rounded,
+            size: 20,
+            color: SoundMeshColors.success,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Host address',
+                  style: TextStyle(
+                    color: SoundMeshColors.mutedText,
+                    fontSize: 10,
+                  ),
+                ),
+                Text(
+                  address,
+                  style: const TextStyle(
+                    color: SoundMeshColors.primaryText,
+                    fontSize: 14,
+                    fontFamily: 'monospace',
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Copy host address',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: address));
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Copied to clipboard'),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
+            icon: const Icon(Icons.copy_rounded, color: SoundMeshColors.accent),
+          ),
+        ],
       ),
     );
   }

@@ -2384,6 +2384,10 @@ It must communicate:
 
 
 
+For the host fallback path, the room screen may show the current host IP:port with a copy action so the host can share it manually.
+QR joining remains preferred, and the address is connection information rather than device identity.
+
+
 \---
 
 

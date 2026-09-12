@@ -57,25 +57,27 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 32),
-              _buildRoomNameInput(flowState),
-              const SizedBox(height: 24),
-              if (flowState.status == CreateRoomFlowStatus.idle)
-                _buildCreateButton(flowState),
-              if (flowState.status == CreateRoomFlowStatus.creating ||
-                  flowState.status == CreateRoomFlowStatus.hosting)
-                _buildHostingIndicator(flowState),
-              if (flowState.status == CreateRoomFlowStatus.hosted)
-                _buildConnectionInfo(flowState),
-              if (flowState.status == CreateRoomFlowStatus.failed)
-                _buildError(flowState),
-              const SizedBox(height: 32),
-              Expanded(child: _buildInstructions(flowState)),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(),
+                const SizedBox(height: 32),
+                _buildRoomNameInput(flowState),
+                const SizedBox(height: 24),
+                if (flowState.status == CreateRoomFlowStatus.idle)
+                  _buildCreateButton(flowState),
+                if (flowState.status == CreateRoomFlowStatus.creating ||
+                    flowState.status == CreateRoomFlowStatus.hosting)
+                  _buildHostingIndicator(flowState),
+                if (flowState.status == CreateRoomFlowStatus.hosted)
+                  _buildConnectionInfo(flowState),
+                if (flowState.status == CreateRoomFlowStatus.failed)
+                  _buildError(flowState),
+                const SizedBox(height: 32),
+                _buildInstructions(flowState),
+              ],
+            ),
           ),
         ),
       ),
@@ -413,33 +415,28 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: SoundMeshColors.elevatedSurface, width: 1),
       ),
-      // The content can exceed the space the parent Expanded grants when the
-      // hosted/connection panels above grow, so it must scroll instead of
-      // overflowing the Column.
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              flowState.status == CreateRoomFlowStatus.hosted
-                  ? Icons.rocket_launch_rounded
-                  : Icons.info_outline_rounded,
-              size: 64,
-              color: flowState.status == CreateRoomFlowStatus.hosted
-                  ? SoundMeshColors.accent
-                  : SoundMeshColors.mutedText,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            flowState.status == CreateRoomFlowStatus.hosted
+                ? Icons.rocket_launch_rounded
+                : Icons.info_outline_rounded,
+            size: 64,
+            color: flowState.status == CreateRoomFlowStatus.hosted
+                ? SoundMeshColors.accent
+                : SoundMeshColors.mutedText,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _getInstructionsText(flowState.status),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: SoundMeshColors.secondaryText,
+              fontSize: 14,
             ),
-            const SizedBox(height: 16),
-            Text(
-              _getInstructionsText(flowState.status),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: SoundMeshColors.secondaryText,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

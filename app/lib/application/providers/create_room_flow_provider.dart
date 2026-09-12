@@ -1,14 +1,10 @@
 import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../repositories/network_repository.dart';
 
-enum CreateRoomFlowStatus {
-  idle,
-  creating,
-  hosting,
-  hosted,
-  failed,
-}
+enum CreateRoomFlowStatus { idle, creating, hosting, hosted, failed }
 
 class CreateRoomFlowState {
   final CreateRoomFlowStatus status;
@@ -49,10 +45,13 @@ class CreateRoomFlowState {
 class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
   final NetworkRepository _networkRepository;
   StreamSubscription? _stateSubscription;
+  bool _createRoomInProgress = false;
 
   CreateRoomFlowNotifier(this._networkRepository)
-      : super(const CreateRoomFlowState()) {
-    _stateSubscription = _networkRepository.connectionStateStream.listen((connState) {
+    : super(const CreateRoomFlowState()) {
+    _stateSubscription = _networkRepository.connectionStateStream.listen((
+      connState,
+    ) {
       state = state.copyWith(connectionState: connState);
       if (connState == NetworkConnectionState.connected &&
           state.status == CreateRoomFlowStatus.hosting) {
@@ -72,23 +71,38 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
   }
 
   Future<void> createRoom() async {
-    if (state.roomName.trim().isEmpty) {
-      state = state.copyWith(
-        errorMessage: 'Please enter a room name',
-        status: CreateRoomFlowStatus.idle,
-      );
+    if (_createRoomInProgress ||
+        state.status == CreateRoomFlowStatus.creating ||
+        state.status == CreateRoomFlowStatus.hosting) {
       return;
     }
 
-    state = state.copyWith(status: CreateRoomFlowStatus.creating);
+    _createRoomInProgress = true;
+    try {
+      if (state.roomName.trim().isEmpty) {
+        state = state.copyWith(
+          errorMessage: 'Please enter a room name',
+          status: CreateRoomFlowStatus.idle,
+        );
+        return;
+      }
 
-    final ip = await _networkRepository.getLocalIpAddress();
-    state = state.copyWith(
-      localIpAddress: ip,
-      status: CreateRoomFlowStatus.hosting,
-    );
+      state = state.copyWith(status: CreateRoomFlowStatus.creating);
 
-    await _networkRepository.startHosting(port: state.port ?? 8765);
+      final ip = await _networkRepository.getLocalIpAddress();
+      if (state.status != CreateRoomFlowStatus.creating) {
+        return;
+      }
+
+      state = state.copyWith(
+        localIpAddress: ip,
+        status: CreateRoomFlowStatus.hosting,
+      );
+
+      await _networkRepository.startHosting(port: state.port ?? 8765);
+    } finally {
+      _createRoomInProgress = false;
+    }
   }
 
   Future<void> startHosting() async {
@@ -100,6 +114,7 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
 
   void reset() {
     _networkRepository.disconnect();
+    _createRoomInProgress = false;
     state = const CreateRoomFlowState();
   }
 
@@ -112,6 +127,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
 
 final createRoomFlowProvider =
     StateNotifierProvider<CreateRoomFlowNotifier, CreateRoomFlowState>((ref) {
-  final networkRepo = ref.watch(networkRepositoryProvider);
-  return CreateRoomFlowNotifier(networkRepo);
-});
+      final networkRepo = ref.watch(networkRepositoryProvider);
+      return CreateRoomFlowNotifier(networkRepo);
+    });
