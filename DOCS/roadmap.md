@@ -504,6 +504,15 @@ WELCOME
 
 Two physical phones can reliably connect and exchange structured messages over the intended local network.
 
+Status: VERIFIED — Real two-device testing completed successfully on
+physical Android hardware in both host/participant role directions.
+TCP hosting, connection, and PING/PONG/HELLO/WELCOME message exchange
+confirmed working after fixing: main-thread dispatch for Pigeon
+FlutterApi callbacks, hosting-socket idempotency/generation guards, and
+a frame-parser state corruption bug (payloadBytesRead reuse across
+header/payload phases). iOS remains structurally implemented but
+UNTESTED (no macOS/Xcode access).
+
 
 
 \---
