@@ -187,7 +187,7 @@ void main() {
             createRoomFlowProvider.overrideWith(
               (_) => MockCreateRoomFlowNotifier(
                 const CreateRoomFlowState(
-                  status: CreateRoomFlowStatus.hosted,
+                  status: CreateRoomFlowStatus.ready,
                   localIpAddress: '192.168.1.100',
                   port: 8765,
                 ),
@@ -205,6 +205,40 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('shows IP:port display in listening state', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            networkRepositoryProvider.overrideWithValue(
+              MockNetworkRepository(),
+            ),
+            createRoomFlowProvider.overrideWith(
+              (_) => MockCreateRoomFlowNotifier(
+                const CreateRoomFlowState(
+                  status: CreateRoomFlowStatus.listening,
+                  localIpAddress: '192.168.1.50',
+                  port: 8765,
+                ),
+              ),
+            ),
+          ],
+          child: const MaterialApp(home: CreateRoomScreen()),
+        ),
+      );
+      await tester.pump();
+
+      // Verify the listening state text is shown
+      expect(find.text('Waiting for participant...'), findsOneWidget);
+      // Verify IP address is displayed
+      expect(find.text('192.168.1.50'), findsOneWidget);
+      // Verify port is displayed
+      expect(find.text('8765'), findsOneWidget);
+      // Verify copy button is present
+      expect(find.byIcon(Icons.copy_rounded), findsOneWidget);
     });
   });
 }

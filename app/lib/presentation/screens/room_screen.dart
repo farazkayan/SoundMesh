@@ -6,6 +6,7 @@ import '../../core/theme/soundmesh_theme.dart';
 import '../../application/providers/create_room_flow_provider.dart';
 import '../../application/providers/join_room_flow_provider.dart';
 import '../../application/repositories/network_repository.dart';
+import '../../application/protocol.dart';
 
 enum MessageSource { self, remote }
 
@@ -49,6 +50,8 @@ class RoomScreenNotifier extends StateNotifier<RoomScreenState> {
   final NetworkRepository _networkRepository;
   StreamSubscription? _stateSubscription;
   StreamSubscription? _messageSubscription;
+  StreamSubscription? _protocolMessageSubscription;
+  Timer? _errorClearTimer;
 
   RoomScreenNotifier(this._networkRepository) : super(const RoomScreenState()) {
     _stateSubscription = _networkRepository.connectionStateStream.listen((connState) {
@@ -65,6 +68,34 @@ class RoomScreenNotifier extends StateNotifier<RoomScreenState> {
         messageLog: [...state.messageLog, entry],
       );
     });
+
+    _protocolMessageSubscription = _networkRepository.protocolMessageStream.listen((protocolMessage) {
+      final messageType = ProtocolMessageTypeX.fromWireValue(protocolMessage.messageType);
+      if (messageType == ProtocolMessageType.versionRejected) {
+        _setError('Protocol version mismatch: host v${protocolMessage.payload?['hostVersion'] ?? '?'} vs this device v${CURRENT_PROTOCOL_VERSION}');
+      } else if (messageType == ProtocolMessageType.error) {
+        final errorCode = protocolMessage.payload?['errorCode'] as String?;
+        final errorMessage = protocolMessage.payload?['errorMessage'] as String?;
+        if (errorCode == 'PROTOCOL_DECODE_ERROR') {
+          _setError('Protocol error: $errorMessage');
+        }
+      }
+    });
+  }
+
+  void _setError(String error) {
+    _errorClearTimer?.cancel();
+    state = state.copyWith(errorMessage: error);
+    _errorClearTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        state = state.copyWith(errorMessage: null);
+      }
+    });
+  }
+
+  void clearError() {
+    _errorClearTimer?.cancel();
+    state = state.copyWith(errorMessage: null);
   }
 
   Future<void> sendMessage(String message) async {
@@ -91,6 +122,8 @@ class RoomScreenNotifier extends StateNotifier<RoomScreenState> {
   void dispose() {
     _stateSubscription?.cancel();
     _messageSubscription?.cancel();
+    _protocolMessageSubscription?.cancel();
+    _errorClearTimer?.cancel();
     super.dispose();
   }
 }
@@ -123,7 +156,14 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
   Widget build(BuildContext context) {
     final screenState = ref.watch(roomScreenProvider);
     final createState = ref.watch(createRoomFlowProvider);
-    final isHost = createState.status == CreateRoomFlowStatus.hosted;
+    final joinState = ref.watch(joinRoomFlowProvider);
+    final isHost = createState.status == CreateRoomFlowStatus.ready;
+    final isParticipant = joinState.status == JoinRoomFlowStatus.ready;
+    final isReady = isHost || isParticipant;
+    final isHandshaking = createState.status == CreateRoomFlowStatus.handshaking ||
+                          joinState.status == JoinRoomFlowStatus.handshaking;
+    final isListening = createState.status == CreateRoomFlowStatus.listening;
+    final showHostAddress = isHost || isHandshaking || isListening;
 
     ref.listen<RoomScreenState>(roomScreenProvider, (previous, next) {
       if (next.messageLog.length > (previous?.messageLog.length ?? 0)) {
@@ -144,7 +184,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       appBar: AppBar(
         backgroundColor: SoundMeshColors.surface,
         title: Text(
-          isHost ? 'Host' : 'Participant',
+          _getTitle(createState, joinState),
           style: const TextStyle(
             color: SoundMeshColors.primaryText,
             fontSize: 18,
@@ -161,20 +201,34 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
             Navigator.pop(context);
           },
         ),
-        actions: [
-          _buildConnectionIndicator(screenState.connectionState),
-        ],
+actions: [
+            _buildConnectionIndicator(screenState.connectionState, isHandshaking, isListening),
+          ],
       ),
       body: SafeArea(
         child: Column(
           children: [
-            if (isHost) _buildHostAddressInfo(createState),
-            _buildMessageLog(screenState.messageLog),
-            _buildMessageInput(screenState),
+            if (showHostAddress) _buildHostAddressInfo(createState),
+            if (isHandshaking) _buildHandshakingIndicator(),
+            if (isListening) _buildListeningIndicator(),
+            if (screenState.errorMessage != null) _buildErrorBanner(screenState.errorMessage!),
+            _buildMessageLog(screenState.messageLog, isReady),
+            _buildMessageInput(screenState, isReady),
           ],
         ),
       ),
     );
+  }
+
+  String _getTitle(CreateRoomFlowState createState, JoinRoomFlowState joinState) {
+    if (createState.status == CreateRoomFlowStatus.ready) return 'Host';
+    if (joinState.status == JoinRoomFlowStatus.ready) return 'Participant';
+    if (createState.status == CreateRoomFlowStatus.handshaking) return 'Host (Handshaking)';
+    if (joinState.status == JoinRoomFlowStatus.handshaking) return 'Participant (Handshaking)';
+    if (createState.status == CreateRoomFlowStatus.listening) return 'Host (Waiting)';
+    if (createState.status == CreateRoomFlowStatus.hosting) return 'Host (Starting)';
+    if (joinState.status == JoinRoomFlowStatus.connecting) return 'Participant (Connecting)';
+    return 'Room';
   }
 
   Widget _buildHostAddressInfo(CreateRoomFlowState flowState) {
@@ -242,23 +296,142 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     );
   }
 
-  Widget _buildConnectionIndicator(NetworkConnectionState connectionState) {
+  Widget _buildHandshakingIndicator() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: SoundMeshColors.accent.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SoundMeshColors.accent.withValues(alpha: 0.3), width: 1),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(SoundMeshColors.accent),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Handshaking...',
+              style: TextStyle(
+                color: SoundMeshColors.accent,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListeningIndicator() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: SoundMeshColors.warning.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SoundMeshColors.warning.withValues(alpha: 0.3), width: 1),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(SoundMeshColors.warning),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Waiting for participant...',
+              style: TextStyle(
+                color: SoundMeshColors.warning,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorBanner(String error) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: SoundMeshColors.error.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SoundMeshColors.error.withValues(alpha: 0.3), width: 1),
+      ),
+      child: InkWell(
+        onTap: () => ref.read(roomScreenProvider.notifier).clearError(),
+        borderRadius: BorderRadius.circular(12),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline_rounded, color: SoundMeshColors.error, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                error,
+                style: TextStyle(
+                  color: SoundMeshColors.error,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+            Icon(Icons.close_rounded, color: SoundMeshColors.error.withValues(alpha: 0.7), size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConnectionIndicator(NetworkConnectionState connectionState, bool isHandshaking, bool isListening) {
     Color color;
     String label;
 
-    switch (connectionState) {
-      case NetworkConnectionState.connected:
-        color = SoundMeshColors.success;
-        label = 'Connected';
-      case NetworkConnectionState.connecting:
-        color = SoundMeshColors.warning;
-        label = 'Connecting';
-      case NetworkConnectionState.failed:
-        color = SoundMeshColors.error;
-        label = 'Failed';
-      case NetworkConnectionState.disconnected:
-        color = SoundMeshColors.mutedText;
-        label = 'Disconnected';
+    if (isHandshaking) {
+      color = SoundMeshColors.accent;
+      label = 'Handshaking';
+    } else if (isListening) {
+      color = SoundMeshColors.warning;
+      label = 'Waiting';
+    } else {
+      switch (connectionState) {
+        case NetworkConnectionState.ready:
+          color = SoundMeshColors.success;
+          label = 'Ready';
+        case NetworkConnectionState.connected:
+          color = SoundMeshColors.success;
+          label = 'Connected';
+        case NetworkConnectionState.connecting:
+          color = SoundMeshColors.warning;
+          label = 'Connecting';
+        case NetworkConnectionState.handshaking:
+          color = SoundMeshColors.accent;
+          label = 'Handshaking';
+        case NetworkConnectionState.listening:
+          color = SoundMeshColors.warning;
+          label = 'Waiting';
+        case NetworkConnectionState.failed:
+          color = SoundMeshColors.error;
+          label = 'Failed';
+        case NetworkConnectionState.disconnected:
+          color = SoundMeshColors.mutedText;
+          label = 'Disconnected';
+      }
     }
 
     return Padding(
@@ -287,29 +460,29 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     );
   }
 
-  Widget _buildMessageLog(List<MessageLogEntry> messageLog) {
+  Widget _buildMessageLog(List<MessageLogEntry> messageLog, bool isReady) {
     if (messageLog.isEmpty) {
       return Expanded(
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
+            children: [
               Icon(
                 Icons.chat_bubble_outline_rounded,
                 size: 64,
                 color: SoundMeshColors.mutedText,
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Text(
-                'No messages yet',
+                isReady ? 'No messages yet' : 'Waiting for handshake...',
                 style: TextStyle(
                   color: SoundMeshColors.mutedText,
                   fontSize: 14,
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Text(
-                'Send PING, HELLO, or any text',
+                isReady ? 'Send a message' : 'Protocol handshake in progress',
                 style: TextStyle(
                   color: SoundMeshColors.mutedText,
                   fontSize: 12,
@@ -393,8 +566,8 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:${time.second.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildMessageInput(RoomScreenState screenState) {
-    final isConnected = screenState.connectionState == NetworkConnectionState.connected;
+  Widget _buildMessageInput(RoomScreenState screenState, bool isReady) {
+    final canSend = isReady && screenState.connectionState == NetworkConnectionState.ready;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -417,30 +590,30 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
               ),
               child: TextField(
                 controller: _messageController,
-                enabled: isConnected,
+                enabled: canSend,
                 style: const TextStyle(
                   color: SoundMeshColors.primaryText,
                   fontSize: 14,
                 ),
-                decoration: const InputDecoration(
-                  hintText: 'Type a message...',
+                decoration: InputDecoration(
+                  hintText: canSend ? 'Type a message...' : 'Waiting for handshake...',
                   hintStyle: TextStyle(color: SoundMeshColors.mutedText),
                   contentPadding:
                       EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   border: InputBorder.none,
                 ),
-                onSubmitted: (value) => _sendMessage(),
+                onSubmitted: canSend ? (value) => _sendMessage() : null,
               ),
             ),
           ),
           const SizedBox(width: 12),
           Material(
-            color: isConnected
+            color: canSend
                 ? SoundMeshColors.accent
                 : SoundMeshColors.mutedText,
             borderRadius: BorderRadius.circular(24),
             child: InkWell(
-              onTap: isConnected ? _sendMessage : null,
+              onTap: canSend ? _sendMessage : null,
               borderRadius: BorderRadius.circular(24),
               child: const Padding(
                 padding: EdgeInsets.all(12),

@@ -31,7 +31,7 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
     final flowState = ref.watch(createRoomFlowProvider);
 
     ref.listen<CreateRoomFlowState>(createRoomFlowProvider, (previous, next) {
-      if (next.status == CreateRoomFlowStatus.hosted) {
+      if (next.status == CreateRoomFlowStatus.ready) {
         Navigator.pushReplacementNamed(context, AppRouter.room);
       }
     });
@@ -68,9 +68,10 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                 if (flowState.status == CreateRoomFlowStatus.idle)
                   _buildCreateButton(flowState),
                 if (flowState.status == CreateRoomFlowStatus.creating ||
-                    flowState.status == CreateRoomFlowStatus.hosting)
+                    flowState.status == CreateRoomFlowStatus.hosting ||
+                    flowState.status == CreateRoomFlowStatus.listening)
                   _buildHostingIndicator(flowState),
-                if (flowState.status == CreateRoomFlowStatus.hosted)
+                if (flowState.status == CreateRoomFlowStatus.ready)
                   _buildConnectionInfo(flowState),
                 if (flowState.status == CreateRoomFlowStatus.failed)
                   _buildError(flowState),
@@ -182,6 +183,10 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   }
 
   Widget _buildHostingIndicator(CreateRoomFlowState flowState) {
+    final showAddress =
+        flowState.status == CreateRoomFlowStatus.hosting ||
+        flowState.status == CreateRoomFlowStatus.listening;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -200,12 +205,18 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
           Text(
             flowState.status == CreateRoomFlowStatus.creating
                 ? 'Creating room...'
-                : 'Starting server...',
+                : flowState.status == CreateRoomFlowStatus.hosting
+                    ? 'Starting server...'
+                    : 'Waiting for participant...',
             style: const TextStyle(
               color: SoundMeshColors.primaryText,
               fontSize: 14,
             ),
           ),
+          if (showAddress) ...[
+            const SizedBox(height: 24),
+            _buildIpPortDisplay(flowState),
+          ],
         ],
       ),
     );
@@ -419,11 +430,11 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            flowState.status == CreateRoomFlowStatus.hosted
+            flowState.status == CreateRoomFlowStatus.ready
                 ? Icons.rocket_launch_rounded
                 : Icons.info_outline_rounded,
             size: 64,
-            color: flowState.status == CreateRoomFlowStatus.hosted
+            color: flowState.status == CreateRoomFlowStatus.ready
                 ? SoundMeshColors.accent
                 : SoundMeshColors.mutedText,
           ),
@@ -449,7 +460,11 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         return 'Creating your room...';
       case CreateRoomFlowStatus.hosting:
         return 'Starting server...\nWaiting for participant';
-      case CreateRoomFlowStatus.hosted:
+      case CreateRoomFlowStatus.listening:
+        return 'Server started!\nWaiting for participant to join...';
+      case CreateRoomFlowStatus.handshaking:
+        return 'Handshaking with participant...\nExchanging protocol info';
+      case CreateRoomFlowStatus.ready:
         return 'Share the IP address and port\nwith the participant device';
       case CreateRoomFlowStatus.failed:
         return 'Failed to create room\nTap Try Again to retry';

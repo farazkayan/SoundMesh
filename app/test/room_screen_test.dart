@@ -30,7 +30,7 @@ void main() {
       WidgetTester tester,
     ) async {
       const hostState = CreateRoomFlowState(
-        status: CreateRoomFlowStatus.hosted,
+        status: CreateRoomFlowStatus.ready,
         localIpAddress: '192.168.1.100',
         port: 8765,
       );

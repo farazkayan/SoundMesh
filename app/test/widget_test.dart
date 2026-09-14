@@ -11,7 +11,7 @@ import 'package:soundmesh/presentation/screens/join_room_screen.dart';
 import 'package:soundmesh/presentation/screens/room_screen.dart';
 import 'package:soundmesh/presentation/screens/settings_screen.dart';
 import 'package:soundmesh/presentation/screens/diagnostics_screen.dart';
-import 'package:soundmesh/src/device_messages.g.dart';
+import 'package:soundmesh/src/soundmesh_messages.g.dart';
 
 void main() {
   group('Screen smoke tests', () {

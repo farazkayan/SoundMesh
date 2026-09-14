@@ -27,7 +27,7 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
     final flowState = ref.watch(joinRoomFlowProvider);
 
     ref.listen<JoinRoomFlowState>(joinRoomFlowProvider, (previous, next) {
-      if (next.status == JoinRoomFlowStatus.connected) {
+      if (next.status == JoinRoomFlowStatus.ready) {
         Navigator.pushReplacementNamed(context, AppRouter.room);
       }
     });
@@ -311,11 +311,11 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                flowState.status == JoinRoomFlowStatus.connected
+                flowState.status == JoinRoomFlowStatus.ready
                     ? Icons.check_circle_rounded
                     : Icons.info_outline_rounded,
                 size: 48,
-                color: flowState.status == JoinRoomFlowStatus.connected
+                color: flowState.status == JoinRoomFlowStatus.ready
                     ? SoundMeshColors.success
                     : SoundMeshColors.mutedText,
               ),
@@ -341,8 +341,10 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
         return 'Enter the host IP address and port\nfrom the Create Room screen';
       case JoinRoomFlowStatus.connecting:
         return 'Establishing connection...';
-      case JoinRoomFlowStatus.connected:
-        return 'Connected!\nEntering room...';
+      case JoinRoomFlowStatus.handshaking:
+        return 'Handshaking with host...\nExchanging protocol info';
+      case JoinRoomFlowStatus.ready:
+        return 'Connected!\nReady to send messages';
       case JoinRoomFlowStatus.failed:
         return 'Could not connect to host\nCheck the IP address and port';
     }
