@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-private object NetworkMessagesPigeonUtils {
+private object SoundMeshMessagesPigeonUtils {
 
   fun createConnectionError(channelName: String): FlutterError {
     return FlutterError("channel-error",  "Unable to establish connection on channel: '$channelName'.", "")  }
@@ -190,6 +190,18 @@ private object NetworkMessagesPigeonUtils {
 
 }
 
+/**
+ * Error class for passing custom error details to Flutter via a thrown PlatformException.
+ * @property code The error code.
+ * @property message The error message.
+ * @property details The error details. Must be a datatype supported by the api codec.
+ */
+class FlutterError (
+  val code: String,
+  override val message: String? = null,
+  val details: Any? = null
+) : RuntimeException()
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class ConnectionState (
   val state: String
@@ -214,24 +226,78 @@ data class ConnectionState (
       return true
     }
     val other = other as ConnectionState
-    return NetworkMessagesPigeonUtils.deepEquals(this.state, other.state)
+    return SoundMeshMessagesPigeonUtils.deepEquals(this.state, other.state)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
-    result = 31 * result + NetworkMessagesPigeonUtils.deepHash(this.state)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.state)
     return result
   }
   override fun toString(): String {
     return "ConnectionState(state=$state)"
   }
 }
-private open class NetworkMessagesPigeonCodec : StandardMessageCodec() {
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class DeviceInfo (
+  val platformName: String,
+  val osVersion: String,
+  val deviceModel: String,
+  val brand: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): DeviceInfo {
+      val platformName = pigeonVar_list[0] as String
+      val osVersion = pigeonVar_list[1] as String
+      val deviceModel = pigeonVar_list[2] as String
+      val brand = pigeonVar_list[3] as String?
+      return DeviceInfo(platformName, osVersion, deviceModel, brand)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      platformName,
+      osVersion,
+      deviceModel,
+      brand,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as DeviceInfo
+    return SoundMeshMessagesPigeonUtils.deepEquals(this.platformName, other.platformName) && SoundMeshMessagesPigeonUtils.deepEquals(this.osVersion, other.osVersion) && SoundMeshMessagesPigeonUtils.deepEquals(this.deviceModel, other.deviceModel) && SoundMeshMessagesPigeonUtils.deepEquals(this.brand, other.brand)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.platformName)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.osVersion)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.deviceModel)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.brand)
+    return result
+  }
+  override fun toString(): String {
+    return "DeviceInfo(platformName=$platformName, osVersion=$osVersion, deviceModel=$deviceModel, brand=$brand)"
+  }
+}
+private open class SoundMeshMessagesPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
       129.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           ConnectionState.fromList(it)
+        }
+      }
+      130.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          DeviceInfo.fromList(it)
         }
       }
       else -> super.readValueOfType(type, buffer)
@@ -241,6 +307,10 @@ private open class NetworkMessagesPigeonCodec : StandardMessageCodec() {
     when (value) {
       is ConnectionState -> {
         stream.write(129)
+        writeValue(stream, value.toList())
+      }
+      is DeviceInfo -> {
+        stream.write(130)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -259,7 +329,7 @@ interface NetworkHostPlatform {
   companion object {
     /** The codec used by NetworkHostPlatform. */
     val codec: MessageCodec<Any?> by lazy {
-      NetworkMessagesPigeonCodec()
+      SoundMeshMessagesPigeonCodec()
     }
     /** Sets up an instance of `NetworkHostPlatform` to handle messages through the `binaryMessenger`. */
     @JvmOverloads
@@ -274,7 +344,7 @@ interface NetworkHostPlatform {
             val wrapped: List<Any?> = try {
               listOf(api.startHosting(portArg))
             } catch (exception: Throwable) {
-              NetworkMessagesPigeonUtils.wrapError(exception)
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
           }
@@ -292,7 +362,7 @@ interface NetworkHostPlatform {
             val wrapped: List<Any?> = try {
               listOf(api.connectToHost(ipAddressArg, portArg))
             } catch (exception: Throwable) {
-              NetworkMessagesPigeonUtils.wrapError(exception)
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
           }
@@ -309,7 +379,7 @@ interface NetworkHostPlatform {
             val wrapped: List<Any?> = try {
               listOf(api.sendMessage(messageArg))
             } catch (exception: Throwable) {
-              NetworkMessagesPigeonUtils.wrapError(exception)
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
           }
@@ -325,7 +395,7 @@ interface NetworkHostPlatform {
               api.disconnect()
               listOf(null)
             } catch (exception: Throwable) {
-              NetworkMessagesPigeonUtils.wrapError(exception)
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
           }
@@ -340,7 +410,69 @@ interface NetworkHostPlatform {
             val wrapped: List<Any?> = try {
               listOf(api.getLocalIpAddress())
             } catch (exception: Throwable) {
-              NetworkMessagesPigeonUtils.wrapError(exception)
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
+/** Generated interface from Pigeon that represents a handler of messages from Flutter. */
+interface DevicePlatform {
+  fun getDeviceInfo(): DeviceInfo
+
+  companion object {
+    /** The codec used by DevicePlatform. */
+    val codec: MessageCodec<Any?> by lazy {
+      SoundMeshMessagesPigeonCodec()
+    }
+    /** Sets up an instance of `DevicePlatform` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: DevicePlatform?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.soundmesh.DevicePlatform.getDeviceInfo$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.getDeviceInfo())
+            } catch (exception: Throwable) {
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
+/** Generated interface from Pigeon that represents a handler of messages from Flutter. */
+interface TimingPlatform {
+  fun getMonotonicTimeNanos(): Long
+
+  companion object {
+    /** The codec used by TimingPlatform. */
+    val codec: MessageCodec<Any?> by lazy {
+      SoundMeshMessagesPigeonCodec()
+    }
+    /** Sets up an instance of `TimingPlatform` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: TimingPlatform?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.soundmesh.TimingPlatform.getMonotonicTimeNanos$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.getMonotonicTimeNanos())
+            } catch (exception: Throwable) {
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
           }
@@ -356,7 +488,7 @@ class NetworkFlutterApi(private val binaryMessenger: BinaryMessenger, private va
   companion object {
     /** The codec used by NetworkFlutterApi. */
     val codec: MessageCodec<Any?> by lazy {
-      NetworkMessagesPigeonCodec()
+      SoundMeshMessagesPigeonCodec()
     }
   }
   suspend fun onMessageReceived(messageArg: String)
@@ -373,7 +505,7 @@ class NetworkFlutterApi(private val binaryMessenger: BinaryMessenger, private va
             continuation.resume(Unit)
           }
         } else {
-          continuation.resumeWithException(NetworkMessagesPigeonUtils.createConnectionError(channelName))
+          continuation.resumeWithException(SoundMeshMessagesPigeonUtils.createConnectionError(channelName))
         } 
       }
     }
@@ -392,7 +524,26 @@ class NetworkFlutterApi(private val binaryMessenger: BinaryMessenger, private va
             continuation.resume(Unit)
           }
         } else {
-          continuation.resumeWithException(NetworkMessagesPigeonUtils.createConnectionError(channelName))
+          continuation.resumeWithException(SoundMeshMessagesPigeonUtils.createConnectionError(channelName))
+        } 
+      }
+    }
+  }
+  suspend fun onConnectionError(errorCodeArg: String, errorMessageArg: String)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    return suspendCancellableCoroutine { continuation ->
+      val channelName = "dev.flutter.pigeon.soundmesh.NetworkFlutterApi.onConnectionError$separatedMessageChannelSuffix"
+      val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+      channel.send(listOf(errorCodeArg, errorMessageArg)) {
+        if (it is List<*>) {
+          if (it.size > 1) {
+            continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))
+          } else {
+            continuation.resume(Unit)
+          }
+        } else {
+          continuation.resumeWithException(SoundMeshMessagesPigeonUtils.createConnectionError(channelName))
         } 
       }
     }

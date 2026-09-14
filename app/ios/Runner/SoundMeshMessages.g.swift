@@ -60,7 +60,7 @@ private func createConnectionError(withChannelName channelName: String) -> Pigeo
   return PigeonError(code: "channel-error", message: "Unable to establish connection on channel: '\(channelName)'.", details: "")
 }
 
-enum NetworkMessagesPigeonInternal {
+enum SoundMeshMessagesPigeonInternal {
   static func isNullish(_ value: Any?) -> Bool {
     guard let innerValue = value else {
       return true
@@ -211,12 +211,12 @@ struct ConnectionState: Hashable, CustomStringConvertible {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return NetworkMessagesPigeonInternal.deepEquals(lhs.state, rhs.state)
+    return SoundMeshMessagesPigeonInternal.deepEquals(lhs.state, rhs.state)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("ConnectionState")
-    NetworkMessagesPigeonInternal.deepHash(value: state, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: state, hasher: &hasher)
   }
 
   public var description: String {
@@ -224,21 +224,76 @@ struct ConnectionState: Hashable, CustomStringConvertible {
   }
 }
 
-private class NetworkMessagesPigeonCodecReader: FlutterStandardReader {
+/// Generated class from Pigeon that represents data sent in messages.
+struct DeviceInfo: Hashable, CustomStringConvertible {
+  var platformName: String
+  var osVersion: String
+  var deviceModel: String
+  var brand: String? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> DeviceInfo? {
+    let platformName = pigeonVar_list[0] as! String
+    let osVersion = pigeonVar_list[1] as! String
+    let deviceModel = pigeonVar_list[2] as! String
+    let brand: String? = nilOrValue(pigeonVar_list[3])
+
+    return DeviceInfo(
+      platformName: platformName,
+      osVersion: osVersion,
+      deviceModel: deviceModel,
+      brand: brand
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      platformName,
+      osVersion,
+      deviceModel,
+      brand,
+    ]
+  }
+  static func == (lhs: DeviceInfo, rhs: DeviceInfo) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return SoundMeshMessagesPigeonInternal.deepEquals(lhs.platformName, rhs.platformName) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.osVersion, rhs.osVersion) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.deviceModel, rhs.deviceModel) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.brand, rhs.brand)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("DeviceInfo")
+    SoundMeshMessagesPigeonInternal.deepHash(value: platformName, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: osVersion, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: deviceModel, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: brand, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "DeviceInfo(platformName: \(String(describing: platformName)), osVersion: \(String(describing: osVersion)), deviceModel: \(String(describing: deviceModel)), brand: \(String(describing: brand)))"
+  }
+}
+
+private class SoundMeshMessagesPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
     case 129:
       return ConnectionState.fromList(self.readValue() as! [Any?])
+    case 130:
+      return DeviceInfo.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
   }
 }
 
-private class NetworkMessagesPigeonCodecWriter: FlutterStandardWriter {
+private class SoundMeshMessagesPigeonCodecWriter: FlutterStandardWriter {
   override func writeValue(_ value: Any) {
     if let value = value as? ConnectionState {
       super.writeByte(129)
+      super.writeValue(value.toList())
+    } else if let value = value as? DeviceInfo {
+      super.writeByte(130)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -246,18 +301,18 @@ private class NetworkMessagesPigeonCodecWriter: FlutterStandardWriter {
   }
 }
 
-private class NetworkMessagesPigeonCodecReaderWriter: FlutterStandardReaderWriter {
+private class SoundMeshMessagesPigeonCodecReaderWriter: FlutterStandardReaderWriter {
   override func reader(with data: Data) -> FlutterStandardReader {
-    return NetworkMessagesPigeonCodecReader(data: data)
+    return SoundMeshMessagesPigeonCodecReader(data: data)
   }
 
   override func writer(with data: NSMutableData) -> FlutterStandardWriter {
-    return NetworkMessagesPigeonCodecWriter(data: data)
+    return SoundMeshMessagesPigeonCodecWriter(data: data)
   }
 }
 
-class NetworkMessagesPigeonCodec: FlutterStandardMessageCodec, @unchecked Sendable {
-  static let shared = NetworkMessagesPigeonCodec(readerWriter: NetworkMessagesPigeonCodecReaderWriter())
+class SoundMeshMessagesPigeonCodec: FlutterStandardMessageCodec, @unchecked Sendable {
+  static let shared = SoundMeshMessagesPigeonCodec(readerWriter: SoundMeshMessagesPigeonCodecReaderWriter())
 }
 
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
@@ -271,7 +326,7 @@ protocol NetworkHostPlatform {
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
 class NetworkHostPlatformSetup {
-  static var codec: FlutterStandardMessageCodec { NetworkMessagesPigeonCodec.shared }
+  static var codec: FlutterStandardMessageCodec { SoundMeshMessagesPigeonCodec.shared }
   /// Sets up an instance of `NetworkHostPlatform` to handle messages through the `binaryMessenger`.
   static func setUp(binaryMessenger: FlutterBinaryMessenger, api: NetworkHostPlatform?, messageChannelSuffix: String = "") {
     let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
@@ -349,6 +404,58 @@ class NetworkHostPlatformSetup {
     }
   }
 }
+/// Generated protocol from Pigeon that represents a handler of messages from Flutter.
+protocol DevicePlatform {
+  func getDeviceInfo() throws -> DeviceInfo
+}
+
+/// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
+class DevicePlatformSetup {
+  static var codec: FlutterStandardMessageCodec { SoundMeshMessagesPigeonCodec.shared }
+  /// Sets up an instance of `DevicePlatform` to handle messages through the `binaryMessenger`.
+  static func setUp(binaryMessenger: FlutterBinaryMessenger, api: DevicePlatform?, messageChannelSuffix: String = "") {
+    let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+    let getDeviceInfoChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.DevicePlatform.getDeviceInfo\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getDeviceInfoChannel.setMessageHandler { _, reply in
+        do {
+          let result = try api.getDeviceInfo()
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      getDeviceInfoChannel.setMessageHandler(nil)
+    }
+  }
+}
+/// Generated protocol from Pigeon that represents a handler of messages from Flutter.
+protocol TimingPlatform {
+  func getMonotonicTimeNanos() throws -> Int64
+}
+
+/// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
+class TimingPlatformSetup {
+  static var codec: FlutterStandardMessageCodec { SoundMeshMessagesPigeonCodec.shared }
+  /// Sets up an instance of `TimingPlatform` to handle messages through the `binaryMessenger`.
+  static func setUp(binaryMessenger: FlutterBinaryMessenger, api: TimingPlatform?, messageChannelSuffix: String = "") {
+    let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+    let getMonotonicTimeNanosChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.TimingPlatform.getMonotonicTimeNanos\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getMonotonicTimeNanosChannel.setMessageHandler { _, reply in
+        do {
+          let result = try api.getMonotonicTimeNanos()
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      getMonotonicTimeNanosChannel.setMessageHandler(nil)
+    }
+  }
+}
 
 /// Generated protocol from Pigeon that represents Flutter messages that can be called from Swift.
 protocol NetworkFlutterApiProtocol {
@@ -363,8 +470,8 @@ class NetworkFlutterApi: NetworkFlutterApiProtocol {
     self.binaryMessenger = binaryMessenger
     self.messageChannelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
   }
-  var codec: NetworkMessagesPigeonCodec {
-    return NetworkMessagesPigeonCodec.shared
+  var codec: SoundMeshMessagesPigeonCodec {
+    return SoundMeshMessagesPigeonCodec.shared
   }
   func onMessageReceived(message messageArg: String) async throws {
     return try await withCheckedThrowingContinuation { continuation in

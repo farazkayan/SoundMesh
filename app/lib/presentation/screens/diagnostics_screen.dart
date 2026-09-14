@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:soundmesh/application/repositories/device_info_repository.dart';
 import 'package:soundmesh/application/repositories/timing_info_repository.dart';
-import 'package:soundmesh/src/device_messages.g.dart';
+import 'package:soundmesh/src/soundmesh_messages.g.dart';
 
 class DiagnosticsScreen extends StatefulWidget {
   final DeviceInfoRepository Function()? deviceRepositoryBuilder;

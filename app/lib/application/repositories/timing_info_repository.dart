@@ -1,4 +1,4 @@
-import 'package:soundmesh/src/timing_messages.g.dart';
+import 'package:soundmesh/src/soundmesh_messages.g.dart';
 
 abstract class TimingInfoRepository {
   Future<int> getMonotonicTimeNanos();

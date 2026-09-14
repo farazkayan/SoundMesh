@@ -79,6 +79,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             val job = scope.launch {
                 try {
                     notifyState("connecting")
+                    Log.d(TAG, "[Connection] Starting TCP server on port $port")
                     val socket = ServerSocket(port.toInt())
                     synchronized(hostingLock) {
                         if (!isHosting || hostingGeneration != generation) {
@@ -87,6 +88,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         }
                         serverSocket = socket
                     }
+                    Log.d(TAG, "[Connection] TCP server listening on port $port")
                     notifyState("connected")
                     acceptConnection(generation)
                 } catch (e: CancellationException) {
@@ -210,13 +212,24 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             stopAll()
             scope.launch {
                 notifyState("connecting")
+                Log.d(TAG, "[Connection] Attempting TCP connect to $ipAddress:$port")
                 try {
                     clientSocket = Socket(ipAddress, port.toInt())
                     connectionSocket = clientSocket
+                    Log.d(TAG, "[Connection] TCP connected to $ipAddress:$port")
                     notifyState("connected")
                     startReading(clientSocket!!)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to connect to host", e)
+                    Log.e(TAG, "[Connection] TCP connect failed to $ipAddress:$port", e)
+                    val errorCode = when (e) {
+                        is java.net.ConnectException -> "CONNECTION_REFUSED"
+                        is java.net.SocketTimeoutException -> "CONNECTION_TIMEOUT"
+                        is java.net.UnknownHostException -> "UNKNOWN_HOST"
+                        is java.net.SocketException -> "SOCKET_ERROR"
+                        else -> "CONNECTION_FAILED"
+                    }
+                    val errorMessage = "${e.javaClass.simpleName}: ${e.message}"
+                    flutterApi?.onConnectionError(errorCode, errorMessage)
                     notifyState("failed")
                 }
             }

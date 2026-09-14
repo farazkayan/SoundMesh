@@ -153,6 +153,66 @@ class ConnectionState {
   }
 }
 
+class DeviceInfo {
+  DeviceInfo({
+    required this.platformName,
+    required this.osVersion,
+    required this.deviceModel,
+    this.brand,
+  });
+
+  String platformName;
+
+  String osVersion;
+
+  String deviceModel;
+
+  String? brand;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      platformName,
+      osVersion,
+      deviceModel,
+      brand,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static DeviceInfo decode(Object result) {
+    result as List<Object?>;
+    return DeviceInfo(
+      platformName: result[0]! as String,
+      osVersion: result[1]! as String,
+      deviceModel: result[2]! as String,
+      brand: result[3] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! DeviceInfo || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(platformName, other.platformName) && _deepEquals(osVersion, other.osVersion) && _deepEquals(deviceModel, other.deviceModel) && _deepEquals(brand, other.brand);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'DeviceInfo(platformName: $platformName, osVersion: $osVersion, deviceModel: $deviceModel, brand: $brand)';
+  }
+}
+
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -164,6 +224,9 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is ConnectionState) {
       buffer.putUint8(129);
       writeValue(buffer, value.encode());
+    }    else if (value is DeviceInfo) {
+      buffer.putUint8(130);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -174,6 +237,8 @@ class _PigeonCodec extends StandardMessageCodec {
     switch (type) {
       case 129:
         return ConnectionState.decode(readValue(buffer)!);
+      case 130:
+        return DeviceInfo.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -288,12 +353,80 @@ class NetworkHostPlatform {
   }
 }
 
+class DevicePlatform {
+  /// Constructor for [DevicePlatform]. The [binaryMessenger] named argument is
+  /// available for dependency injection. If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  DevicePlatform({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  Future<DeviceInfo> getDeviceInfo() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.DevicePlatform.getDeviceInfo$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as DeviceInfo;
+  }
+}
+
+class TimingPlatform {
+  /// Constructor for [TimingPlatform]. The [binaryMessenger] named argument is
+  /// available for dependency injection. If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  TimingPlatform({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  Future<int> getMonotonicTimeNanos() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.TimingPlatform.getMonotonicTimeNanos$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as int;
+  }
+}
+
 abstract class NetworkFlutterApi {
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
 
   void onMessageReceived(String message);
 
   void onConnectionStateChanged(String state);
+
+  void onConnectionError(String errorCode, String errorMessage);
 
   static void setUp(NetworkFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
     messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
@@ -330,6 +463,28 @@ abstract class NetworkFlutterApi {
           final String arg_state = args[0]! as String;
           try {
             api.onConnectionStateChanged(arg_state);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.NetworkFlutterApi.onConnectionError$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_errorCode = args[0]! as String;
+          final String arg_errorMessage = args[1]! as String;
+          try {
+            api.onConnectionError(arg_errorCode, arg_errorMessage);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
