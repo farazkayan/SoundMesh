@@ -274,6 +274,261 @@ struct DeviceInfo: Hashable, CustomStringConvertible {
   }
 }
 
+/// Generated class from Pigeon that represents data sent in messages.
+struct CaptureState: Hashable, CustomStringConvertible {
+  var state: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> CaptureState? {
+    let state = pigeonVar_list[0] as! String
+
+    return CaptureState(
+      state: state
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      state
+    ]
+  }
+  static func == (lhs: CaptureState, rhs: CaptureState) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return SoundMeshMessagesPigeonInternal.deepEquals(lhs.state, rhs.state)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("CaptureState")
+    SoundMeshMessagesPigeonInternal.deepHash(value: state, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "CaptureState(state: \(String(describing: state)))"
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct CaptureMetadata: Hashable, CustomStringConvertible {
+  var sessionId: String
+  var generation: Int64
+  var sampleRate: Int64
+  var channelCount: Int64
+  var startedAtNanos: Int64
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> CaptureMetadata? {
+    let sessionId = pigeonVar_list[0] as! String
+    let generation = pigeonVar_list[1] as! Int64
+    let sampleRate = pigeonVar_list[2] as! Int64
+    let channelCount = pigeonVar_list[3] as! Int64
+    let startedAtNanos = pigeonVar_list[4] as! Int64
+
+    return CaptureMetadata(
+      sessionId: sessionId,
+      generation: generation,
+      sampleRate: sampleRate,
+      channelCount: channelCount,
+      startedAtNanos: startedAtNanos
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      sessionId,
+      generation,
+      sampleRate,
+      channelCount,
+      startedAtNanos,
+    ]
+  }
+  static func == (lhs: CaptureMetadata, rhs: CaptureMetadata) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return SoundMeshMessagesPigeonInternal.deepEquals(lhs.sessionId, rhs.sessionId) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.generation, rhs.generation) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.sampleRate, rhs.sampleRate) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.channelCount, rhs.channelCount) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.startedAtNanos, rhs.startedAtNanos)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("CaptureMetadata")
+    SoundMeshMessagesPigeonInternal.deepHash(value: sessionId, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: generation, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: sampleRate, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: channelCount, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: startedAtNanos, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "CaptureMetadata(sessionId: \(String(describing: sessionId)), generation: \(String(describing: generation)), sampleRate: \(String(describing: sampleRate)), channelCount: \(String(describing: channelCount)), startedAtNanos: \(String(describing: startedAtNanos)))"
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct CaptureError: Hashable, CustomStringConvertible {
+  var code: String
+  var message: String
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> CaptureError? {
+    let code = pigeonVar_list[0] as! String
+    let message = pigeonVar_list[1] as! String
+
+    return CaptureError(
+      code: code,
+      message: message
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      code,
+      message,
+    ]
+  }
+  static func == (lhs: CaptureError, rhs: CaptureError) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return SoundMeshMessagesPigeonInternal.deepEquals(lhs.code, rhs.code) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.message, rhs.message)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("CaptureError")
+    SoundMeshMessagesPigeonInternal.deepHash(value: code, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: message, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "CaptureError(code: \(String(describing: code)), message: \(String(describing: message)))"
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct CapturePermissionResult: Hashable, CustomStringConvertible {
+  var result: String
+  var error: CaptureError? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> CapturePermissionResult? {
+    let result = pigeonVar_list[0] as! String
+    let error: CaptureError? = nilOrValue(pigeonVar_list[1])
+
+    return CapturePermissionResult(
+      result: result,
+      error: error
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      result,
+      error,
+    ]
+  }
+  static func == (lhs: CapturePermissionResult, rhs: CapturePermissionResult) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return SoundMeshMessagesPigeonInternal.deepEquals(lhs.result, rhs.result) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.error, rhs.error)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("CapturePermissionResult")
+    SoundMeshMessagesPigeonInternal.deepHash(value: result, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: error, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "CapturePermissionResult(result: \(String(describing: result)), error: \(String(describing: error)))"
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct CaptureResult: Hashable, CustomStringConvertible {
+  var success: Bool
+  var metadata: CaptureMetadata? = nil
+  var error: CaptureError? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> CaptureResult? {
+    let success = pigeonVar_list[0] as! Bool
+    let metadata: CaptureMetadata? = nilOrValue(pigeonVar_list[1])
+    let error: CaptureError? = nilOrValue(pigeonVar_list[2])
+
+    return CaptureResult(
+      success: success,
+      metadata: metadata,
+      error: error
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      success,
+      metadata,
+      error,
+    ]
+  }
+  static func == (lhs: CaptureResult, rhs: CaptureResult) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return SoundMeshMessagesPigeonInternal.deepEquals(lhs.success, rhs.success) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.metadata, rhs.metadata) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.error, rhs.error)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("CaptureResult")
+    SoundMeshMessagesPigeonInternal.deepHash(value: success, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: metadata, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: error, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "CaptureResult(success: \(String(describing: success)), metadata: \(String(describing: metadata)), error: \(String(describing: error)))"
+  }
+}
+
+/// Generated class from Pigeon that represents data sent in messages.
+struct CaptureStateResult: Hashable, CustomStringConvertible {
+  var state: CaptureState
+  var metadata: CaptureMetadata? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> CaptureStateResult? {
+    let state = pigeonVar_list[0] as! CaptureState
+    let metadata: CaptureMetadata? = nilOrValue(pigeonVar_list[1])
+
+    return CaptureStateResult(
+      state: state,
+      metadata: metadata
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      state,
+      metadata,
+    ]
+  }
+  static func == (lhs: CaptureStateResult, rhs: CaptureStateResult) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return SoundMeshMessagesPigeonInternal.deepEquals(lhs.state, rhs.state) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.metadata, rhs.metadata)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("CaptureStateResult")
+    SoundMeshMessagesPigeonInternal.deepHash(value: state, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: metadata, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "CaptureStateResult(state: \(String(describing: state)), metadata: \(String(describing: metadata)))"
+  }
+}
+
 private class SoundMeshMessagesPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -281,6 +536,18 @@ private class SoundMeshMessagesPigeonCodecReader: FlutterStandardReader {
       return ConnectionState.fromList(self.readValue() as! [Any?])
     case 130:
       return DeviceInfo.fromList(self.readValue() as! [Any?])
+    case 131:
+      return CaptureState.fromList(self.readValue() as! [Any?])
+    case 132:
+      return CaptureMetadata.fromList(self.readValue() as! [Any?])
+    case 133:
+      return CaptureError.fromList(self.readValue() as! [Any?])
+    case 134:
+      return CapturePermissionResult.fromList(self.readValue() as! [Any?])
+    case 135:
+      return CaptureResult.fromList(self.readValue() as! [Any?])
+    case 136:
+      return CaptureStateResult.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -294,6 +561,24 @@ private class SoundMeshMessagesPigeonCodecWriter: FlutterStandardWriter {
       super.writeValue(value.toList())
     } else if let value = value as? DeviceInfo {
       super.writeByte(130)
+      super.writeValue(value.toList())
+    } else if let value = value as? CaptureState {
+      super.writeByte(131)
+      super.writeValue(value.toList())
+    } else if let value = value as? CaptureMetadata {
+      super.writeByte(132)
+      super.writeValue(value.toList())
+    } else if let value = value as? CaptureError {
+      super.writeByte(133)
+      super.writeValue(value.toList())
+    } else if let value = value as? CapturePermissionResult {
+      super.writeByte(134)
+      super.writeValue(value.toList())
+    } else if let value = value as? CaptureResult {
+      super.writeByte(135)
+      super.writeValue(value.toList())
+    } else if let value = value as? CaptureStateResult {
+      super.writeByte(136)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -315,13 +600,18 @@ class SoundMeshMessagesPigeonCodec: FlutterStandardMessageCodec, @unchecked Send
   static let shared = SoundMeshMessagesPigeonCodec(readerWriter: SoundMeshMessagesPigeonCodecReaderWriter())
 }
 
+
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol NetworkHostPlatform {
   func startHosting(port: Int64) throws -> Bool
   func connectToHost(ipAddress: String, port: Int64) throws -> Bool
   func sendMessage(message: String) throws -> Bool
+  func sendChatMessage(text: String) throws -> Bool
+  func sendProtocolMessage(message: String) throws -> Bool
   func disconnect() throws
   func getLocalIpAddress() throws -> String
+  func setHeartbeatConfig(intervalMs: Int64, timeoutMs: Int64) throws
+  func reconnectToHost(ipAddress: String, port: Int64) throws -> Bool
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -376,6 +666,36 @@ class NetworkHostPlatformSetup {
     } else {
       sendMessageChannel.setMessageHandler(nil)
     }
+    let sendChatMessageChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.NetworkHostPlatform.sendChatMessage\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      sendChatMessageChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let textArg = args[0] as! String
+        do {
+          let result = try api.sendChatMessage(text: textArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      sendChatMessageChannel.setMessageHandler(nil)
+    }
+    let sendProtocolMessageChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.NetworkHostPlatform.sendProtocolMessage\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      sendProtocolMessageChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let messageArg = args[0] as! String
+        do {
+          let result = try api.sendProtocolMessage(message: messageArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      sendProtocolMessageChannel.setMessageHandler(nil)
+    }
     let disconnectChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.NetworkHostPlatform.disconnect\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       disconnectChannel.setMessageHandler { _, reply in
@@ -401,6 +721,38 @@ class NetworkHostPlatformSetup {
       }
     } else {
       getLocalIpAddressChannel.setMessageHandler(nil)
+    }
+    let setHeartbeatConfigChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.NetworkHostPlatform.setHeartbeatConfig\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setHeartbeatConfigChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let intervalMsArg = args[0] as! Int64
+        let timeoutMsArg = args[1] as! Int64
+        do {
+          try api.setHeartbeatConfig(intervalMs: intervalMsArg, timeoutMs: timeoutMsArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setHeartbeatConfigChannel.setMessageHandler(nil)
+    }
+    let reconnectToHostChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.NetworkHostPlatform.reconnectToHost\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      reconnectToHostChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let ipAddressArg = args[0] as! String
+        let portArg = args[1] as! Int64
+        do {
+          let result = try api.reconnectToHost(ipAddress: ipAddressArg, port: portArg)
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      reconnectToHostChannel.setMessageHandler(nil)
     }
   }
 }
@@ -453,6 +805,80 @@ class TimingPlatformSetup {
       }
     } else {
       getMonotonicTimeNanosChannel.setMessageHandler(nil)
+    }
+  }
+}
+/// Generated protocol from Pigeon that represents a handler of messages from Flutter.
+protocol AudioCapturePlatform {
+  func requestCapturePermission() async throws -> CapturePermissionResult
+  func startCapture() async throws -> CaptureResult
+  func stopCapture() async throws
+  func getCaptureState() throws -> CaptureStateResult
+}
+
+/// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
+class AudioCapturePlatformSetup {
+  static var codec: FlutterStandardMessageCodec { SoundMeshMessagesPigeonCodec.shared }
+  /// Sets up an instance of `AudioCapturePlatform` to handle messages through the `binaryMessenger`.
+  static func setUp(binaryMessenger: FlutterBinaryMessenger, api: AudioCapturePlatform?, messageChannelSuffix: String = "") {
+    let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+    let requestCapturePermissionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.AudioCapturePlatform.requestCapturePermission\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      requestCapturePermissionChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.requestCapturePermission()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      requestCapturePermissionChannel.setMessageHandler(nil)
+    }
+    let startCaptureChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.AudioCapturePlatform.startCapture\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startCaptureChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.startCapture()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      startCaptureChannel.setMessageHandler(nil)
+    }
+    let stopCaptureChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.AudioCapturePlatform.stopCapture\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      stopCaptureChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            try await api.stopCapture()
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      stopCaptureChannel.setMessageHandler(nil)
+    }
+    let getCaptureStateChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.AudioCapturePlatform.getCaptureState\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getCaptureStateChannel.setMessageHandler { _, reply in
+        do {
+          let result = try api.getCaptureState()
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      getCaptureStateChannel.setMessageHandler(nil)
     }
   }
 }
@@ -516,6 +942,63 @@ class NetworkFlutterApi: NetworkFlutterApiProtocol {
   func onConnectionError(errorCode errorCodeArg: String, errorMessage errorMessageArg: String) async throws {
     return try await withCheckedThrowingContinuation { continuation in
       let channelName: String = "dev.flutter.pigeon.soundmesh.NetworkFlutterApi.onConnectionError\(messageChannelSuffix)"
+      let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+      channel.sendMessage([errorCodeArg, errorMessageArg] as [Any?]) { response in
+        guard let listResponse = response as? [Any?] else {
+          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+          return
+        }
+        if listResponse.count > 1 {
+          let code: String = listResponse[0] as! String
+          let message: String? = nilOrValue(listResponse[1])
+          let details: String? = nilOrValue(listResponse[2])
+          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+        } else {
+          continuation.resume()
+        }
+      }
+    }
+  }
+}
+
+/// Generated protocol from Pigeon that represents Flutter messages that can be called from Swift.
+protocol AudioCaptureFlutterApiProtocol {
+  func onCaptureStateChanged(state stateArg: String, metadata metadataArg: CaptureMetadata?) async throws
+  func onCaptureError(errorCode errorCodeArg: String, errorMessage errorMessageArg: String) async throws
+}
+class AudioCaptureFlutterApi: AudioCaptureFlutterApiProtocol {
+  private let binaryMessenger: FlutterBinaryMessenger
+  private let messageChannelSuffix: String
+  init(binaryMessenger: FlutterBinaryMessenger, messageChannelSuffix: String = "") {
+    self.binaryMessenger = binaryMessenger
+    self.messageChannelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+  }
+  var codec: SoundMeshMessagesPigeonCodec {
+    return SoundMeshMessagesPigeonCodec.shared
+  }
+  func onCaptureStateChanged(state stateArg: String, metadata metadataArg: CaptureMetadata?) async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+      let channelName: String = "dev.flutter.pigeon.soundmesh.AudioCaptureFlutterApi.onCaptureStateChanged\(messageChannelSuffix)"
+      let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+      channel.sendMessage([stateArg, metadataArg] as [Any?]) { response in
+        guard let listResponse = response as? [Any?] else {
+          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+          return
+        }
+        if listResponse.count > 1 {
+          let code: String = listResponse[0] as! String
+          let message: String? = nilOrValue(listResponse[1])
+          let details: String? = nilOrValue(listResponse[2])
+          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+        } else {
+          continuation.resume()
+        }
+      }
+    }
+  }
+  func onCaptureError(errorCode errorCodeArg: String, errorMessage errorMessageArg: String) async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+      let channelName: String = "dev.flutter.pigeon.soundmesh.AudioCaptureFlutterApi.onCaptureError\(messageChannelSuffix)"
       let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
       channel.sendMessage([errorCodeArg, errorMessageArg] as [Any?]) { response in
         guard let listResponse = response as? [Any?] else {

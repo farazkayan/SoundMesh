@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'protocol_constants.dart';
+import '../room/room_lifecycle.dart';
 
 class ProtocolMessage {
   final int protocolVersion;
@@ -92,7 +93,7 @@ class ProtocolMessage {
     int? timestamp,
   }) {
     return ProtocolMessage(
-      protocolVersion: CURRENT_PROTOCOL_VERSION,
+      protocolVersion: currentProtocolVersion,
       messageId: generateUuidV4(),
       messageType: ProtocolMessageType.ping.wireValue,
       sessionId: sessionId,
@@ -110,7 +111,7 @@ class ProtocolMessage {
     String? originalMessageId,
   }) {
     return ProtocolMessage(
-      protocolVersion: CURRENT_PROTOCOL_VERSION,
+      protocolVersion: currentProtocolVersion,
       messageId: generateUuidV4(),
       messageType: ProtocolMessageType.pong.wireValue,
       sessionId: sessionId,
@@ -130,7 +131,7 @@ class ProtocolMessage {
     int? timestamp,
   }) {
     return ProtocolMessage(
-      protocolVersion: CURRENT_PROTOCOL_VERSION,
+      protocolVersion: currentProtocolVersion,
       messageId: generateUuidV4(),
       messageType: ProtocolMessageType.error.wireValue,
       sessionId: sessionId,
@@ -150,9 +151,10 @@ class ProtocolMessage {
     String? sessionId,
     int generation = 0,
     int? timestamp,
+    String? reason,
   }) {
     return ProtocolMessage(
-      protocolVersion: CURRENT_PROTOCOL_VERSION,
+      protocolVersion: currentProtocolVersion,
       messageId: generateUuidV4(),
       messageType: ProtocolMessageType.roomClosed.wireValue,
       sessionId: sessionId,
@@ -161,6 +163,73 @@ class ProtocolMessage {
       timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
       payload: {
         'roomId': roomId,
+        'reason': ?reason,
+      },
+    );
+  }
+
+  factory ProtocolMessage.joinRequest({
+    required String participantId,
+    String? displayName,
+    required String sessionId,
+    int generation = 0,
+    int? timestamp,
+  }) {
+    return ProtocolMessage(
+      protocolVersion: currentProtocolVersion,
+      messageId: generateUuidV4(),
+      messageType: ProtocolMessageType.joinRequest.wireValue,
+      sessionId: sessionId,
+      senderId: participantId,
+      generation: generation,
+      timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
+      payload: {
+        'participantId': participantId,
+        'displayName': ?displayName,
+      },
+    );
+  }
+
+  factory ProtocolMessage.joinAccepted({
+    required String sessionId,
+    required String roomId,
+    required String hostParticipantId,
+    required String participantId,
+    int generation = 0,
+    int? timestamp,
+  }) {
+    return ProtocolMessage(
+      protocolVersion: currentProtocolVersion,
+      messageId: generateUuidV4(),
+      messageType: ProtocolMessageType.joinAccepted.wireValue,
+      sessionId: sessionId,
+      senderId: hostParticipantId,
+      generation: generation,
+      timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
+      payload: {
+        'roomId': roomId,
+        'hostParticipantId': hostParticipantId,
+        'participantId': participantId,
+      },
+    );
+  }
+
+  factory ProtocolMessage.joinRejected({
+    required String sessionId,
+    required JoinRejectReason reason,
+    int generation = 0,
+    int? timestamp,
+  }) {
+    return ProtocolMessage(
+      protocolVersion: currentProtocolVersion,
+      messageId: generateUuidV4(),
+      messageType: ProtocolMessageType.joinRejected.wireValue,
+      sessionId: sessionId,
+      senderId: sessionId, // Host's session ID
+      generation: generation,
+      timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
+      payload: {
+        'reason': reason.wireValue,
       },
     );
   }
@@ -173,7 +242,7 @@ class ProtocolMessage {
     int? timestamp,
   }) {
     return ProtocolMessage(
-      protocolVersion: CURRENT_PROTOCOL_VERSION,
+      protocolVersion: currentProtocolVersion,
       messageId: generateUuidV4(),
       messageType: ProtocolMessageType.chat.wireValue,
       sessionId: sessionId,
@@ -295,25 +364,27 @@ class ProtocolMessage {
     }
   }
 
+  static const _unset = Object();
+
   ProtocolMessage copyWith({
     int? protocolVersion,
     String? messageId,
     String? messageType,
-    String? sessionId,
+    Object? sessionId = _unset,
     String? senderId,
     int? generation,
     int? timestamp,
-    Map<String, dynamic>? payload,
+    Object? payload = _unset,
   }) {
     return ProtocolMessage(
       protocolVersion: protocolVersion ?? this.protocolVersion,
       messageId: messageId ?? this.messageId,
       messageType: messageType ?? this.messageType,
-      sessionId: sessionId ?? this.sessionId,
+      sessionId: sessionId == _unset ? this.sessionId : sessionId as String?,
       senderId: senderId ?? this.senderId,
       generation: generation ?? this.generation,
       timestamp: timestamp ?? this.timestamp,
-      payload: payload ?? this.payload,
+      payload: payload == _unset ? this.payload : payload as Map<String, dynamic>?,
     );
   }
 

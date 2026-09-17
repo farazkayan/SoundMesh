@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/network_repository.dart';
 import '../protocol.dart';
+import '../room/room_lifecycle.dart';
 
 enum JoinRoomFlowStatus {
   idle,
@@ -17,6 +19,7 @@ class JoinRoomFlowState {
   final int hostPort;
   final String? errorMessage;
   final NetworkConnectionState connectionState;
+  final RoomLifecycleState roomLifecycleState;
   final String? sessionId;
   final String? roomId;
   final int? hostProtocolVersion;
@@ -27,6 +30,7 @@ class JoinRoomFlowState {
     this.hostPort = 8765,
     this.errorMessage,
     this.connectionState = NetworkConnectionState.disconnected,
+    this.roomLifecycleState = RoomLifecycleState.created,
     this.sessionId,
     this.roomId,
     this.hostProtocolVersion,
@@ -38,6 +42,7 @@ class JoinRoomFlowState {
     int? hostPort,
     String? errorMessage,
     NetworkConnectionState? connectionState,
+    RoomLifecycleState? roomLifecycleState,
     String? sessionId,
     String? roomId,
     int? hostProtocolVersion,
@@ -48,6 +53,7 @@ class JoinRoomFlowState {
       hostPort: hostPort ?? this.hostPort,
       errorMessage: errorMessage,
       connectionState: connectionState ?? this.connectionState,
+      roomLifecycleState: roomLifecycleState ?? this.roomLifecycleState,
       sessionId: sessionId ?? this.sessionId,
       roomId: roomId ?? this.roomId,
       hostProtocolVersion: hostProtocolVersion ?? this.hostProtocolVersion,
@@ -60,10 +66,12 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
   StreamSubscription? _stateSubscription;
   StreamSubscription? _protocolMessageSubscription;
   StreamSubscription? _connectionErrorSubscription;
+  StreamSubscription? _roomLifecycleSubscription;
 
   JoinRoomFlowNotifier(this._networkRepository)
       : super(const JoinRoomFlowState()) {
     _stateSubscription = _networkRepository.connectionStateStream.listen((connState) {
+      debugPrint('[UILifecycle] JoinRoomFlow: connectionState change -> $connState (current status: ${state.status})');
       state = state.copyWith(connectionState: connState);
       _handleConnectionStateChange(connState);
     });
@@ -76,9 +84,18 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
 
     _connectionErrorSubscription = _networkRepository.connectionErrorStream.listen(
       (error) {
+        debugPrint('[UILifecycle] JoinRoomFlow: connectionError -> $error');
         _handleConnectionError(error);
       },
     );
+
+    _roomLifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((
+      lifecycleState,
+    ) {
+      debugPrint('[UILifecycle] JoinRoomFlow: roomLifecycleState change -> $lifecycleState (current status: ${state.status})');
+      state = state.copyWith(roomLifecycleState: lifecycleState);
+      _handleRoomLifecycleStateChange(lifecycleState);
+    });
   }
 
   void _handleConnectionError(ConnectionError error) {
@@ -152,6 +169,43 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
     }
   }
 
+  void _handleRoomLifecycleStateChange(RoomLifecycleState lifecycleState) {
+    switch (lifecycleState) {
+      case RoomLifecycleState.created:
+        if (state.status == JoinRoomFlowStatus.idle) {
+          state = state.copyWith(status: JoinRoomFlowStatus.connecting);
+        }
+        break;
+      case RoomLifecycleState.joining:
+        if (state.status == JoinRoomFlowStatus.connecting ||
+            state.status == JoinRoomFlowStatus.handshaking) {
+          state = state.copyWith(status: JoinRoomFlowStatus.handshaking);
+        }
+        break;
+      case RoomLifecycleState.ready:
+        if (state.status == JoinRoomFlowStatus.handshaking) {
+          state = state.copyWith(
+            status: JoinRoomFlowStatus.ready,
+            sessionId: _networkRepository.sessionId,
+            roomId: _networkRepository.roomId,
+          );
+        }
+        break;
+      case RoomLifecycleState.closed:
+        if (state.status != JoinRoomFlowStatus.idle &&
+            state.status != JoinRoomFlowStatus.failed) {
+          state = state.copyWith(
+            status: JoinRoomFlowStatus.failed,
+            errorMessage: _networkRepository.roomClosedReason ?? 'You left the room',
+          );
+        }
+        break;
+      case RoomLifecycleState.discoverable:
+        // Not applicable for participant
+        break;
+    }
+  }
+
   void _handleProtocolMessage(ProtocolMessage message) {
     final messageType = ProtocolMessageTypeX.fromWireValue(message.messageType);
     if (messageType == ProtocolMessageType.versionRejected) {
@@ -159,12 +213,34 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
       final participantVersion = message.payload?['participantVersion'] as int?;
       state = state.copyWith(
         status: JoinRoomFlowStatus.failed,
-        errorMessage: 'Protocol version mismatch: host v${hostVersion ?? '?'} vs this device v${participantVersion ?? CURRENT_PROTOCOL_VERSION}',
+        errorMessage: 'Protocol version mismatch: host v${hostVersion ?? '?'} vs this device v${participantVersion ?? currentProtocolVersion}',
         hostProtocolVersion: hostVersion,
       );
       _networkRepository.disconnect();
     } else if (messageType == ProtocolMessageType.welcome) {
       // Handled by connection state change to ready
+    } else if (messageType == ProtocolMessageType.joinRejected) {
+      final reasonStr = message.payload?['reason'] as String?;
+      state = state.copyWith(
+        status: JoinRoomFlowStatus.failed,
+        errorMessage: _joinRejectReasonToMessage(reasonStr),
+      );
+      _networkRepository.disconnect();
+    }
+  }
+
+  String _joinRejectReasonToMessage(String? reason) {
+    switch (reason) {
+      case 'ROOM_FULL':
+        return 'Room full';
+      case 'VERSION_MISMATCH':
+        return 'Protocol version mismatch';
+      case 'CLOSED':
+        return 'Room is closed';
+      case 'INTERNAL_ERROR':
+        return 'Internal error';
+      default:
+        return 'Join rejected: ${reason ?? 'unknown reason'}';
     }
   }
 
@@ -180,6 +256,14 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
     if (state.hostIpAddress.trim().isEmpty) {
       state = state.copyWith(
         errorMessage: 'Please enter the host IP address',
+        status: JoinRoomFlowStatus.idle,
+      );
+      return;
+    }
+
+    if (state.hostPort < 1 || state.hostPort > 65535) {
+      state = state.copyWith(
+        errorMessage: 'Port must be between 1 and 65535',
         status: JoinRoomFlowStatus.idle,
       );
       return;
@@ -210,6 +294,7 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
     _stateSubscription?.cancel();
     _protocolMessageSubscription?.cancel();
     _connectionErrorSubscription?.cancel();
+    _roomLifecycleSubscription?.cancel();
     super.dispose();
   }
 }

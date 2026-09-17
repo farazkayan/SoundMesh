@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../repositories/network_repository.dart';
 import '../protocol.dart';
+import '../room/room_lifecycle.dart';
 
 enum CreateRoomFlowStatus {
   idle,
@@ -22,6 +24,7 @@ class CreateRoomFlowState {
   final int? port;
   final String? errorMessage;
   final NetworkConnectionState connectionState;
+  final RoomLifecycleState roomLifecycleState;
   final String? sessionId;
   final String? roomId;
 
@@ -32,6 +35,7 @@ class CreateRoomFlowState {
     this.port = 8765,
     this.errorMessage,
     this.connectionState = NetworkConnectionState.disconnected,
+    this.roomLifecycleState = RoomLifecycleState.created,
     this.sessionId,
     this.roomId,
   });
@@ -43,6 +47,7 @@ class CreateRoomFlowState {
     int? port,
     String? errorMessage,
     NetworkConnectionState? connectionState,
+    RoomLifecycleState? roomLifecycleState,
     String? sessionId,
     String? roomId,
   }) {
@@ -53,6 +58,7 @@ class CreateRoomFlowState {
       port: port ?? this.port,
       errorMessage: errorMessage,
       connectionState: connectionState ?? this.connectionState,
+      roomLifecycleState: roomLifecycleState ?? this.roomLifecycleState,
       sessionId: sessionId ?? this.sessionId,
       roomId: roomId ?? this.roomId,
     );
@@ -64,6 +70,7 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
   StreamSubscription? _stateSubscription;
   StreamSubscription? _protocolMessageSubscription;
   StreamSubscription? _connectionErrorSubscription;
+  StreamSubscription? _roomLifecycleSubscription;
   bool _createRoomInProgress = false;
 
   CreateRoomFlowNotifier(this._networkRepository)
@@ -71,6 +78,7 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
     _stateSubscription = _networkRepository.connectionStateStream.listen((
       connState,
     ) {
+      debugPrint('[UILifecycle] CreateRoomFlow: connectionState change -> $connState (current status: ${state.status})');
       state = state.copyWith(connectionState: connState);
       _handleConnectionStateChange(connState);
     });
@@ -83,9 +91,18 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
 
     _connectionErrorSubscription = _networkRepository.connectionErrorStream.listen(
       (error) {
+        debugPrint('[UILifecycle] CreateRoomFlow: connectionError -> $error');
         _handleConnectionError(error);
       },
     );
+
+    _roomLifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((
+      lifecycleState,
+    ) {
+      debugPrint('[UILifecycle] CreateRoomFlow: roomLifecycleState change -> $lifecycleState (current status: ${state.status})');
+      state = state.copyWith(roomLifecycleState: lifecycleState);
+      _handleRoomLifecycleStateChange(lifecycleState);
+    });
   }
 
   void _handleConnectionError(ConnectionError error) {
@@ -174,6 +191,45 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
     }
   }
 
+  void _handleRoomLifecycleStateChange(RoomLifecycleState lifecycleState) {
+    switch (lifecycleState) {
+      case RoomLifecycleState.created:
+        if (state.status == CreateRoomFlowStatus.idle) {
+          state = state.copyWith(status: CreateRoomFlowStatus.creating);
+        }
+        break;
+      case RoomLifecycleState.discoverable:
+        if (state.status == CreateRoomFlowStatus.creating ||
+            state.status == CreateRoomFlowStatus.hosting) {
+          state = state.copyWith(status: CreateRoomFlowStatus.listening);
+        }
+        break;
+      case RoomLifecycleState.joining:
+        if (state.status == CreateRoomFlowStatus.listening) {
+          state = state.copyWith(status: CreateRoomFlowStatus.handshaking);
+        }
+        break;
+      case RoomLifecycleState.ready:
+        if (state.status == CreateRoomFlowStatus.handshaking) {
+          state = state.copyWith(
+            status: CreateRoomFlowStatus.ready,
+            sessionId: _networkRepository.sessionId,
+            roomId: _networkRepository.roomId,
+          );
+        }
+        break;
+      case RoomLifecycleState.closed:
+        if (state.status != CreateRoomFlowStatus.idle &&
+            state.status != CreateRoomFlowStatus.failed) {
+          state = state.copyWith(
+            status: CreateRoomFlowStatus.failed,
+            errorMessage: _networkRepository.roomClosedReason ?? 'Room ended',
+          );
+        }
+        break;
+    }
+  }
+
   void _handleProtocolMessage(ProtocolMessage message) {
     // Host sends WELCOME, participant receives it
     // We don't need to do anything special here for the host
@@ -218,13 +274,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
     }
   }
 
-  Future<void> startHosting() async {
-    if (state.status != CreateRoomFlowStatus.ready) {
-      state = state.copyWith(status: CreateRoomFlowStatus.hosting);
-      await _networkRepository.startHosting(port: state.port ?? 8765);
-    }
-  }
-
   void reset() {
     _networkRepository.disconnect();
     _createRoomInProgress = false;
@@ -236,6 +285,7 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
     _stateSubscription?.cancel();
     _protocolMessageSubscription?.cancel();
     _connectionErrorSubscription?.cancel();
+    _roomLifecycleSubscription?.cancel();
     super.dispose();
   }
 }

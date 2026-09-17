@@ -15,14 +15,10 @@ class CreateRoomScreen extends ConsumerStatefulWidget {
 
 class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   final _roomNameController = TextEditingController();
-  final _ipController = TextEditingController();
-  final _portController = TextEditingController(text: '8765');
 
   @override
   void dispose() {
     _roomNameController.dispose();
-    _ipController.dispose();
-    _portController.dispose();
     super.dispose();
   }
 
@@ -51,7 +47,12 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
           color: SoundMeshColors.primaryText,
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            // Cancel in-flight hosting so the port is released and state is
+            // not left running in the background, matching RoomScreen's back.
+            ref.read(createRoomFlowProvider.notifier).reset();
+            Navigator.pop(context);
+          },
         ),
       ),
       body: SafeArea(
@@ -287,9 +288,6 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   Widget _buildIpPortDisplay(CreateRoomFlowState flowState) {
     final ip = flowState.localIpAddress ?? '...';
     final port = flowState.port ?? 8765;
-
-    _ipController.text = ip;
-    _portController.text = port.toString();
 
     return Row(
       children: [

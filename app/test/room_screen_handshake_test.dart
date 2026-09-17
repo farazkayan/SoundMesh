@@ -5,7 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:soundmesh/application/protocol.dart';
 import 'package:soundmesh/application/providers/create_room_flow_provider.dart';
 import 'package:soundmesh/application/providers/join_room_flow_provider.dart';
+import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
 import 'package:soundmesh/application/repositories/network_repository.dart';
+import 'package:soundmesh/application/room/room_lifecycle.dart';
 import 'package:soundmesh/presentation/screens/room_screen.dart';
 
 class MockNetworkRepository extends NetworkRepository {
@@ -14,13 +16,17 @@ class MockNetworkRepository extends NetworkRepository {
       StreamController<String>.broadcast();
   final StreamController<ProtocolMessage> _protocolMessageController =
       StreamController<ProtocolMessage>.broadcast();
+  final StreamController<RoomLifecycleState> _roomLifecycleStateController =
+      StreamController<RoomLifecycleState>.broadcast();
 
   NetworkConnectionState _currentState = NetworkConnectionState.disconnected;
-  String _participantId = '550e8400-e29b-41d4-a716-446655440000';
+  RoomLifecycleState _roomLifecycleState = RoomLifecycleState.created;
+  final String _participantId = '550e8400-e29b-41d4-a716-446655440000';
   String? _sessionId;
   String? _roomId;
-  int _generation = 0;
+  final int _generation = 0;
   bool _isHost = false;
+  RoomRole _roomRole = RoomRole.host;
 
   MockNetworkRepository() {
     _stateController = StreamController<NetworkConnectionState>.broadcast(
@@ -28,6 +34,7 @@ class MockNetworkRepository extends NetworkRepository {
         _stateController.add(_currentState);
       },
     );
+    _roomLifecycleStateController.add(_roomLifecycleState);
   }
 
   @override
@@ -42,7 +49,14 @@ class MockNetworkRepository extends NetworkRepository {
       _protocolMessageController.stream;
 
   @override
+  Stream<RoomLifecycleState> get roomLifecycleStateStream =>
+      _roomLifecycleStateController.stream;
+
+  @override
   NetworkConnectionState get currentState => _currentState;
+
+  @override
+  RoomLifecycleState get roomLifecycleState => _roomLifecycleState;
 
   @override
   String get participantId => _participantId;
@@ -59,13 +73,22 @@ class MockNetworkRepository extends NetworkRepository {
   @override
   bool get isHost => _isHost;
 
+  @override
+  RoomRole get roomRole => _roomRole;
+
   void setState(NetworkConnectionState state) {
     _currentState = state;
     _stateController.add(state);
   }
 
+  void setRoomLifecycleState(RoomLifecycleState state) {
+    _roomLifecycleState = state;
+    _roomLifecycleStateController.add(state);
+  }
+
   void setHostMode(bool isHost) {
     _isHost = isHost;
+    _roomRole = isHost ? RoomRole.host : RoomRole.participant;
   }
 
   void setSessionId(String? id) {
@@ -84,7 +107,6 @@ class MockNetworkRepository extends NetworkRepository {
     _protocolMessageController.add(message);
   }
 
-  @override
   Future<bool> sendMessage(String message) async => true;
 
   @override
@@ -94,10 +116,17 @@ class MockNetworkRepository extends NetworkRepository {
   Future<void> disconnect() async {}
 
   @override
+  Future<void> setHeartbeatConfig({int intervalMs = 5000, int timeoutMs = 15000}) async {}
+
+  @override
+  Future<bool> reconnectToHost(String ipAddress, {int port = 8765}) async => false;
+
+  @override
   void dispose() {
     _stateController.close();
     _messageController.close();
     _protocolMessageController.close();
+    _roomLifecycleStateController.close();
   }
 }
 
@@ -115,6 +144,32 @@ class MockJoinRoomFlowNotifier extends JoinRoomFlowNotifier {
   }
 }
 
+class MockRoomLifecycleNotifier extends RoomLifecycleNotifier {
+  final RoomLifecycleStateData _stateData;
+  final StreamController<RoomLifecycleStateData> _controller =
+      StreamController<RoomLifecycleStateData>.broadcast();
+
+  MockRoomLifecycleNotifier(this._stateData, NetworkRepository networkRepo)
+      : super(networkRepo) {
+    _controller.add(_stateData);
+    state = _stateData;
+  }
+
+  @override
+  Stream<RoomLifecycleStateData> get stream => _controller.stream;
+
+  void updateState(RoomLifecycleStateData newState) {
+    state = newState;
+    _controller.add(newState);
+  }
+
+  @override
+  void dispose() {
+    _controller.close();
+    super.dispose();
+  }
+}
+
 void main() {
   group('RoomScreen handshake widget tests', () {
     testWidgets('shows handshaking indicator during handshake', (
@@ -123,10 +178,16 @@ void main() {
       final networkRepo = MockNetworkRepository();
       networkRepo.setHostMode(true);
       networkRepo.setState(NetworkConnectionState.handshaking);
+      networkRepo.setRoomLifecycleState(RoomLifecycleState.joining);
 
       final createState = CreateRoomFlowState(
         status: CreateRoomFlowStatus.handshaking,
         connectionState: NetworkConnectionState.handshaking,
+      );
+
+      final lifecycleState = RoomLifecycleStateData(
+        lifecycleState: RoomLifecycleState.joining,
+        role: RoomRole.host,
       );
 
       await tester.pumpWidget(
@@ -139,6 +200,9 @@ void main() {
             joinRoomFlowProvider.overrideWith(
               (_) => MockJoinRoomFlowNotifier(const JoinRoomFlowState(), networkRepo),
             ),
+            roomLifecycleProvider.overrideWith(
+              (_) => MockRoomLifecycleNotifier(lifecycleState, networkRepo),
+            ),
           ],
           child: const MaterialApp(home: RoomScreen()),
         ),
@@ -149,18 +213,26 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
-    testWidgets('shows ready state after handshake completes (host)', (
+testWidgets('shows ready state after handshake completes (host)', (
       WidgetTester tester,
     ) async {
       final networkRepo = MockNetworkRepository();
       networkRepo.setHostMode(true);
       networkRepo.setState(NetworkConnectionState.ready);
+      networkRepo.setRoomLifecycleState(RoomLifecycleState.ready);
       networkRepo.setSessionId('session-123');
       networkRepo.setRoomId('room-123');
 
       final createState = CreateRoomFlowState(
         status: CreateRoomFlowStatus.ready,
         connectionState: NetworkConnectionState.ready,
+        sessionId: 'session-123',
+        roomId: 'room-123',
+      );
+
+      final lifecycleState = RoomLifecycleStateData(
+        lifecycleState: RoomLifecycleState.ready,
+        role: RoomRole.host,
         sessionId: 'session-123',
         roomId: 'room-123',
       );
@@ -175,29 +247,41 @@ void main() {
             joinRoomFlowProvider.overrideWith(
               (_) => MockJoinRoomFlowNotifier(const JoinRoomFlowState(), networkRepo),
             ),
+            roomLifecycleProvider.overrideWith(
+              (_) => MockRoomLifecycleNotifier(lifecycleState, networkRepo),
+            ),
           ],
           child: const MaterialApp(home: RoomScreen()),
         ),
       );
       await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
 
-      // Check connection indicator in app bar shows "Ready"
-      expect(find.text('Ready'), findsOneWidget);
+      // Check app bar title shows "Host" which indicates ready state
+      expect(find.text('Host'), findsOneWidget);
       expect(find.text('Handshaking...'), findsNothing);
     });
 
-    testWidgets('shows ready state after handshake completes (participant)', (
+testWidgets('shows ready state after handshake completes (participant)', (
       WidgetTester tester,
     ) async {
       final networkRepo = MockNetworkRepository();
       networkRepo.setHostMode(false);
       networkRepo.setState(NetworkConnectionState.ready);
+      networkRepo.setRoomLifecycleState(RoomLifecycleState.ready);
       networkRepo.setSessionId('session-123');
       networkRepo.setRoomId('room-123');
 
       final joinState = JoinRoomFlowState(
         status: JoinRoomFlowStatus.ready,
         connectionState: NetworkConnectionState.ready,
+        sessionId: 'session-123',
+        roomId: 'room-123',
+      );
+
+      final lifecycleState = RoomLifecycleStateData(
+        lifecycleState: RoomLifecycleState.ready,
+        role: RoomRole.participant,
         sessionId: 'session-123',
         roomId: 'room-123',
       );
@@ -212,14 +296,18 @@ void main() {
             joinRoomFlowProvider.overrideWith(
               (_) => MockJoinRoomFlowNotifier(joinState, networkRepo),
             ),
+            roomLifecycleProvider.overrideWith(
+              (_) => MockRoomLifecycleNotifier(lifecycleState, networkRepo),
+            ),
           ],
           child: const MaterialApp(home: RoomScreen()),
         ),
       );
       await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 100));
 
-      // Check connection indicator in app bar shows "Ready"
-      expect(find.text('Ready'), findsOneWidget);
+      // Check app bar title shows "Participant" which indicates ready state
+      expect(find.text('Participant'), findsOneWidget);
       expect(find.text('Handshaking...'), findsNothing);
     });
 
@@ -229,10 +317,16 @@ void main() {
       final networkRepo = MockNetworkRepository();
       networkRepo.setHostMode(true);
       networkRepo.setState(NetworkConnectionState.handshaking);
+      networkRepo.setRoomLifecycleState(RoomLifecycleState.joining);
 
       final createState = CreateRoomFlowState(
         status: CreateRoomFlowStatus.handshaking,
         connectionState: NetworkConnectionState.handshaking,
+      );
+
+      final lifecycleState = RoomLifecycleStateData(
+        lifecycleState: RoomLifecycleState.joining,
+        role: RoomRole.host,
       );
 
       await tester.pumpWidget(
@@ -244,6 +338,9 @@ void main() {
             ),
             joinRoomFlowProvider.overrideWith(
               (_) => MockJoinRoomFlowNotifier(const JoinRoomFlowState(), networkRepo),
+            ),
+            roomLifecycleProvider.overrideWith(
+              (_) => MockRoomLifecycleNotifier(lifecycleState, networkRepo),
             ),
           ],
           child: const MaterialApp(home: RoomScreen()),
@@ -263,10 +360,16 @@ void main() {
       final networkRepo = MockNetworkRepository();
       networkRepo.setHostMode(true);
       networkRepo.setState(NetworkConnectionState.ready);
+      networkRepo.setRoomLifecycleState(RoomLifecycleState.ready);
 
       final createState = CreateRoomFlowState(
         status: CreateRoomFlowStatus.ready,
         connectionState: NetworkConnectionState.ready,
+      );
+
+      final lifecycleState = RoomLifecycleStateData(
+        lifecycleState: RoomLifecycleState.ready,
+        role: RoomRole.host,
       );
 
       await tester.pumpWidget(
@@ -278,6 +381,9 @@ void main() {
             ),
             joinRoomFlowProvider.overrideWith(
               (_) => MockJoinRoomFlowNotifier(const JoinRoomFlowState(), networkRepo),
+            ),
+            roomLifecycleProvider.overrideWith(
+              (_) => MockRoomLifecycleNotifier(lifecycleState, networkRepo),
             ),
           ],
           child: const MaterialApp(home: RoomScreen()),
@@ -296,11 +402,18 @@ void main() {
       final networkRepo = MockNetworkRepository();
       networkRepo.setHostMode(false);
       networkRepo.setState(NetworkConnectionState.failed);
+      networkRepo.setRoomLifecycleState(RoomLifecycleState.closed);
 
       final joinState = JoinRoomFlowState(
         status: JoinRoomFlowStatus.failed,
         connectionState: NetworkConnectionState.failed,
         errorMessage: 'Protocol version mismatch: host v2 vs this device v1',
+      );
+
+      final lifecycleState = RoomLifecycleStateData(
+        lifecycleState: RoomLifecycleState.closed,
+        role: RoomRole.participant,
+        closedReason: 'Protocol version mismatch: host v2 vs this device v1',
       );
 
       await tester.pumpWidget(
@@ -312,6 +425,9 @@ void main() {
             ),
             joinRoomFlowProvider.overrideWith(
               (_) => MockJoinRoomFlowNotifier(joinState, networkRepo),
+            ),
+            roomLifecycleProvider.overrideWith(
+              (_) => MockRoomLifecycleNotifier(lifecycleState, networkRepo),
             ),
           ],
           child: const MaterialApp(home: RoomScreen()),
@@ -349,10 +465,16 @@ void main() {
       final networkRepo = MockNetworkRepository();
       networkRepo.setHostMode(true);
       networkRepo.setState(NetworkConnectionState.ready);
+      networkRepo.setRoomLifecycleState(RoomLifecycleState.ready);
 
       final createState = CreateRoomFlowState(
         status: CreateRoomFlowStatus.ready,
         connectionState: NetworkConnectionState.ready,
+      );
+
+      final lifecycleState = RoomLifecycleStateData(
+        lifecycleState: RoomLifecycleState.ready,
+        role: RoomRole.host,
       );
 
       await tester.pumpWidget(
@@ -364,6 +486,9 @@ void main() {
             ),
             joinRoomFlowProvider.overrideWith(
               (_) => MockJoinRoomFlowNotifier(const JoinRoomFlowState(), networkRepo),
+            ),
+            roomLifecycleProvider.overrideWith(
+              (_) => MockRoomLifecycleNotifier(lifecycleState, networkRepo),
             ),
           ],
           child: const MaterialApp(home: RoomScreen()),
@@ -381,6 +506,64 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 100));
 
+      expect(find.text('Protocol error: Invalid JSON'), findsOneWidget);
+    });
+
+    testWidgets('error banner persists when unrelated events arrive', (
+      WidgetTester tester,
+    ) async {
+      final networkRepo = MockNetworkRepository();
+      networkRepo.setHostMode(true);
+      networkRepo.setState(NetworkConnectionState.ready);
+      networkRepo.setRoomLifecycleState(RoomLifecycleState.ready);
+
+      final createState = CreateRoomFlowState(
+        status: CreateRoomFlowStatus.ready,
+        connectionState: NetworkConnectionState.ready,
+      );
+
+      final lifecycleState = RoomLifecycleStateData(
+        lifecycleState: RoomLifecycleState.ready,
+        role: RoomRole.host,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            networkRepositoryProvider.overrideWithValue(networkRepo),
+            createRoomFlowProvider.overrideWith(
+              (_) => MockCreateRoomFlowNotifier(createState, networkRepo),
+            ),
+            joinRoomFlowProvider.overrideWith(
+              (_) => MockJoinRoomFlowNotifier(const JoinRoomFlowState(), networkRepo),
+            ),
+            roomLifecycleProvider.overrideWith(
+              (_) => MockRoomLifecycleNotifier(lifecycleState, networkRepo),
+            ),
+          ],
+          child: const MaterialApp(home: RoomScreen()),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      networkRepo.emitProtocolMessage(
+        ProtocolMessage.error(
+          senderId: '550e8400-e29b-41d4-a716-446655440000',
+          errorCode: 'PROTOCOL_DECODE_ERROR',
+          errorMessage: 'Invalid JSON',
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Protocol error: Invalid JSON'), findsOneWidget);
+
+      // A chat message and a connection-state update are unrelated to the
+      // error and must not wipe the banner.
+      networkRepo.emitMessage('hello from peer');
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Protocol error: Invalid JSON'), findsOneWidget);
+
+      networkRepo.setState(NetworkConnectionState.ready);
+      await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('Protocol error: Invalid JSON'), findsOneWidget);
     });
   });

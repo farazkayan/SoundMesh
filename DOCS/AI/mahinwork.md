@@ -1,3124 +1,1271 @@
-\# SoundMesh — Mahin Work Plan
+# SoundMesh — Mahin Work Plan
 
+**Document Status:** Active
+**Workstream Owner:** Mahin
+**Role:** Flutter UI/UX, application presentation layer, user-facing integration
+**Project:** SoundMesh
+**Repository:** `farazkayan/SoundMesh`
 
+---
 
-\*\*Document Status:\*\* ACTIVE
+# 0. Purpose
 
-\*\*Document Type:\*\* Developer Workstream Specification
+This document defines Mahin's complete UI/UX workstream for SoundMesh.
 
-\*\*Owner:\*\* Mahin
+Mahin owns the **Flutter presentation layer and user-facing experience**.
 
-\*\*Primary AI Consumer:\*\* Mahin's AI development agent
+Mahin does **not** own:
 
-\*\*Project:\*\* SoundMesh
+* Core synchronization algorithms
+* Network transport implementation
+* Audio capture implementation
+* Native audio output implementation
+* Clock synchronization
+* Drift correction
+* Backend architecture
+* Native Android platform internals
 
-\*\*Related Workstream:\*\* `DOCS/AI/farazwork.md`
+The UI must represent the real capabilities and state of SoundMesh.
 
+SoundMesh is **not a media player**.
 
+SoundMesh synchronizes live audio captured from an external media application running on the host device.
 
-\---
+The user may play media using applications such as:
 
+* YouTube
+* Spotify
+* VLC
+* Browser-based players
+* Video players
+* Other Android applications that permit audio playback capture
 
+SoundMesh itself does not own:
 
-\# 1. Purpose
+* Songs
+* Videos
+* Media libraries
+* Playback queues
+* Playback controls
+* Seeking
+* Playback speed
+* Subtitles
+* Media formats
+* External media navigation
 
+The Flutter UI must never imply otherwise.
 
+---
 
-This document defines the complete application/UI workstream owned by Mahin.
+# Phase 0 — UI Foundation
 
+**Status:** COMPLETED — DO NOT MODIFY
 
+Establish the Flutter application foundation:
 
-Mahin owns the user-facing Flutter application layer and the presentation of SoundMesh functionality to the user.
+* Flutter app foundation
+* Folder structure
+* Navigation foundation
+* Theme foundation
+* Typography
+* Spacing
+* Reusable components
+* Icon system
+* Button components
+* Card components
+* Input components
+* Loading components
+* Error components
+* State components
 
+Follow:
 
+`DOCS/ui-ux.md`
 
-This document does NOT replace the shared SoundMesh architecture, subsystem specifications, or interface contracts.
+This phase is already completed and must not be rewritten or reimplemented unless a later phase requires a narrowly scoped compatibility fix.
 
+---
 
+# Phase 1 — SoundMesh Design System
 
-It answers:
+**Status:** COMPLETED — DO NOT MODIFY
 
+The SoundMesh design language should feel:
 
+* Modern
+* Calm
+* Premium
+* Audio-focused
+* Minimal
+* Technically trustworthy
 
-> \*\*"What is Mahin responsible for building, in what order, and how must his work integrate with Faraz's technical systems?"\*\*
+Design principles:
 
+* Dark-first interface
+* System-native typography
+* 8pt spacing system
+* Touch targets ≥44px
+* Consistent corner radii
+* Subtle borders
+* Controlled elevation
+* Purposeful animation
+* Accessible contrast
+* Clear hierarchy
+* Minimal visual noise
 
+The authoritative palette and design rules are defined in:
 
-All work described here MUST remain consistent with:
+`DOCS/ui-ux.md`
 
+This phase is already completed and must not be rewritten.
 
+---
 
-1\. `AGENTS.md`
+# Phase 2 — Navigation Architecture
 
-2\. `CONTRIBUTING.md`
+**Status:** COMPLETED — DO NOT MODIFY
 
-3\. `DOCS/blueprint.md`
-
-4\. `DOCS/architecture.md`
-
-5\. `DOCS/roadmap.md`
-
-6\. `DOCS/networking.md`
-
-7\. `DOCS/synchronization.md`
-
-8\. `DOCS/audio.md`
-
-9\. `DOCS/ui-ux.md`
-
-10\. `DOCS/testing.md`
-
-11\. `DOCS/contract-testing.md`
-
-12\. `DOCS/interfaces/\*`
-
-13\. `DOCS/AI/rules.md`
-
-14\. `DOCS/AI/task-protocol.md`
-
-15\. `DOCS/AI/integration-protocol.md`
-
-16\. `DOCS/AI/farazwork.md`
-
-
-
-Higher-authority documents override this document.
-
-
-
-\---
-
-
-
-\# 2. Mahin's Ownership
-
-
-
-Mahin is primarily responsible for:
-
-
-
-\* Flutter application UI
-
-\* Navigation
-
-\* Screens
-
-\* User interaction
-
-\* UI state presentation
-
-\* UI components
-
-\* Visual design implementation
-
-\* Room screens
-
-\* Create Room UI
-
-\* Join Room UI
-
-\* QR scanning UI
-
-\* Device list UI
-
-\* Audio selection UI
-
-\* Playback controls
-
-\* Synchronization status presentation
-
-\* Diagnostics presentation
-
-\* Loading/preparation states
-
-\* Error presentation
-
-\* Empty states
-
-\* Connection states
-
-\* Accessibility
-
-\* Responsive layouts
-
-\* UI animations
-
-\* UI-level state management
-
-\* Mock UI development
-
-\* UI tests
-
-\* Integration of the UI with Core APIs
-
-\* User-facing documentation where appropriate
-
-
-
-Mahin is NOT the primary owner of:
-
-
-
-\* Networking implementation
-
-\* Room lifecycle implementation
-
-\* Audio transport
-
-\* Audio decoding
-
-\* Native audio timing
-
-\* Clock synchronization
-
-\* Calibration algorithms
-
-\* Drift estimation
-
-\* Drift correction
-
-\* Playback scheduling internals
-
-\* Native Android timing systems
-
-\* Native iOS timing systems
-
-\* Core technical state machines
-
-
-
-Those systems are primarily owned by Faraz.
-
-
-
-\---
-
-
-
-\# 3. Fundamental Rule
-
-
-
-Mahin's UI MUST consume SoundMesh functionality through documented interfaces.
-
-
-
-The UI MUST NOT depend directly on internal implementation details.
-
-
-
-The desired architecture is:
-
-
+Current conceptual navigation:
 
 ```text
-
-User
-
-&#x20; ↓
-
-Flutter UI
-
-&#x20; ↓
-
-Core API
-
-&#x20; ↓
-
-Room / Device / Audio / Playback / Sync
-
-&#x20; ↓
-
-Native / Networking Systems
-
-&#x20; ↓
-
-Real Devices
-
-```
-
-
-
-Mahin's UI should not bypass Core to directly manipulate:
-
-
-
-\* sockets
-
-\* network packets
-
-\* native audio engines
-
-\* synchronization clocks
-
-\* drift algorithms
-
-\* calibration internals
-
-
-
-\---
-
-
-
-\# 4. Shared Source of Truth
-
-
-
-Mahin MUST use the same SoundMesh documentation as Faraz.
-
-
-
-The following are shared:
-
-
-
-\* Architecture
-
-\* Networking specification
-
-\* Audio specification
-
-\* Synchronization specification
-
-\* UI/UX specification
-
-\* Testing specification
-
-\* Interface contracts
-
-\* AI rules
-
-\* Task protocol
-
-\* Integration protocol
-
-
-
-Mahin MUST NOT create alternative interpretations of these systems inside UI code.
-
-
-
-If the contract says:
-
-
-
-```text
-
-getSyncStatus()
-
-```
-
-
-
-the UI consumes the documented result.
-
-
-
-It MUST NOT invent:
-
-
-
-```text
-
-getSyncError()
-
-getSyncQuality()
-
-getPerfectSync()
-
-```
-
-
-
-unless those are formally added to the relevant contract.
-
-
-
-\---
-
-
-
-\# 5. Development Strategy
-
-
-
-Mahin's work SHOULD progress approximately as follows:
-
-
-
-```text
-
-UI Foundation
-
-&#x20;   ↓
-
-Design System
-
-&#x20;   ↓
-
-Navigation
-
-&#x20;   ↓
-
-Application State
-
-&#x20;   ↓
-
-Core API Adapter
-
-&#x20;   ↓
-
-Create Room
-
-&#x20;   ↓
-
-Join Room
-
-&#x20;   ↓
-
-QR Flow
-
-&#x20;   ↓
-
-Room Screen
-
-&#x20;   ↓
-
-Device List
-
-&#x20;   ↓
-
-Audio Selection
-
-&#x20;   ↓
-
-Preparation UI
-
-&#x20;   ↓
-
-Playback UI
-
-&#x20;   ↓
-
-Synchronization UI
-
-&#x20;   ↓
-
-Error / Recovery UI
-
-&#x20;   ↓
-
-Diagnostics
-
-&#x20;   ↓
-
-Real Backend Integration
-
-&#x20;   ↓
-
-Multi-Device UX
-
-&#x20;   ↓
-
-Accessibility
-
-&#x20;   ↓
-
-Performance
-
-&#x20;   ↓
-
-Competition Polish
-
-```
-
-
-
-The exact sequence may change based on integration requirements.
-
-
-
-\---
-
-
-
-\# 6. Phase 0 — UI Foundation
-
-
-
-\## Objective
-
-
-
-Establish a clean Flutter application foundation.
-
-
-
-\## Responsibilities
-
-
-
-Mahin MUST establish:
-
-
-
-\* Flutter project structure
-
-\* UI folder/module structure
-
-\* Navigation foundation
-
-\* Theme system
-
-\* Typography system
-
-\* Spacing system
-
-\* Reusable components
-
-\* Icon system
-
-\* Button system
-
-\* Cards/surfaces
-
-\* Input components
-
-\* Loading indicators
-
-\* Error components
-
-\* State presentation components
-
-
-
-The implementation MUST follow `DOCS/ui-ux.md`.
-
-
-
-\---
-
-
-
-\# 7. Phase 1 — SoundMesh Design System
-
-
-
-\## Objective
-
-
-
-Create the reusable visual language for the application.
-
-
-
-\## Required direction
-
-
-
-SoundMesh should feel:
-
-
-
-\* modern
-
-\* calm
-
-\* premium
-
-\* audio-focused
-
-\* minimal
-
-\* technically trustworthy
-
-
-
-The UI MUST NOT become visually noisy.
-
-
-
-\## Design system
-
-
-
-Use the shared UI specification.
-
-
-
-Primary concepts include:
-
-
-
-\* Dark-first interface
-
-\* System-native typography
-
-\* 8pt spacing system
-
-\* Touch targets ≥44px
-
-\* Consistent corner radii
-
-\* Subtle borders
-
-\* Controlled elevation
-
-\* Purposeful animation
-
-\* Accessible contrast
-
-
-
-The documented SoundMesh palette is authoritative.
-
-
-
-Mahin MUST NOT create a separate color system without updating `ui-ux.md`.
-
-
-
-\---
-
-
-
-\# 8. Phase 2 — Navigation Architecture
-
-
-
-\## Objective
-
-
-
-Create predictable application navigation.
-
-
-
-Conceptual flow:
-
-
-
-```text
-
 Home
-
-&#x20;├── Create Room
-
-&#x20;│      ↓
-
-&#x20;│   Room
-
-&#x20;│
-
-&#x20;└── Join Room
-
-&#x20;       ↓
-
-&#x20;     Scan QR
-
-&#x20;       ↓
-
-&#x20;     Joining
-
-&#x20;       ↓
-
-&#x20;     Room
-
+ ├── Create Room
+ │    └── Room
+ │
+ └── Join Room
+      └── Scan QR
+           └── Joining
+                └── Room
 ```
 
+Room flow conceptually contains:
 
+* Devices
+* Audio
+* Preparation
+* Playback
+* Sync Status
+* Diagnostics
 
-Room flow:
+Exact navigation may evolve as the product architecture develops.
 
+Navigation must represent actual application state.
 
+This phase is already completed and must not be rewritten.
 
-```text
+---
 
-Room
+# Phase 3 — Application State Presentation
 
-&#x20;├── Devices
+**Status:** COMPLETED — DO NOT MODIFY
 
-&#x20;├── Audio
+Build the UI state model accurately representing Core API state.
 
-&#x20;├── Preparation
-
-&#x20;├── Playback
-
-&#x20;├── Sync Status
-
-&#x20;└── Diagnostics
-
-```
-
-
-
-Exact navigation structure may evolve.
-
-
-
-Navigation MUST represent actual application state.
-
-
-
-\---
-
-
-
-\# 9. Phase 3 — Application State Presentation
-
-
-
-\## Objective
-
-
-
-Build a UI state model that accurately represents the Core API.
-
-
-
-Potential high-level states include:
-
-
+States include:
 
 ```text
-
 IDLE
-
-CREATING\_ROOM
-
-JOINING\_ROOM
-
-ROOM\_READY
-
+CREATING_ROOM
+JOINING_ROOM
+ROOM_READY
 PREPARING
-
 READY
-
 PLAYING
-
 PAUSED
-
 STOPPING
-
 ERROR
-
 ```
 
+These states should correspond conceptually to the Core system.
 
+The UI must not create contradictory meanings between Core state and displayed state.
 
-These correspond conceptually to the Core contract.
+This phase is already completed and must not be rewritten.
 
+---
 
+# Phase 3.5 — Product-Pivot UI Cleanup
 
-Mahin MUST NOT invent contradictory state meanings.
+**Status:** REQUIRED
 
+## Purpose
 
+Remove UI that was created around the previous media-player-oriented concept of SoundMesh.
 
-For example:
+This is a cleanup/rework phase.
 
+Do **not** redesign Phases 0–3 themselves.
 
+Instead, remove or replace obsolete screens, components, navigation destinations, mock data, and visual concepts that no longer belong to SoundMesh.
 
-```text
+The goal is to make the existing Flutter application accurately represent the actual product before continuing with new feature work.
 
-Core = PREPARING
+---
 
-```
+## 3.5.1 Remove Media-Player UI
 
+Remove any UI that makes SoundMesh appear to be a music or video player.
 
+Examples include:
 
-The UI MUST NOT display:
+* Song title displays
+* Album artwork
+* Music selection screens
+* Media library screens
+* Playlist UI
+* Play buttons belonging to SoundMesh
+* Pause buttons belonging to SoundMesh
+* Previous/next controls
+* Seek bars
+* Playback progress bars
+* Playback speed controls
+* Volume controls that imply SoundMesh owns playback
+* Song queues
+* "Now Playing" screens
+* Media browsing interfaces
+* Fake player timelines
+* Mock audio files
+* Fake songs
+* Fake video controls
 
+SoundMesh does not control the external media application's playback.
 
+---
 
-```text
+## 3.5.2 Remove Room History
 
-READY
-
-```
-
-
-
-unless the contract actually permits that state.
-
-
-
-\---
-
-
-
-\# 10. Phase 4 — Core API Integration Layer
-
-
-
-\## Objective
-
-
-
-Create the Flutter-side adapter to the Core API.
-
-
-
-The UI should interact with a clean application-facing interface.
-
-
-
-Conceptually:
-
-
-
-```text
-
-Flutter UI
-
-&#x20;    ↓
-
-CoreController / CoreService
-
-&#x20;    ↓
-
-Core API
-
-```
-
-
-
-The exact implementation is governed by the architecture.
-
-
-
-\## Responsibilities
-
-
-
-Mahin MUST implement the UI-side handling of:
-
-
-
-\* `getState()`
-
-\* `createRoom()`
-
-\* `joinRoom()`
-
-\* `leaveRoom()`
-
-\* `getRoomState()`
-
-\* `selectAudio()`
-
-\* `preparePlayback()`
-
-\* `play()`
-
-\* `pause()`
-
-\* `resume()`
-
-\* `seek()`
-
-\* `stop()`
-
-\* `getDevices()`
-
-\* `getPlaybackState()`
-
-\* `getSyncStatus()`
-
-\* `resynchronize()`
-
-
-
-Exact signatures MUST come from `core-api.md`.
-
-
-
-\---
-
-
-
-\# 11. Phase 5 — Create Room Experience
-
-
-
-\## Objective
-
-
-
-Make room creation extremely simple.
-
-
-
-Conceptual flow:
-
-
-
-```text
-
-Home
-
-&#x20;↓
-
-Create Room
-
-&#x20;↓
-
-Creating
-
-&#x20;↓
-
-Room Created
-
-&#x20;↓
-
-Display Join Information
-
-&#x20;↓
-
-Wait for Participants
-
-```
-
-
-
-The UI should clearly communicate:
-
-
-
-\* Room exists
-
-\* User is host
-
-\* Other devices can join
-
-\* Current participants
-
-\* Connection/readiness status
-
-
-
-Mahin MUST NOT fabricate room IDs, join codes, or participant counts.
-
-
-
-All values MUST come from the Core/Room contracts.
-
-
-
-\---
-
-
-
-\# 12. Phase 6 — Join Room Experience
-
-
-
-\## Objective
-
-
-
-Make joining another device simple.
-
-
-
-Conceptual flow:
-
-
-
-```text
-
-Home
-
-&#x20;↓
-
-Join Room
-
-&#x20;↓
-
-Scan QR
-
-&#x20;↓
-
-Validate
-
-&#x20;↓
-
-Connect
-
-&#x20;↓
-
-Register
-
-&#x20;↓
-
-Room
-
-```
-
-
-
-UI MUST distinguish:
-
-
-
-\* scanning
-
-\* validating
-
-\* connecting
-
-\* joining
-
-\* registered participant
-
-
-
-A successful network connection MUST NOT automatically be presented as successful room membership unless the Room/Core API confirms it.
-
-
-
-\---
-
-
-
-\# 13. Phase 7 — QR User Experience
-
-
-
-\## Objective
-
-
-
-Provide a fast QR-first onboarding experience.
-
-
-
-Mahin owns:
-
-
-
-\* QR scanner UI
-
-\* Camera permission UX
-
-\* Scan feedback
-
-\* Invalid QR state
-
-\* Expired QR state
-
-\* Unsupported version state
-
-\* Connection progress
-
-\* Join success/failure presentation
-
-
-
-Faraz owns the underlying:
-
-
-
-\* join payload
-
-\* validation
-
-\* room identity
-
-\* token handling
-
-\* networking
-
-
-
-Mahin MUST NOT implement an alternative join protocol.
-
-
-
-\---
-
-
-
-\# 14. Phase 8 — Room Screen
-
-
-
-\## Objective
-
-
-
-Create the central SoundMesh control surface.
-
-
-
-The room screen should make it immediately clear:
-
-
-
-\* Which room the user is in
-
-\* Whether the user is host or participant
-
-\* Which devices are present
-
-\* Whether devices are ready
-
-\* What audio is selected
-
-\* Whether playback is active
-
-\* Whether synchronization is healthy
-
-
-
-The room screen MUST use real application state.
-
-
-
-\---
-
-
-
-\# 15. Phase 9 — Device UI
-
-
-
-\## Objective
-
-
-
-Present participating devices clearly.
-
-
-
-The UI may show information such as:
-
-
-
-\* Device name
-
-\* Device role
-
-\* Connection state
-
-\* Presence
-
-\* Readiness
-
-\* Sync state
-
-\* Audio route where available
-
-
-
-Example conceptual display:
-
-
-
-```text
-
-Devices
-
-
-
-Faraz's Phone
-
-● Ready
-
-● Synchronized
-
-
-
-Mahin's Phone
-
-● Ready
-
-● Synchronized
-
-
-
-Phone 3
-
-● Preparing
-
-```
-
-
-
-The exact fields must follow `device-api.md`.
-
-
-
-Mahin MUST NOT infer technical states from unrelated information.
-
-
-
-\---
-
-
-
-\# 16. Phase 10 — Audio Selection UI
-
-
-
-\## Objective
-
-
-
-Allow the user to select audio for the SoundMesh session.
-
-
-
-The UI may provide:
-
-
-
-\* File picker
-
-\* Selected audio display
-
-\* Metadata
-
-\* Duration
-
-\* Format
-
-\* Preparation status
-
-\* Availability
-
-\* Integrity failure state
-
-
-
-Mahin consumes Audio API results.
-
-
-
-The UI MUST NOT implement:
-
-
-
-\* audio decoding
-
-\* audio distribution
-
-\* integrity algorithms
-
-\* audio preparation internals
-
-
-
-\---
-
-
-
-\# 17. Phase 11 — Preparation Experience
-
-
-
-\## Objective
-
-
-
-Clearly communicate when SoundMesh is preparing devices for playback.
-
-
-
-Conceptual flow:
-
-
-
-```text
-
-Audio Selected
-
-&#x20;    ↓
-
-Preparing Audio
-
-&#x20;    ↓
-
-Checking Devices
-
-&#x20;    ↓
-
-Synchronizing
-
-&#x20;    ↓
-
-Ready
-
-```
-
-
-
-The UI MUST distinguish:
-
-
-
-```text
-
-Audio Ready
-
-Device Ready
-
-Sync Ready
-
-Playback Ready
-
-```
-
-
-
-These are not automatically equivalent.
-
-
-
-Mahin MUST display the actual state reported by the relevant contract.
-
-
-
-\---
-
-
-
-\# 18. Phase 12 — Playback UI
-
-
-
-\## Objective
-
-
-
-Create intuitive controls for synchronized playback.
-
-
-
-Controls may include:
-
-
-
-\* Play
-
-\* Pause
-
-\* Resume
-
-\* Seek
-
-\* Stop
-
-
-
-The UI sends high-level commands.
-
-
-
-It MUST NOT determine synchronization timing itself.
-
-
-
-For example, the UI should call:
-
-
-
-```text
-
-play()
-
-```
-
-
-
-rather than attempting to calculate:
-
-
-
-```text
-
-startAt = currentTime + 3000
-
-```
-
-
-
-The Playback/Sync systems determine the correct timing.
-
-
-
-\---
-
-
-
-\# 19. Phase 13 — Synchronization UI
-
-
-
-\## Objective
-
-
-
-Make the technical synchronization system understandable to normal users.
-
-
-
-The UI should communicate meaningful states such as:
-
-
-
-```text
-
-Synchronized
-
-Calibrating
-
-Preparing
-
-Degraded
-
-Resynchronizing
-
-Connection Lost
-
-```
-
-
-
-Where appropriate, technical diagnostics may expose:
-
-
-
-\* estimated offset
-
-\* drift
-
-\* confidence
-
-\* timing state
-
-
-
-However:
-
-
-
-\*\*No synchronization value may be fabricated.\*\*
-
-
-
-If the Sync API reports:
-
-
-
-```text
-
-offsetMs: 4.2
-
-```
-
-
-
-the UI may display it.
-
-
-
-If the API does not provide a value:
-
-
-
-```text
-
-DO NOT invent one.
-
-```
-
-
-
-\---
-
-
-
-\# 20. Phase 14 — Sync Quality Presentation
-
-
-
-\## Objective
-
-
-
-Translate technical synchronization information into truthful user-facing feedback.
-
-
-
-Potential user-facing representation:
-
-
-
-```text
-
-● Synchronized
-
-```
-
-
-
-or:
-
-
-
-```text
-
-● Syncing...
-
-```
-
-
-
-or:
-
-
-
-```text
-
-⚠ Sync degraded
-
-```
-
-
-
-The UI MUST NOT claim:
-
-
-
-> "Perfect synchronization"
-
-
-
-unless the project has explicitly defined and justified such a claim.
-
-
-
-The preferred terminology is:
-
-
-
-> \*\*Synchronized\*\*
-
-
-
-not:
-
-
-
-> \*\*Perfectly synchronized\*\*
-
-
-
-\---
-
-
-
-\# 21. Phase 15 — Resynchronization UI
-
-
-
-\## Objective
-
-
-
-Allow the user to recover from synchronization degradation.
-
-
-
-If the Core API provides:
-
-
-
-```text
-
-resynchronize()
-
-```
-
-
-
-Mahin may expose an appropriate control.
-
-
-
-Possible flow:
-
-
-
-```text
-
-Sync degraded
-
-&#x20;     ↓
-
-Resynchronize
-
-&#x20;     ↓
-
-Calibrating
-
-&#x20;     ↓
-
-Scheduling
-
-&#x20;     ↓
-
-Synchronized
-
-```
-
-
-
-The UI MUST show the actual state.
-
-
-
-It MUST NOT pretend synchronization succeeded before the Core/Sync systems confirm success.
-
-
-
-\---
-
-
-
-\# 22. Phase 16 — Error Handling
-
-
-
-\## Objective
-
-
-
-Make failures understandable instead of exposing raw technical errors.
-
-
-
-Potential error categories:
-
-
-
-```text
-
-Room unavailable
-
-Invalid join information
-
-Connection failed
-
-Audio unavailable
-
-Audio invalid
-
-Device unavailable
-
-Playback failed
-
-Synchronization failed
-
-Unsupported version
-
-Timeout
-
-Unknown error
-
-```
-
-
-
-The UI MUST:
-
-
-
-\* Present meaningful explanations.
-
-\* Provide recovery actions where supported.
-
-\* Preserve the actual error semantics.
-
-\* Avoid hiding serious failures.
-
-
-
-Mahin MUST NOT reinterpret an error into a success state.
-
-
-
-\---
-
-
-
-\# 23. Phase 17 — Connection and Recovery UX
-
-
-
-\## Objective
-
-
-
-Handle temporary failures gracefully.
-
-
-
-Possible states:
-
-
-
-```text
-
-Connected
-
-&#x20;    ↓
-
-Connection degraded
-
-&#x20;    ↓
-
-Reconnecting
-
-&#x20;    ↓
-
-Connected
-
-```
-
-
-
-The UI should communicate this transition.
-
-
-
-If the backend does not support a specific recovery mechanism, the UI MUST NOT pretend it does.
-
-
-
-For example:
-
-
-
-> "Reconnecting..."
-
-
-
-is valid only if reconnection is actually occurring.
-
-
-
-\---
-
-
-
-\# 24. Phase 18 — Late Join UX
-
-
-
-\## Objective
-
-
-
-Allow participants to understand what happens when joining an active room.
-
-
-
-Potential flow:
-
-
-
-```text
-
-Join
-
-&#x20;↓
-
-Room Active
-
-&#x20;↓
-
-Downloading Audio
-
-&#x20;↓
-
-Preparing
-
-&#x20;↓
-
-Synchronizing
-
-&#x20;↓
-
-Scheduled
-
-&#x20;↓
-
-Join Playback
-
-```
-
-
-
-Exact late-join behavior is governed by Playback/Sync contracts.
-
-
-
-Mahin MUST NOT invent synchronization behavior.
-
-
-
-\---
-
-
-
-\# 25. Phase 19 — Diagnostics UI
-
-
-
-\## Objective
-
-
-
-Provide an optional technical view for debugging and demonstration.
-
-
-
-Diagnostics may show:
-
-
-
-\* Room state
-
-\* Device count
-
-\* Connection states
-
-\* Audio state
-
-\* Playback state
-
-\* Sync state
-
-\* Offset
-
-\* Drift
-
-\* Confidence
-
-\* RTT
-
-\* Recovery events
-
-
-
-Diagnostics MUST clearly distinguish:
-
-
-
-```text
-
-Measured
-
-Estimated
-
-Unknown
-
-Unavailable
-
-```
-
-
-
-No diagnostic metric may be generated merely for visual effect.
-
-
-
-\---
-
-
-
-\# 26. Phase 20 — UI Mocking
-
-
-
-\## Objective
-
-
-
-Allow Mahin to build UI before Faraz's backend is complete.
-
-
-
-Mocks MAY be used.
-
-
-
-However:
-
-
-
-\*\*Mocks MUST conform to the real interface contracts.\*\*
-
-
-
-Example:
-
-
-
-```text
-
-Real Core API
-
-&#x20;     │
-
-&#x20;     ├── createRoom()
-
-&#x20;     ├── getDevices()
-
-&#x20;     └── getSyncStatus()
-
-
-
-Mock Core API
-
-&#x20;     │
-
-&#x20;     ├── createRoom()
-
-&#x20;     ├── getDevices()
-
-&#x20;     └── getSyncStatus()
-
-```
-
-
-
-The mock MUST NOT invent a different API.
-
-
-
-All mock behavior MUST be clearly identifiable as mock behavior.
-
-
-
-Mocks MUST eventually be replaced or supplemented with real integration tests.
-
-
-
-\---
-
-
-
-\# 27. Phase 21 — Real Backend Integration
-
-
-
-\## Objective
-
-
-
-Replace mock functionality with Faraz's actual technical implementation.
-
-
-
-Integration MUST follow:
-
-
-
-```text
-
-Contract
-
-&#x20;  ↓
-
-Adapter
-
-&#x20;  ↓
-
-Real Core
-
-&#x20;  ↓
-
-Real Subsystems
-
-&#x20;  ↓
-
-Real Device
-
-```
-
-
-
-Mahin MUST verify that:
-
-
-
-\* request shapes match
-
-\* response shapes match
-
-\* states match
-
-\* errors match
-
-\* lifecycle behavior matches
-
-\* asynchronous behavior matches
-
-
-
-If they do not match:
-
-
-
-\*\*STOP and report the contract/integration mismatch.\*\*
-
-
-
-Do not patch around the mismatch with undocumented assumptions.
-
-
-
-\---
-
-
-
-\# 28. Phase 22 — Two-Device UI Integration
-
-
-
-\## Objective
-
-
-
-Connect Mahin's UI to the first real two-device SoundMesh system.
-
-
-
-Required flow:
-
-
-
-```text
-
-Phone A
-
-Create Room
-
-&#x20;   ↓
-
-UI displays room
-
-&#x20;   ↓
-
-Phone B
-
-Scan QR
-
-&#x20;   ↓
-
-UI displays joining
-
-&#x20;   ↓
-
-Participant registered
-
-&#x20;   ↓
-
-Both UI instances display room
-
-&#x20;   ↓
-
-Audio selected
-
-&#x20;   ↓
-
-Preparation
-
-&#x20;   ↓
-
-Synchronization
-
-&#x20;   ↓
-
-Playback
-
-```
-
-
-
-This is the first major UI/backend integration milestone.
-
-
-
-\---
-
-
-
-\# 29. Phase 23 — Real-Device Validation
-
-
-
-\## Objective
-
-
-
-Ensure the UI represents real system behavior.
-
-
-
-Test on physical devices.
-
-
-
-Verify:
-
-
-
-\* permissions
-
-\* QR scanning
-
-\* joining
-
-\* room state
-
-\* device state
-
-\* audio state
-
-\* preparation state
-
-\* playback state
-
-\* sync state
-
-\* errors
-
-\* reconnect behavior
-
-\* orientation/layout behavior
-
-\* app lifecycle behavior
-
-
-
-The UI MUST NOT be validated only with mocked data.
-
-
-
-\---
-
-
-
-\# 30. Phase 24 — Multi-Device UI
-
-
-
-\## Objective
-
-
-
-Support rooms containing multiple participants.
-
-
-
-Target progression:
-
-
-
-```text
-
-2 devices
-
-&#x20;↓
-
-3 devices
-
-&#x20;↓
-
-5 devices
-
-&#x20;↓
-
-10 devices
-
-```
-
-
-
-The UI must remain understandable as device count increases.
-
-
-
-Consider:
-
-
-
-\* device lists
-
-\* grouped statuses
-
-\* synchronization summaries
-
-\* readiness summaries
-
-\* connection warnings
-
-\* participant identity
-
-
-
-The UI MUST NOT become dependent on a fixed device count.
-
-
-
-\---
-
-
-
-\# 31. Phase 25 — Accessibility
-
-
-
-\## Objective
-
-
-
-Make SoundMesh usable by as many users as practical.
-
-
-
-Mahin MUST consider:
-
-
-
-\* minimum touch target sizes
-
-\* readable typography
-
-\* contrast
-
-\* semantic labels
-
-\* screen-reader support
-
-\* keyboard navigation where applicable
-
-\* clear error messaging
-
-\* non-color-only status indicators
-
-\* reduced-motion preferences where applicable
-
-
-
-Accessibility MUST be considered during implementation rather than added only at the end.
-
-
-
-\---
-
-
-
-\# 32. Phase 26 — UI Performance
-
-
-
-\## Objective
-
-
-
-Keep the Flutter application responsive while the technical system operates in real time.
-
-
-
-The UI MUST NOT:
-
-
-
-\* rebuild unnecessarily at high frequency
-
-\* receive raw timing events unnecessarily
-
-\* perform expensive work on the UI thread
-
-\* continuously render low-level synchronization data
-
-
-
-The technical architecture should expose meaningful state to Flutter.
-
-
-
-Mahin MUST coordinate with Faraz if an API produces excessive update frequency.
-
-
-
-\---
-
-
-
-\# 33. Phase 27 — Competition Polish
-
-
-
-\## Objective
-
-
-
-Prepare the user-facing application for the final demonstration.
-
-
-
-Focus on:
-
-
-
-\* onboarding clarity
-
-\* fast room creation
-
-\* fast joining
-
-\* clear audio selection
-
-\* understandable preparation
-
-\* satisfying playback controls
-
-\* trustworthy sync feedback
-
-\* polished error handling
-
-\* visual consistency
-
-\* accessibility
-
-\* animation polish
-
-\* responsive layouts
-
-\* removal of placeholder content
-
-
-
-The final UI MUST reflect the actual capabilities of SoundMesh.
-
-
-
-\---
-
-
-
-\# 34. Mahin AI Task Rules
-
-
-
-Mahin's AI MUST receive narrow, contract-aware tasks.
-
-
-
-Good:
-
-
-
-```text
-
-Implement the Room screen.
-
-
-
-Consume room state through the Core API.
-
-Use DOCS/ui-ux.md for visual requirements.
-
-Do not modify Room API.
-
-Use mock data only if the Core implementation is unavailable.
-
-```
-
-
-
-Bad:
-
-
-
-```text
-
-Build the entire SoundMesh frontend and make whatever backend calls you need.
-
-```
-
-
-
-Tasks MUST specify:
-
-
-
-\* feature
-
-\* applicable contract
-
-\* files/scope
-
-\* expected states
-
-\* expected errors
-
-\* tests
-
-\* dependencies
-
-\* out-of-scope areas
-
-
-
-\---
-
-
-
-\# 35. Mahin AI Must Not Invent Backend APIs
-
-
-
-The AI MUST NOT decide:
-
-
-
-> "The backend probably has a `getRoomDevices()` function."
-
-
-
-It MUST inspect the documented contract.
-
-
-
-If the required function does not exist:
-
-
-
-```text
-
-STOP
-
-↓
-
-Identify missing capability
-
-↓
-
-Propose contract change
-
-↓
-
-Coordinate with Faraz
-
-```
-
-
-
-No invented APIs.
-
-
-
-\---
-
-
-
-\# 36. Mahin AI Must Not Implement Technical Internals
-
-
-
-Mahin's AI MUST NOT independently implement:
-
-
-
-\* synchronization algorithms
-
-\* clock offset calculations
-
-\* drift estimation
-
-\* drift correction
-
-\* network protocols
-
-\* audio transfer
-
-\* native audio scheduling
-
-\* native timing systems
-
-\* room membership internals
-
-
-
-unless explicitly assigned a coordinated task.
-
-
-
-The UI consumes these systems.
-
-
-
-It does not redefine them.
-
-
-
-\---
-
-
-
-\# 37. Contract Change Procedure
-
-
-
-If Mahin discovers that the UI requires information not available through an existing contract:
-
-
-
-Mahin MUST create a contract change proposal containing:
-
-
-
-```text
-
-Current contract:
-
-<existing behavior>
-
-
-
-Requested change:
-
-<proposed behavior>
-
-
-
-Reason:
-
-<why UI requires it>
-
-
-
-Affected systems:
-
-<Core / Room / Device / Audio / Playback / Sync>
-
-
-
-Affected UI:
-
-<screens/components>
-
-
-
-Compatibility impact:
-
-<impact>
-
-
-
-Testing required:
-
-<tests>
-
-```
-
-
-
-The change MUST NOT be silently implemented.
-
-
-
-\---
-
-
-
-\# 38. Mahin AI Stop Conditions
-
-
-
-Mahin's AI MUST STOP and report a blocker when:
-
-
-
-1\. A required API is undefined.
-
-2\. Two contracts conflict.
-
-3\. UI behavior requires undocumented backend behavior.
-
-4\. A backend response differs from the documented contract.
-
-5\. A state has ambiguous meaning.
-
-6\. An error has ambiguous semantics.
-
-7\. The UI needs a new backend capability.
-
-8\. The AI would need to modify Faraz-owned technical systems.
-
-9\. A synchronization value is unavailable but the UI is being asked to display it.
-
-10\. A mock requires behavior not defined by the contract.
-
-11\. The AI is tempted to infer backend behavior.
-
-12\. A platform-specific technical issue affects UI correctness.
-
-13\. A proposed workaround would bypass a contract.
-
-14\. Existing integration tests fail.
-
-15\. The AI cannot determine which source of truth is authoritative.
-
-
-
-The AI MUST NOT resolve these situations by guessing.
-
-
-
-\---
-
-
-
-\# 39. UI Truthfulness Rule
-
-
-
-The UI is a representation of the real SoundMesh system.
-
-
-
-Therefore:
-
-
-
-```text
-
-Backend State
-
-&#x20;     ↓
-
-Contract
-
-&#x20;     ↓
-
-UI State
-
-&#x20;     ↓
-
-User
-
-```
-
-
-
-NOT:
-
-
-
-```text
-
-Desired UI
-
-&#x20;     ↓
-
-Fake State
-
-&#x20;     ↓
-
-User
-
-```
-
-
+Remove any UI representing persistent room history if it exists.
 
 Examples:
 
+* Recent Rooms
+* Room History
+* Previous Rooms
+* Saved Rooms
+* Recently Joined Rooms
+* Recently Created Rooms
+* Room history panels
+* Room history cards
+* Mock historical room data
 
+The new SoundMesh backend does not require a room-history system.
 
-If audio is still downloading:
+Do not create backend/API requirements to preserve this UI.
 
+If the UI contains room history, remove it completely.
 
+---
+
+## 3.5.3 Remove Obsolete Audio Selection Concepts
+
+Remove concepts such as:
 
 ```text
-
-Preparing audio...
-
+Select Audio
+Choose Song
+Choose File
+Audio Library
+My Songs
+Pick Track
+Select Media
 ```
 
+SoundMesh does not select the media source.
 
+The host opens the external application of their choice.
 
-If synchronization is uncertain:
+---
 
+## 3.5.4 Replace Obsolete Player Concepts
 
+Where appropriate, replace obsolete player UI with truthful SoundMesh concepts.
+
+Examples:
 
 ```text
-
-Calibrating...
-
+Host
+Participant
+Connected Devices
+Capture Status
+Audio Sync
+Synchronization Quality
+Room Status
+Connection Status
+External Media
+Diagnostics
 ```
 
+Do not invent backend functionality merely to make a screen look complete.
 
+---
 
-If a device disconnected:
+## 3.5.5 Remove Obsolete Mock State
 
+Delete or replace mock states that exist only because SoundMesh was previously treated as a media player.
 
+Examples:
 
 ```text
-
-Device disconnected
-
+PLAYING
+PAUSED
+STOPPING
+NEXT_TRACK
+PREVIOUS_TRACK
+SEEKING
+SELECTING_AUDIO
 ```
 
+Do not blindly remove states that are still required by the existing Core API contract.
 
+If a state is ambiguous, inspect the current Core/API contract before changing it.
 
-Do not display:
+---
 
+## 3.5.6 Preserve Completed Work
 
+Do not rewrite the completed UI foundation merely because the product architecture changed.
+
+Keep:
+
+* Existing design system
+* Existing reusable components
+* Existing navigation foundation
+* Existing styling foundation
+* Existing valid application-state infrastructure
+
+Only remove or modify elements that are now demonstrably incompatible with the SoundMesh product.
+
+---
+
+## Definition of Done
+
+Phase 3.5 is complete when:
+
+* No fake SoundMesh music player remains.
+* No fake media library remains.
+* No obsolete audio-selection UI remains.
+* No room-history UI remains.
+* No obsolete mock media data remains.
+* No UI claims SoundMesh controls external media playback.
+* Existing useful design-system work remains intact.
+* The Home and Room experiences accurately describe the new SoundMesh product.
+* The Flutter application is ready for new architecture-specific UI work.
+
+---
+
+# Phase 4 — Core API Integration Layer
+
+**Status:** NOT STARTED
+
+Connect the Flutter presentation layer to the actual Core API contracts.
+
+The UI should consume Core functionality rather than recreating business logic inside Flutter.
+
+Mahin should integrate:
+
+* Application state
+* Room state
+* Device state
+* Audio-session state
+* Synchronization state
+* Error state
+* Diagnostics state
+
+The UI should remain a presentation layer.
+
+Do not implement:
+
+* Network algorithms
+* Synchronization algorithms
+* Clock synchronization
+* Audio capture
+* Native audio output
+* Drift correction
+
+inside Flutter.
+
+---
+
+# Phase 5 — Create Room
+
+**Status:** NOT STARTED
+
+Implement the Create Room experience.
+
+The flow should allow the user to:
+
+1. Open SoundMesh.
+2. Create a room.
+3. Become the host.
+4. Wait for participants.
+5. See connected devices.
+6. Begin the audio synchronization session.
+
+Display only information actually provided by Core.
+
+Possible UI:
 
 ```text
+Create Room
 
-Ready
+Room Ready
 
-Synchronized
+You are the Host
 
+Connected Devices
+2 devices connected
+
+Waiting for participants...
+```
+
+Do not introduce room-history storage.
+
+---
+
+# Phase 6 — Join Room
+
+**Status:** NOT STARTED
+
+Implement joining an existing room.
+
+The flow should support:
+
+```text
+Join Room
+    ↓
+Room Code / QR
+    ↓
+Joining
+    ↓
 Connected
-
+    ↓
+Room
 ```
 
+Handle:
 
+* Invalid room
+* Room unavailable
+* Connection failure
+* Timeout
+* Successful joining
+* Already-connected state
 
-unless the underlying system actually reports those states.
+---
 
+# Phase 7 — QR Room Bootstrap UX
 
+**Status:** NOT STARTED
 
-\---
+Implement QR-based room joining.
 
+The QR experience should:
 
+* Scan the host's room QR
+* Validate the room information
+* Start joining
+* Show progress
+* Show errors
+* Transition into the Room screen
 
-\# 40. UI/Backend Ownership Boundary
+Do not put arbitrary application data into the QR unless the Core contract defines it.
 
+---
 
+# Phase 8 — Room Screen
 
-The boundary between Mahin and Faraz is:
+**Status:** NOT STARTED
 
+Build the main room experience.
 
+The Room screen should become the central SoundMesh session interface.
+
+It should communicate:
+
+* Room status
+* Host/participant role
+* Connected device count
+* Device states
+* Capture state
+* Synchronization state
+* Audio session state
+* Important errors
+
+Example conceptual structure:
 
 ```text
+SoundMesh
 
-&#x20;                FARAZ
+Room Connected
 
-&#x20;                  │
+HOST
+Faraz
 
-&#x20;           Technical Systems
+3 Devices Connected
 
-&#x20;                  │
+● Audio Sync Active
 
-&#x20;            Core API
+Devices
+├── Faraz
+├── Mahin
+└── Phone 3
 
-&#x20;                  │
-
-═══════════════════╪═══════════════════
-
-&#x20;            CONTRACT BOUNDARY
-
-═══════════════════╪═══════════════════
-
-&#x20;                  │
-
-&#x20;            Flutter Adapter
-
-&#x20;                  │
-
-&#x20;                 MAHIN
-
-&#x20;                  │
-
-&#x20;            UI / UX / State
-
-&#x20;                  │
-
-&#x20;                USER
-
+Sync Quality
+Excellent
 ```
 
+The exact layout is flexible.
 
+The meaning must remain truthful.
 
-The contract boundary is intentional.
+---
 
+# Phase 9 — Device UI
 
+**Status:** NOT STARTED
 
-Neither side should casually cross it.
+Build the device list and device status presentation.
 
+Each device may display:
 
+* Device name
+* Host/participant role
+* Connection state
+* Audio state
+* Synchronization state
+* Sync quality
+* Error state
 
-\---
+Do not display information that Core does not provide.
 
+---
 
+# Phase 10 — Capture Preparation UI
 
-\# 41. Integration With Faraz
+**Status:** NOT STARTED
 
+Create the UI for preparing the host device for external audio capture.
 
+The user should understand:
 
-When Faraz completes a backend feature, Mahin should consume it through its documented contract.
-
-
-
-When Mahin discovers a UI requirement, he should communicate it as a contract requirement rather than modifying backend code himself.
-
-
+* SoundMesh needs to capture external application audio.
+* Capture permission may be required.
+* The host needs to start/continue an external media application.
+* SoundMesh will synchronize the resulting audio.
 
 Example:
 
-
-
 ```text
+Prepare Audio
 
-Mahin:
+SoundMesh will synchronize audio
+from the host's media app.
 
-"I need to show whether each device is ready."
+1. Allow audio capture
+2. Return to your media app
+3. Start playback
 
-
-
-&#x20;       ↓
-
-
-
-Check Device API
-
-
-
-&#x20;       ↓
-
-
-
-If supported:
-
-Consume readiness state.
-
-
-
-If not supported:
-
-Submit contract change.
-
-
-
-&#x20;       ↓
-
-
-
-Faraz implements.
-
-
-
-&#x20;       ↓
-
-
-
-Mahin integrates.
-
-
-
-&#x20;       ↓
-
-
-
-Integration test.
-
+[Continue]
 ```
 
+Do not make SoundMesh appear to be the media player.
 
+---
 
-\---
+# Phase 11 — Audio Capture Permission UX
 
+**Status:** NOT STARTED
 
+Implement the user-facing flow around Android audio-capture permission.
 
-\# 42. Integration Milestones
+Handle:
 
+* Permission not requested
+* Permission prompt
+* Permission granted
+* Permission denied
+* Permission revoked
+* Capture unavailable
+* Capture stopped
 
+The UI must clearly explain why permission is required.
 
-\## M1 — UI Foundation
+Never claim that audio is being captured when capture has not actually started.
 
+---
 
+# Phase 12 — External Media Handoff UX
 
-Flutter architecture and design system complete.
+**Status:** NOT STARTED
 
+Create the experience that tells the host to open an external media application.
 
-
-\## M2 — Navigation
-
-
-
-Core application flow exists.
-
-
-
-\## M3 — Mock Core
-
-
-
-UI can operate against contract-compliant mocks.
-
-
-
-\## M4 — Create/Join UI
-
-
-
-Room creation and QR joining flows complete.
-
-
-
-\## M5 — Room UI
-
-
-
-Participants and room state displayed.
-
-
-
-\## M6 — Audio UI
-
-
-
-Audio selection and preparation represented.
-
-
-
-\## M7 — Playback UI
-
-
-
-Playback controls connected to the Playback contract.
-
-
-
-\## M8 — Sync UI
-
-
-
-Synchronization state accurately represented.
-
-
-
-\## M9 — Real Backend
-
-
-
-UI operates against Faraz's actual implementation.
-
-
-
-\## M10 — Two-Device Integration
-
-
-
-Complete UI flow works on two physical phones.
-
-
-
-\## M11 — Multi-Device UI
-
-
-
-3–5+ devices represented correctly.
-
-
-
-\## M12 — Competition Ready
-
-
-
-Polished, accessible, truthful, stable application.
-
-
-
-\---
-
-
-
-\# 43. Definition of Done for Mahin
-
-
-
-A UI feature is NOT DONE merely because:
-
-
-
-\* It looks good.
-
-\* It works with mock data.
-
-\* The screen renders.
-
-\* Buttons animate.
-
-\* The AI reports success.
-
-
-
-A feature is DONE when applicable:
-
-
+Example:
 
 ```text
+Audio Sync Ready
 
-UI implementation
+Open YouTube, Spotify, VLC,
+your browser, or another
+supported media app.
 
-&#x20;     +
+Start the media you want to play.
 
-Contract compliance
-
-&#x20;     +
-
-Correct state handling
-
-&#x20;     +
-
-Error handling
-
-&#x20;     +
-
-UI tests
-
-&#x20;     +
-
-Real API integration
-
-&#x20;     +
-
-Real-device validation
-
+SoundMesh will synchronize
+the captured audio across the room.
 ```
 
+SoundMesh should not attempt to recreate the external application's controls.
 
+The UI may provide guidance, but not pretend to control the external app.
 
-\---
+---
 
+# Phase 13 — Live Audio Session UI
 
+**Status:** NOT STARTED
 
-\# 44. Final Responsibility
+Create the UI representing an active live audio synchronization session.
 
-
-
-Mahin's responsibility is to turn the SoundMesh technical system into a simple, understandable, and polished user experience.
-
-
-
-The user should not need to understand:
-
-
-
-\* clock offsets
-
-\* network timing
-
-\* drift rates
-
-\* calibration algorithms
-
-\* native audio engines
-
-\* packet protocols
-
-
-
-The user should be able to understand:
-
-
+The Room should communicate:
 
 ```text
+Audio Sync Active
 
-Create
+Host
+Capturing external audio
 
-&#x20;  ↓
+Participants
+3 connected
 
-Join
-
-&#x20;  ↓
-
-Choose
-
-&#x20;  ↓
-
-Prepare
-
-&#x20;  ↓
-
-Play
-
+Synchronization
+Active
 ```
 
+Potential states:
 
+* Waiting
+* Preparing
+* Capturing
+* Streaming
+* Synchronizing
+* Active
+* Interrupted
+* Recovering
+* Failed
 
-while SoundMesh handles the complexity underneath.
+Use actual Core/native state wherever available.
 
+---
 
+# Phase 14 — Synchronization UI
 
-\---
+**Status:** NOT STARTED
 
+Present synchronization state without exposing unnecessary implementation details.
 
+Show:
 
-\# 45. Final Principle
+* Sync active
+* Sync preparing
+* Synchronizing
+* Resynchronizing
+* Sync unavailable
+* Sync failed
 
+The UI should communicate the result rather than pretending the user needs to understand clock algorithms.
 
+---
 
-Mahin does not build a separate version of SoundMesh.
+# Phase 15 — Sync Quality
 
+**Status:** NOT STARTED
 
+Provide a simple human-readable representation of synchronization quality.
 
-Mahin builds the \*\*user-facing layer of the same SoundMesh system\*\*.
+Possible categories:
 
+```text
+Excellent
+Good
+Unstable
+Poor
+Unavailable
+```
 
+If numerical metrics are exposed, they may be presented as diagnostics rather than the primary experience.
 
-The UI MUST:
+Do not invent thresholds without a Core contract.
 
+---
 
+# Phase 16 — Resynchronization
 
-\* consume shared contracts
+**Status:** NOT STARTED
 
-\* represent real state
+Present resynchronization events.
 
-\* respect architecture
+Examples:
 
-\* avoid invented APIs
+```text
+Resynchronizing...
 
-\* avoid fabricated metrics
+Audio synchronization is being corrected.
+```
 
-\* handle errors honestly
+After recovery:
 
-\* remain accessible
+```text
+Synchronized
+```
 
-\* remain performant
+The UI must not claim that synchronization was fixed unless Core confirms recovery.
 
-\* integrate with Faraz's systems
+---
 
-\* validate on real devices
+# Phase 17 — Error Handling
 
+**Status:** NOT STARTED
 
+Implement clear user-facing error states.
 
-The final standard is not:
+Examples:
 
+* Room unavailable
+* Unable to join
+* Host disconnected
+* Participant disconnected
+* Audio capture unavailable
+* Capture permission denied
+* External app does not allow capture
+* Audio session stopped
+* Synchronization failed
+* Network unavailable
+* Unexpected native error
 
+Errors should explain:
 
-> "The UI looks finished."
+1. What happened.
+2. Whether the user needs to act.
+3. What action is available.
 
+Avoid exposing raw stack traces or internal exceptions in normal UI.
 
+---
 
-The final standard is:
+# Phase 18 — Connection and Recovery UI
 
+**Status:** NOT STARTED
 
+Handle temporary network/device failures.
 
-> \*\*"A real user can create, join, prepare, play, and understand the state of a real SoundMesh session through a polished UI connected to the real technical system."\*\*
+Represent:
 
+```text
+Connected
+Connecting
+Disconnected
+Reconnecting
+Recovered
+Failed
+```
 
+A temporary participant disconnect should not necessarily destroy the entire room UI.
 
+The UI should follow actual Core recovery behavior.
+
+---
+
+# Phase 19 — Audio Session Recovery UX
+
+**Status:** NOT STARTED
+
+Handle failures specific to the live audio pipeline.
+
+Examples:
+
+* Capture stopped
+* MediaProjection ended
+* External application stopped playback
+* External application became uncapturable
+* Native audio output stopped
+* Audio stream interrupted
+* Foreground service stopped
+
+Show actionable explanations.
+
+Do not tell the user to restart SoundMesh if Core can recover automatically.
+
+---
+
+# Phase 20 — Diagnostics UI
+
+**Status:** NOT STARTED
+
+Build a diagnostics experience for debugging and competition demonstrations.
+
+Potential information:
+
+```text
+Room ID
+Device ID
+Role
+Connection
+Audio Capture
+Audio Output
+Sync State
+Sync Quality
+Latency
+Drift
+Recovery State
+```
+
+Diagnostics must use real values.
+
+No fake performance numbers.
+
+No fabricated synchronization accuracy.
+
+---
+
+# Phase 21 — UI Mocking and Contract Validation
+
+**Status:** NOT STARTED
+
+Create controlled mock states for UI development.
+
+Mocks may simulate:
+
+* Connected room
+* Multiple devices
+* Capture ready
+* Capture denied
+* Sync active
+* Sync degraded
+* Reconnecting
+* Error
+* Recovery
+
+Mocking is allowed for presentation development.
+
+However:
+
+> Mocked state must never be confused with real functionality.
+
+Keep mock data clearly separated from production integration.
+
+---
+
+# Phase 22 — Real Backend Integration
+
+**Status:** NOT STARTED
+
+Replace temporary mocks with actual Core integration.
+
+Verify:
+
+* Create room
+* Join room
+* Room state
+* Device state
+* Capture state
+* Audio session state
+* Sync state
+* Error state
+* Recovery state
+
+The Flutter UI must react to actual system events.
+
+---
+
+# Phase 23 — Two-Device UI Integration
+
+**Status:** NOT STARTED
+
+Test the complete Flutter experience with:
+
+```text
+Android Host
+     ↕
+Android Participant
+```
+
+Verify:
+
+* Room creation
+* QR/join flow
+* Device display
+* Capture preparation
+* External media handoff
+* Live audio session state
+* Synchronization state
+* Errors
+* Recovery
+
+No media-player controls should reappear during integration.
+
+---
+
+# Phase 24 — Real-Device Validation
+
+**Status:** NOT STARTED
+
+Validate the UI on actual Android devices.
+
+Test:
+
+* Host
+* Participant
+* Permission flows
+* Background/foreground transitions
+* External media apps
+* Capture failures
+* Network failures
+* Device disconnects
+* Reconnection
+* Synchronization state transitions
+
+Test both role directions where the architecture supports them.
+
+---
+
+# Phase 25 — Multi-Device UI
+
+**Status:** NOT STARTED
+
+Expand the experience from two devices to multiple participants.
+
+Example:
+
+```text
+Room
+
+4 Devices Connected
+
+Host
+├── Device 1
+├── Device 2
+├── Device 3
+└── Device 4
+
+Audio Sync
+Active
+```
+
+The UI must remain understandable as the number of devices increases.
+
+Avoid turning the Room screen into a dense dashboard.
+
+---
+
+# Phase 26 — Accessibility
+
+**Status:** NOT STARTED
+
+Validate:
+
+* Touch target sizes
+* Text readability
+* Contrast
+* Semantic labels
+* Screen-reader compatibility
+* Error visibility
+* Non-color-only status indicators
+* Large text behavior
+* Interaction clarity
+
+Accessibility must remain compatible with the established design system.
+
+---
+
+# Phase 27 — UI Performance
+
+**Status:** NOT STARTED
+
+Ensure the Flutter UI remains responsive during active synchronization.
+
+Investigate:
+
+* Excessive rebuilds
+* Animation overhead
+* Large widget trees
+* Unnecessary polling
+* Memory usage
+* Device-list updates
+* Diagnostic updates
+* Background/foreground transitions
+
+Do not move networking, synchronization, or audio processing into Flutter simply to make the UI implementation easier.
+
+---
+
+# Phase 28 — Competition Polish
+
+**Status:** NOT STARTED
+
+Final polish for the Shipaton demonstration.
+
+Focus on:
+
+* Clean onboarding
+* Clear room creation
+* Fast joining
+* Excellent capture-permission explanation
+* Strong host/participant distinction
+* Clear synchronization feedback
+* Clear recovery states
+* Consistent animations
+* Minimal visual clutter
+* No obsolete media-player concepts
+* No fake functionality
+* No unnecessary screens
+
+The final UI should immediately communicate:
+
+> **SoundMesh lets multiple nearby phones act as one synchronized audio system while the host continues using their preferred media app.**
+
+---
+
+# AI Task Rules
+
+Any AI agent working on Mahin's branch must follow these rules.
+
+## Rule 1 — Do Not Invent Backend Behavior
+
+The UI must not assume that an API exists unless it is documented or implemented.
+
+If an API is missing:
+
+* Check the interface documentation.
+* Check the current implementation.
+* Ask/flag the missing contract.
+* Do not silently invent one.
+
+---
+
+## Rule 2 — Do Not Rebuild Core
+
+Flutter must not contain:
+
+* Synchronization algorithms
+* Clock synchronization
+* Drift correction
+* Audio transport
+* Audio capture
+* Native audio output
+
+unless explicitly assigned as a presentation/integration task.
+
+---
+
+## Rule 3 — SoundMesh Is Not a Media Player
+
+Never add:
+
+* Song libraries
+* Playlists
+* Seek controls
+* Next/previous controls
+* Media queues
+* Video controls
+* Subtitles
+* Media browsing
+* Fake playback state
+
+SoundMesh synchronizes audio from an external media source.
+
+---
+
+## Rule 4 — Do Not Reintroduce Room History
+
+Do not add:
+
+* Room history
+* Recent rooms
+* Saved rooms
+* Previous rooms
+* Persistent room lists
+
+unless the backend architecture explicitly introduces such functionality in the future.
+
+---
+
+## Rule 5 — Truthful UI Only
+
+Every important status displayed by Flutter must correspond to a real application state.
+
+Never show:
+
+```text
+Synced
+```
+
+when synchronization has not been confirmed.
+
+Never show:
+
+```text
+Audio Captured
+```
+
+when capture has not started.
+
+Never show:
+
+```text
+Connected
+```
+
+when the device is disconnected.
+
+---
+
+## Rule 6 — External Media Ownership
+
+The external application owns media playback.
+
+SoundMesh owns:
+
+```text
+Capture
+→ Distribution
+→ Synchronization
+→ Output
+```
+
+The external application owns:
+
+```text
+Media
+→ Play
+→ Pause
+→ Seek
+→ Track selection
+→ Video
+→ Subtitles
+```
+
+The Flutter UI must respect this boundary.
+
+---
+
+# Stop Conditions
+
+Mahin must stop and report the issue if:
+
+1. A UI feature requires an undocumented API.
+2. A screen requires SoundMesh to become a media player.
+3. Room history is required for a proposed feature.
+4. Audio capture behavior is unclear.
+5. Android permission behavior is unclear.
+6. Core state and UI state contradict each other.
+7. A UI decision requires changing synchronization architecture.
+8. A feature requires native implementation outside Mahin's workstream.
+9. The external media application's capture compatibility is unknown.
+10. A proposed feature exists only because of the old media-player architecture.
+
+Do not solve architectural uncertainty by inventing UI.
+
+---
+
+# Milestones
+
+## M1 — UI Foundation
+
+Phases 0–3 complete.
+
+## M2 — Product-Pivot Cleanup
+
+Phase 3.5 complete.
+
+No obsolete player/history/audio-selection UI remains.
+
+## M3 — Core Integration
+
+Phase 4 complete.
+
+## M4 — Room Experience
+
+Phases 5–9 complete.
+
+Create, join, QR, Room, and device UI functional.
+
+## M5 — External Audio UX
+
+Phases 10–13 complete.
+
+Capture preparation, permission flow, external media handoff, and live audio session UI functional.
+
+## M6 — Synchronization UX
+
+Phases 14–16 complete.
+
+Sync, quality, and resynchronization states represented correctly.
+
+## M7 — Reliability UX
+
+Phases 17–20 complete.
+
+Errors, recovery, audio-session failures, and diagnostics functional.
+
+## M8 — Real Integration
+
+Phases 21–24 complete.
+
+Real Core integration tested on Android devices.
+
+## M9 — Multi-Device
+
+Phase 25 complete.
+
+Multiple participants represented correctly.
+
+## M10 — Competition Ready
+
+Phases 26–28 complete.
+
+Accessible, performant, polished, and demo-ready.
+
+---
+
+# Definition of Done
+
+Mahin's workstream is complete when:
+
+* Flutter accurately represents the SoundMesh architecture.
+* Completed Phases 0–3 remain intact.
+* Phase 3.5 has removed obsolete media-player UI.
+* Room history UI has been removed.
+* Audio-selection UI has been removed.
+* No fake playback controls remain.
+* Create Room works.
+* Join Room works.
+* QR joining works.
+* Room state is visible.
+* Device state is visible.
+* Audio capture state is visible.
+* External media handoff is clear.
+* Live audio synchronization state is visible.
+* Sync quality is represented truthfully.
+* Recovery states are understandable.
+* Errors are actionable.
+* Diagnostics use real data.
+* Real Android devices have been tested.
+* Multi-device UI works.
+* Accessibility requirements are met.
+* UI remains performant.
+* Competition presentation is polished.
+
+---
+
+# Final Responsibility
+
+Mahin owns the question:
+
+> **"Does the user understand what SoundMesh is doing and what they need to do next?"**
+
+Faraz owns the underlying technical system that makes those states true.
+
+The Flutter UI must never pretend functionality exists merely because it would make the interface look more complete.
+
+**The UI follows the architecture — not the other way around.**

@@ -1,2075 +1,1256 @@
-\# SoundMesh — Networking Specification
+# SoundMesh — Networking Specification
 
+**Document status:** Living engineering specification
 
+**Document role:** Defines how SoundMesh devices establish local communication, create and join rooms, exchange control and timing data, transport live captured audio, maintain sessions, and recover from network failures.
 
-\*\*Document status:\*\* Living engineering specification
+**Primary authority:** This document defines networking behavior and networking architecture.
 
-\*\*Document role:\*\* Defines how SoundMesh devices discover one another, establish communication, exchange control data, transfer audio, maintain sessions, and recover from network failures.
+**Related specifications:**
 
+* `DOCS/blueprint.md` — product-level requirements and boundaries
+* `DOCS/architecture.md` — system architecture and platform boundaries
+* `DOCS/synchronization.md` — timing, clock synchronization, scheduled output, drift correction
+* `DOCS/audio.md` — external-audio capture, live audio pipeline, buffering, and native output
+* `DOCS/testing.md` — validation and acceptance testing
+* `DOCS/decisions.md` — records major architectural decisions
 
+---
 
-\*\*Primary authority:\*\* This document defines networking behavior and networking architecture.
-
-\*\*Related specifications:\*\*
-
-
-
-\* `DOCS/blueprint.md` — product-level requirements and boundaries
-
-\* `DOCS/architecture.md` — system architecture and platform boundaries
-
-\* `DOCS/synchronization.md` — timing, clock synchronization, scheduled playback, drift correction
-
-\* `DOCS/audio.md` — audio preparation, decoding, buffering, and playback
-
-\* `DOCS/testing.md` — validation and acceptance testing
-
-\* `DOCS/decisions.md` — records major architectural decisions
-
-
-
-\---
-
-
-
-\# 1. Purpose
-
-
+# 1. Purpose
 
 SoundMesh requires multiple independent smartphones to communicate reliably enough that they can behave as one coordinated speaker system.
 
-
-
 The networking layer is responsible for:
 
+1. discovering or bootstrapping nearby SoundMesh devices;
+2. creating and joining rooms;
+3. establishing device-to-device connections;
+4. identifying participants;
+5. exchanging room and session state;
+6. transporting live captured audio;
+7. exchanging synchronization measurements;
+8. delivering session and synchronization commands;
+9. reporting connection and device state;
+10. detecting connection failures;
+11. reconnecting when possible;
+12. handling device joins and departures;
+13. handling network changes;
+14. protecting room communication from unauthorized participants;
+15. providing deterministic communication primitives to the synchronization layer.
 
-
-1\. discovering nearby SoundMesh devices;
-
-2\. creating and joining rooms;
-
-3\. establishing device-to-device connections;
-
-4\. identifying participants;
-
-5\. exchanging room and session state;
-
-6\. distributing audio when required;
-
-7\. exchanging synchronization measurements;
-
-8\. sending playback commands;
-
-9\. reporting playback and device state;
-
-10\. detecting connection failures;
-
-11\. reconnecting when possible;
-
-12\. handling device joins and departures;
-
-13\. handling network changes;
-
-14\. protecting room communication from unauthorized participants;
-
-15\. providing deterministic behavior to the synchronization layer.
-
-
-
-Networking is \*\*not\*\* responsible for determining whether audio is synchronized correctly.
-
-
+Networking is **not** responsible for determining whether audio is synchronized correctly.
 
 That responsibility belongs to the synchronization system defined in `synchronization.md`.
 
+Networking must instead provide the communication primitives, timestamps, transport behavior, and measurements required by synchronization and live audio delivery.
 
+SoundMesh is **not a media player**.
 
-Networking must instead provide the communication primitives and timing measurements required by synchronization.
+The external media application running on the host remains responsible for media playback. SoundMesh networking transports the audio captured from that external application.
 
+---
 
-
-\---
-
-
-
-\# 2. Core Networking Principles
-
-
+# 2. Core Networking Principles
 
 SoundMesh networking MUST follow these principles.
 
+## 2.1 Local-first
 
-
-\## 2.1 Local-first
-
-
-
-Normal SoundMesh playback MUST NOT require Internet access.
-
-
+Normal SoundMesh operation MUST NOT require Internet access.
 
 The intended path is:
 
-
-
 ```text
-
 Phone A ─┐
-
 Phone B ─┼── Local network ── Phone C
-
 Phone D ─┘
-
 ```
-
-
 
 The Internet should not be a dependency for:
 
+* room creation;
+* room joining;
+* device discovery or QR bootstrap;
+* live audio transport;
+* synchronization;
+* session control;
+* synchronization monitoring;
+* recovery.
 
+Internet connectivity may exist, but SoundMesh should not depend on it for ordinary operation.
 
-\* room creation;
+---
 
-\* room joining;
+## 2.2 Android-first MVP
 
-\* device discovery;
+The current MVP is **Android-first / Android-only** because the intended audio source is another application's audio output.
 
-\* audio transfer;
+The networking protocol SHOULD remain logically transport- and platform-independent where practical, but the MVP does not require iOS networking or iOS audio participation.
 
-\* synchronization;
+The architecture MUST NOT retain iOS-specific requirements merely for historical compatibility with the previous design.
 
-\* playback control;
+Future platforms may implement the same logical protocol if their audio-capture capabilities permit the SoundMesh architecture.
 
-\* synchronization monitoring;
+---
 
-\* recovery.
+## 2.3 Networking must support heterogeneous Android devices
 
+SoundMesh cannot assume every device has:
 
+* the same CPU;
+* the same Wi-Fi chipset;
+* the same network stack;
+* the same clock behavior;
+* the same IP address;
+* the same network latency;
+* the same audio subsystem;
+* the same Android version;
+* the same permissions;
+* the same network capabilities.
 
-Internet connectivity may exist, but SoundMesh should not depend on it for ordinary playback.
+The protocol MUST therefore avoid depending on device-specific behavior.
 
+---
 
+## 2.4 Networking must be measurable
 
-\---
+The networking layer MUST expose enough information for synchronization and diagnostics to measure:
 
+* round-trip time;
+* message timing;
+* connection state;
+* connection establishment duration;
+* live audio throughput;
+* audio transport latency;
+* transport failures;
+* reconnect attempts;
+* network changes;
+* message ordering;
+* sequence numbers;
+* packet loss or missing audio frames where applicable;
+* buffering state.
 
-
-\## 2.2 Networking must support heterogeneous devices
-
-
-
-SoundMesh cannot assume that every device has:
-
-
-
-\* the same OS;
-
-\* the same CPU;
-
-\* the same Wi-Fi chipset;
-
-\* the same network stack;
-
-\* the same clock behavior;
-
-\* the same IP address;
-
-\* the same network latency;
-
-\* the same audio subsystem;
-
-\* the same permissions;
-
-\* the same network capabilities.
-
-
-
-The protocol MUST therefore be platform-independent.
-
-
-
-A device running Android and a device running iOS should communicate using the same SoundMesh application protocol.
-
-
-
-Platform-specific implementation details MUST remain behind the platform networking abstraction.
-
-
-
-\---
-
-
-
-\## 2.3 Networking must be measurable
-
-
-
-The networking layer MUST expose enough information for synchronization to measure:
-
-
-
-\* round-trip time;
-
-\* packet/message timing;
-
-\* connection state;
-
-\* connection establishment duration;
-
-\* transfer progress;
-
-\* transfer failures;
-
-\* reconnect attempts;
-
-\* network changes;
-
-\* message ordering;
-
-\* message loss where applicable.
-
-
-
-A connection that "seems connected" is insufficient.
-
-
+A connection that merely "seems connected" is insufficient.
 
 SoundMesh synchronization depends on measured behavior.
 
+---
 
+## 2.5 Control traffic and live audio traffic are different
 
-\---
+SoundMesh MUST distinguish between control traffic and live audio traffic.
 
-
-
-\## 2.4 Control traffic and bulk data are different
-
-
-
-SoundMesh MUST distinguish between:
-
-
-
-\### Control traffic
-
-
+### Control traffic
 
 Examples:
 
+* room information;
+* participant information;
+* readiness;
+* session state;
+* capture state;
+* synchronization commands;
+* synchronization probes;
+* heartbeat;
+* error reports;
+* recovery messages.
 
-
-\* room information;
-
-\* participant information;
-
-\* readiness;
-
-\* playback commands;
-
-\* pause;
-
-\* resume;
-
-\* seek;
-
-\* stop;
-
-\* synchronization probes;
-
-\* playback reports;
-
-\* heartbeat;
-
-\* error reports.
-
-
-
-\### Bulk data
-
-
+### Live audio traffic
 
 Examples:
 
-
-
-\* audio files;
-
-\* large metadata;
-
-\* future diagnostic exports.
-
-
+* captured audio frames;
+* audio frame timestamps;
+* sequence numbers;
+* stream metadata;
+* stream start information;
+* buffering information.
 
 These traffic classes should not be treated identically.
 
+Control messages generally require reliable delivery and ordering.
 
+Live audio requires low and predictable latency, bounded buffering, sequencing, loss handling, and backpressure behavior.
 
-Control messages require reliability and ordering.
+The exact transport strategy remains an implementation and experimental decision.
 
+---
 
+# 3. Initial Network Architecture
 
-Bulk transfer requires throughput, progress reporting, integrity verification, and resumability where practical.
-
-
-
-\---
-
-
-
-\# 3. Initial Network Architecture
-
-
-
-The initial SoundMesh architecture SHOULD use a \*\*host-and-participant topology\*\*.
-
-
+The initial SoundMesh architecture SHOULD use a **host-and-participant topology**.
 
 ```text
-
-&#x20;                   ┌───────────────┐
-
-&#x20;                   │     HOST      │
-
-&#x20;                   │               │
-
-&#x20;                   │ Room authority│
-
-&#x20;                   │ Session state │
-
-&#x20;                   │ Coordination  │
-
-&#x20;                   └───────┬───────┘
-
-&#x20;                           │
-
-&#x20;            ┌──────────────┼──────────────┐
-
-&#x20;            │              │              │
-
-&#x20;            ▼              ▼              ▼
-
-&#x20;       Participant     Participant    Participant
-
-&#x20;            A              B              C
-
+                    ┌───────────────┐
+                    │     HOST      │
+                    │               │
+                    │ Room authority│
+                    │ Session state │
+                    │ Audio source  │
+                    │ Coordination  │
+                    └───────┬───────┘
+                            │
+             ┌──────────────┼──────────────┐
+             │              │              │
+             ▼              ▼              ▼
+        Participant    Participant    Participant
+             A              B              C
 ```
 
+The host is responsible for room coordination and is the source of the live captured audio stream.
 
-
-The host is responsible for room coordination.
-
-
-
-Participants connect to the host.
-
-
-
-The host SHOULD NOT be treated as a continuous audio relay unless experiments prove that this architecture is necessary.
-
-
-
-The preferred model is:
-
-
+The primary live-audio path is:
 
 ```text
-
-Host
-
-&#x20;│
-
-&#x20;├── audio transfer ──> Participant A
-
-&#x20;├── audio transfer ──> Participant B
-
-&#x20;└── audio transfer ──> Participant C
-
+External Media App
+       ↓
+Host Audio Capture
+       ↓
+Captured Audio Frames
+       ↓
+Host Networking
+       ↓
+Participant Networking
+       ↓
+Participant Audio Buffer
+       ↓
+Synchronized Native Output
 ```
 
+The host MAY also use SoundMesh's native output pipeline if required for synchronization.
 
+The host MUST NOT be treated merely as a file distributor.
 
-followed by:
+SoundMesh does not transfer an audio file once and then abandon the network during playback.
 
+The live audio stream is part of the active session.
 
+---
+
+# 4. Live Audio Transport Model
+
+The previous file-distribution architecture is obsolete.
+
+SoundMesh MUST treat captured audio as a **live stream**.
+
+The conceptual pipeline is:
 
 ```text
-
-Host ── playback schedule ──> all participants
-
+External Media App
+        ↓
+AudioPlaybackCapture
+        ↓
+Captured PCM / audio frames
+        ↓
+Timestamp + sequence number
+        ↓
+Packetization
+        ↓
+Local network
+        ↓
+Participant jitter buffer
+        ↓
+Scheduled native output
 ```
 
+Audio frames are transient session data.
 
+The MVP does not require permanent storage of the captured stream.
 
-Each participant then plays its local copy.
-
-
-
-This minimizes continuous network dependence during playback.
-
-
-
-\---
-
-
-
-\# 4. Why Audio Should Prefer Local Distribution
-
-
-
-Streaming the audio continuously from the host to every participant creates unnecessary network sensitivity.
-
-
-
-A continuous stream would make playback dependent on:
-
-
-
-\* packet delivery;
-
-\* network jitter;
-
-\* bandwidth;
-
-\* buffering;
-
-\* host CPU;
-
-\* host upload capacity;
-
-\* temporary congestion.
-
-
-
-Instead, SoundMesh SHOULD preferably use:
-
-
+The network therefore has two simultaneous responsibilities:
 
 ```text
+CONTROL PLANE
+    ↓
+room + session + synchronization
 
-SELECT AUDIO
-
-&#x20;     ↓
-
-PREPARE AUDIO
-
-&#x20;     ↓
-
-TRANSFER AUDIO
-
-&#x20;     ↓
-
-VERIFY AUDIO
-
-&#x20;     ↓
-
-LOCAL BUFFER
-
-&#x20;     ↓
-
-CALIBRATE
-
-&#x20;     ↓
-
-SCHEDULE PLAYBACK
-
-&#x20;     ↓
-
-LOCAL PLAYBACK
-
+AUDIO PLANE
+    ↓
+live captured audio
 ```
 
+Both must coexist without allowing audio traffic to make room control unresponsive.
 
+---
 
-The network is then primarily responsible for \*\*coordination\*\*, rather than transporting every audio sample in real time.
+# 5. Audio Stream Ownership
 
+The external media application remains the source of truth for the media being played.
 
+Examples may include:
 
-This architecture is a design preference and must be validated experimentally.
+* YouTube;
+* VLC;
+* a browser;
+* Spotify;
+* another eligible Android media application.
 
+SoundMesh does not own:
 
+* the media library;
+* the song list;
+* the video;
+* subtitles;
+* seeking;
+* playback speed;
+* media metadata;
+* external application playback controls.
 
-\---
+The host external application produces audio.
 
+SoundMesh captures that audio and synchronizes its distribution.
 
+Therefore networking MUST NOT be designed around an `audioId` representing a transferable media file.
 
-\# 5. Network Topology
+---
 
-
-
-SoundMesh MUST support a topology in which all participating devices can establish direct local connections to the host.
-
-
-
-The first implementation SHOULD prioritize:
-
-
-
-1\. devices connected to the same Wi-Fi network;
-
-2\. a phone hotspot providing the local network;
-
-3\. later investigation of direct peer-to-peer networking.
-
-
-
-The architecture MUST NOT assume that an Internet router is available.
-
-
-
-\---
-
-
-
-\# 6. Local Wi-Fi
-
-
+# 6. Local Wi-Fi
 
 The primary MVP networking environment SHOULD be ordinary local Wi-Fi.
 
-
-
 Example:
 
-
-
 ```text
+              Wi-Fi Router
 
-&#x20;              Wi-Fi Router
+             /     |      \
 
-&#x20;             /     |      \\
-
-&#x20;            /      |       \\
-
-&#x20;         Host    Phone A  Phone B
-
+          Host    Phone A  Phone B
 ```
-
-
 
 The router does not need Internet access.
 
-
-
 It only needs to provide local connectivity.
-
-
 
 A completely offline Wi-Fi network is therefore valid.
 
+---
 
-
-\---
-
-
-
-\# 7. Phone Hotspot
-
-
+# 7. Phone Hotspot
 
 Phone hotspot support is an important target scenario.
 
-
-
 Example:
 
-
-
 ```text
-
-&#x20;          Host Phone
-
-&#x20;       Wi-Fi Hotspot
-
-&#x20;         /       \\
-
-&#x20;        /         \\
-
-&#x20;  Phone A       Phone B
-
+          Host Phone
+       Wi-Fi Hotspot
+         /       \
+        /         \
+  Phone A       Phone B
 ```
-
-
 
 The host may simultaneously:
 
-
-
-\* provide the local network;
-
-\* run the SoundMesh host session;
-
-\* participate in playback.
-
-
+* provide the local network;
+* run the SoundMesh host session;
+* capture external application audio;
+* participate in the synchronized output pipeline.
 
 This scenario MUST be tested separately from ordinary Wi-Fi.
 
-
-
-Hotspot behavior can differ between devices and operating systems.
-
-
+Hotspot behavior can differ between Android devices.
 
 SoundMesh MUST NOT assume that all phones expose identical hotspot behavior.
 
+---
 
-
-\---
-
-
-
-\# 8. Wi-Fi Direct / Peer-to-Peer
-
-
+# 8. Wi-Fi Direct / Peer-to-Peer
 
 Direct peer-to-peer networking SHOULD be treated as a future or experimental capability rather than an MVP dependency.
 
-
-
-Android currently provides Wi-Fi Direct service discovery that can operate without an existing network or hotspot, but it has platform-specific permission requirements, including `NEARBY\_WIFI\_DEVICES` for Android 13/API 33+ scenarios.
-
-
+Android provides platform-specific peer-to-peer mechanisms, but their permissions and behavior vary across devices and Android versions.
 
 Therefore:
 
-
-
 ```text
-
 MVP:
 
 Local Wi-Fi
-
-&#x20;  +
-
++
 Phone hotspot
-
-
 
 Future / Experimental:
 
 Wi-Fi Direct
-
-Other platform-specific P2P mechanisms
-
+Other peer-to-peer mechanisms
 ```
 
+The application architecture SHOULD allow future transports without rewriting the SoundMesh application protocol.
 
+---
 
-The application architecture MUST allow future transports without rewriting the SoundMesh application protocol.
+# 9. Protocol Independence
 
-
-
-\---
-
-
-
-\# 9. Cross-Platform Networking
-
-
-
-The on-wire protocol MUST be platform-neutral.
-
-
-
-The following should communicate identically:
-
-
-
-```text
-
-Android Host → Android Participant
-
-Android Host → iOS Participant
-
-iOS Host → Android Participant
-
-iOS Host → iOS Participant
-
-```
-
-
-
-Platform-specific networking implementations may differ.
-
-
-
-For example:
-
-
-
-```text
-
-Flutter
-
-&#x20;  │
-
-&#x20;  ├── Android implementation
-
-&#x20;  │      └── Kotlin networking
-
-&#x20;  │
-
-&#x20;  └── iOS implementation
-
-&#x20;         └── Swift networking
-
-```
-
-
-
-Both implementations must expose the same logical SoundMesh networking API.
-
-
-
-\---
-
-
-
-\# 10. Flutter Networking Boundary
-
-
-
-Flutter SHOULD own:
-
-
-
-\* networking state presentation;
-
-\* room UI;
-
-\* participant list;
-
-\* connection status;
-
-\* transfer progress UI;
-
-\* user actions;
-
-\* error presentation;
-
-\* application-level orchestration.
-
-
-
-Native platform code SHOULD own functionality that depends heavily on platform networking APIs or timing-sensitive behavior.
-
-
-
-Flutter's platform-channel architecture explicitly supports calling native Kotlin/Swift APIs, and Flutter recommends Pigeon when type-safe generated interfaces are appropriate.
-
-
-
-The preferred architecture is therefore:
-
-
-
-```text
-
-┌───────────────────────────────────────────────┐
-
-│                   Flutter                     │
-
-│                                               │
-
-│ UI                                            │
-
-│ Room state                                    │
-
-│ User actions                                  │
-
-│ Application orchestration                     │
-
-└──────────────────────┬────────────────────────┘
-
-&#x20;                      │
-
-&#x20;                Typed interface
-
-&#x20;                   / Pigeon
-
-&#x20;                      │
-
-&#x20;       ┌──────────────┴──────────────┐
-
-&#x20;       │                             │
-
-┌───────▼────────┐            ┌───────▼────────┐
-
-│ Android Native │            │   iOS Native   │
-
-│    Kotlin      │            │     Swift      │
-
-│                │            │                │
-
-│ Networking     │            │ Networking     │
-
-│ Discovery      │            │ Discovery      │
-
-│ Sockets        │            │ Network        │
-
-│ Platform APIs  │            │ framework      │
-
-└────────────────┘            └────────────────┘
-
-```
-
-
-
-High-frequency synchronization or timing traffic MUST NOT depend on repeatedly crossing the Flutter/native boundary.
-
-
-
-\---
-
-
-
-\# 11. iOS Networking
-
-
-
-On iOS, the preferred native networking foundation SHOULD be Apple's Network framework.
-
-
-
-SoundMesh should avoid making Multipeer Connectivity the architectural foundation.
-
-
-
-Apple's current networking guidance favors Network framework for custom networking, while local-network operations are governed by iOS local-network privacy rules.
-
-
-
-\---
-
-
-
-\# 12. iOS Local Network Permission
-
-
-
-An iOS SoundMesh application that communicates with devices on the local network MUST correctly implement Apple's local-network privacy requirements.
-
-
-
-The application must provide:
-
-
-
-```text
-
-NSLocalNetworkUsageDescription
-
-```
-
-
-
-in `Info.plist`.
-
-
-
-If Bonjour service discovery is used, the required Bonjour service types must also be declared through:
-
-
-
-```text
-
-NSBonjourServices
-
-```
-
-
-
-Apple explicitly documents that Bonjour registration, browsing, and resolution require local-network access.
-
-
-
-The application MUST provide a clear user-facing explanation for why local-network access is required.
-
-
-
-Example concept:
-
-
-
-> SoundMesh needs local network access to find and connect to nearby phones in your speaker group.
-
-
-
-The exact wording is a product/UI decision.
-
-
-
-\---
-
-
-
-\# 13. Android Networking
-
-
-
-Android networking SHOULD use standard platform networking APIs where practical.
-
-
-
-Android-specific discovery mechanisms may be implemented behind the networking abstraction.
-
-
-
-Android Wi-Fi Direct can provide service discovery without an existing local network, but its permissions and device behavior make it unsuitable as an assumed universal transport for the MVP.
-
-
-
-Android implementation MUST explicitly account for:
-
-
-
-\* Android API level;
-
-\* Wi-Fi state;
-
-\* nearby-device permissions;
-
-\* local network availability;
-
-\* hotspot behavior;
-
-\* background restrictions;
-
-\* connection changes.
-
-
-
-\---
-
-
-
-\# 14. Device Discovery
-
-
-
-Discovery answers:
-
-
-
-> "Which SoundMesh devices are available to join?"
-
-
-
-Discovery is separate from connection establishment.
-
-
-
-The preferred user flow is:
-
-
-
-```text
-
-Host creates room
-
-&#x20;       ↓
-
-Room receives identity
-
-&#x20;       ↓
-
-Host displays QR code
-
-&#x20;       ↓
-
-Participant scans QR
-
-&#x20;       ↓
-
-Participant obtains bootstrap information
-
-&#x20;       ↓
-
-Participant connects to host
-
-```
-
-
-
-Discovery therefore does not necessarily require automatic scanning.
-
-
-
-\---
-
-
-
-\# 15. QR Code Joining
-
-
-
-QR joining SHOULD be the primary MVP onboarding mechanism.
-
-
-
-The QR code should contain only the information necessary to bootstrap the connection.
-
-
-
-Conceptual structure:
-
-
-
-```text
-
-soundmesh://join?
-
-&#x20;   room=<room-id>
-
-&#x20;   host=<bootstrap-address>
-
-&#x20;   port=<bootstrap-port>
-
-&#x20;   version=<protocol-version>
-
-&#x20;   token=<short-lived-join-token>
-
-```
-
-
-
-The exact encoding is intentionally implementation-defined.
-
-
-
-The QR code MUST NOT contain:
-
-
-
-\* permanent credentials;
-
-\* user passwords;
-
-\* long-lived secrets;
-
-\* unnecessary personal information;
-
-\* audio data.
-
-
-
-\---
-
-
-
-\# 16. QR Code Security
-
-
-
-A QR code should be considered visible to nearby people.
-
-
-
-Therefore, the QR payload MUST NOT be treated as a permanent authentication credential.
-
-
-
-Room joining SHOULD use a short-lived, room-specific join credential.
-
-
-
-Example:
-
-
-
-```text
-
-Room ID
-
-\+
-
-Protocol version
-
-\+
-
-Short-lived join token
-
-```
-
-
-
-The token SHOULD:
-
-
-
-\* expire;
-
-\* be scoped to the current room;
-
-\* become invalid when the room closes;
-
-\* preferably become invalid after successful use or after a defined lifetime.
-
-
-
-\---
-
-
-
-\# 17. Room Identity
-
-
-
-Every active room MUST have a unique room identifier.
-
-
-
-Example conceptual format:
-
-
-
-```text
-
-roomId = random opaque identifier
-
-```
-
-
-
-The room ID must not be based solely on:
-
-
-
-\* device name;
-
-\* IP address;
-
-\* username;
-
-\* timestamp;
-
-\* phone model.
-
-
-
-Room IDs exist at the application protocol level.
-
-
-
-\---
-
-
-
-\# 18. Device Identity
-
-
-
-Every participant MUST have a unique identity within the current room.
-
-
-
-A participant identity should be generated locally.
-
-
-
-Example:
-
-
-
-```text
-
-participantId
-
-displayName
-
-deviceCapabilities
-
-protocolVersion
-
-```
-
-
-
-A participant ID is scoped to the room/session unless a future feature explicitly requires persistent identity.
-
-
-
-SoundMesh SHOULD avoid unnecessary persistent tracking.
-
-
-
-\---
-
-
-
-\# 19. Host Identity
-
-
-
-The host must also have a participant/device identity.
-
-
+The SoundMesh application protocol MUST NOT depend on a specific physical transport.
 
 Conceptually:
 
-
-
 ```text
-
-Room
-
-&#x20;├── Host
-
-&#x20;│    └── participantId
-
-&#x20;│
-
-&#x20;├── Participant
-
-&#x20;│    └── participantId
-
-&#x20;│
-
-&#x20;└── Participant
-
-&#x20;     └── participantId
-
-```
-
-
-
-The host additionally has room-authority responsibilities.
-
-
-
-\---
-
-
-
-\# 20. Transport Selection
-
-
-
-The initial networking architecture SHOULD use:
-
-
-
-\### TCP
-
-
-
-For:
-
-
-
-\* room control;
-
-\* participant management;
-
-\* session setup;
-
-\* audio transfer;
-
-\* metadata;
-
-\* reliable commands;
-
-\* configuration;
-
-\* state synchronization.
-
-
-
-\### UDP
-
-
-
-UDP SHOULD NOT be required for the initial implementation unless experiments demonstrate a measurable advantage.
-
-
-
-Potential future uses include:
-
-
-
-\* high-frequency timing probes;
-
-\* low-latency telemetry;
-
-\* specialized synchronization measurements.
-
-
-
-The synchronization system must determine whether UDP provides meaningful improvement.
-
-
-
-Do not introduce UDP merely because it is theoretically faster.
-
-
-
-\---
-
-
-
-\# 21. Why TCP Is Preferred Initially
-
-
-
-SoundMesh's primary network messages require:
-
-
-
-\* reliable delivery;
-
-\* ordering;
-
-\* connection state;
-
-\* simplicity;
-
-\* debugging;
-
-\* cross-platform implementation.
-
-
-
-TCP provides these properties.
-
-
-
-For the MVP, adding a custom reliability layer over UDP would create unnecessary complexity unless measurement proves it is required.
-
-
-
-The system can later introduce a specialized datagram channel without changing the logical application protocol.
-
-
-
-\---
-
-
-
-\# 22. Protocol Independence
-
-
-
-The SoundMesh protocol MUST NOT depend on a specific transport.
-
-
-
-Conceptually:
-
-
-
-```text
-
 SoundMesh Protocol
-
-&#x20;      │
-
-&#x20;      ▼
-
+        │
+        ▼
 Transport Interface
-
-&#x20;      │
-
-&#x20;  ┌───┴────┐
-
-&#x20;  │        │
-
-&#x20; TCP      UDP
-
+        │
+   ┌────┴────┐
+   │         │
+ TCP       Datagram
 ```
-
-
-
-This allows future experimentation.
-
-
 
 The application should think in terms of:
 
-
-
 ```text
-
 send(message)
-
 receive(message)
-
 ```
-
-
 
 rather than:
 
-
-
 ```text
-
 sendTCP(...)
-
 ```
-
-
 
 where practical.
 
+The same principle applies to the live audio transport.
 
+---
 
-\---
+# 10. Flutter Networking Boundary
 
+Flutter SHOULD own:
 
+* networking state presentation;
+* room UI;
+* participant list;
+* connection status;
+* audio-session status;
+* user actions;
+* error presentation;
+* application-level orchestration.
 
-\# 23. Connection Lifecycle
+Native Android code SHOULD own functionality that depends heavily on platform networking APIs or timing-sensitive behavior.
 
-
-
-A participant connection SHOULD follow this state machine:
-
-
-
-```text
-
-DISCONNECTED
-
-&#x20;    ↓
-
-CONNECTING
-
-&#x20;    ↓
-
-CONNECTED
-
-&#x20;    ↓
-
-AUTHENTICATING
-
-&#x20;    ↓
-
-READY
-
-&#x20;    ↓
-
-ACTIVE
-
-&#x20;    ↓
-
-DEGRADED
-
-&#x20;    ↓
-
-RECONNECTING
-
-&#x20;    ↓
-
-CONNECTED
-
-```
-
-
-
-Failure states may transition to:
-
-
+The preferred architecture is:
 
 ```text
-
-FAILED
-
+┌─────────────────────────────────────────────┐
+│                  Flutter                    │
+│                                             │
+│ UI                                          │
+│ Room state                                  │
+│ Session state                               │
+│ User actions                                │
+│ Application orchestration                  │
+└──────────────────────┬──────────────────────┘
+                       │
+                 Typed interface
+                   / Pigeon
+                       │
+┌──────────────────────▼──────────────────────┐
+│             Android Native Layer             │
+│                                             │
+│ Connection Manager                          │
+│ Room Manager                                │
+│ Protocol                                    │
+│ Transport                                   │
+│ Live Audio Transport                        │
+│ Timing Transport                            │
+└──────────────────────┬──────────────────────┘
+                       │
+                Local Network
 ```
 
+High-frequency synchronization and live-audio processing MUST NOT depend on repeatedly crossing the Flutter/native boundary.
 
+Flutter should receive meaningful state rather than every low-level network or audio event.
 
-or:
+---
 
+# 11. Android Networking
 
+Android networking SHOULD use standard platform networking APIs where practical.
+
+Android-specific discovery mechanisms may be implemented behind the networking abstraction.
+
+The Android implementation MUST explicitly account for:
+
+* Android API level;
+* nearby-device permissions where applicable;
+* local network availability;
+* hotspot behavior;
+* background restrictions;
+* connection changes;
+* foreground-service interaction;
+* network interface changes.
+
+---
+
+# 12. Device Discovery
+
+Discovery answers:
+
+> "Which SoundMesh devices are available to join?"
+
+Discovery is separate from connection establishment.
+
+The preferred MVP user flow is:
 
 ```text
-
-REMOVED
-
+Host creates room
+       ↓
+Room receives identity
+       ↓
+Host displays QR code
+       ↓
+Participant scans QR
+       ↓
+Participant obtains bootstrap information
+       ↓
+Participant connects to host
 ```
 
+Discovery therefore does not necessarily require automatic scanning.
 
+---
 
-depending on the reason.
+# 13. QR Code Joining
 
+QR joining SHOULD be the primary MVP onboarding mechanism.
 
+The QR code should contain only the information necessary to bootstrap the connection.
 
-\---
-
-
-
-\# 24. Connection Establishment
-
-
-
-A participant connection SHOULD follow:
-
-
+Conceptual structure:
 
 ```text
-
-QR scanned
-
-&#x20;   ↓
-
-Bootstrap information validated
-
-&#x20;   ↓
-
-Host address resolved
-
-&#x20;   ↓
-
-TCP connection established
-
-&#x20;   ↓
-
-Protocol handshake
-
-&#x20;   ↓
-
-Version compatibility checked
-
-&#x20;   ↓
-
-Join token validated
-
-&#x20;   ↓
-
-Participant registered
-
-&#x20;   ↓
-
-Room state received
-
-&#x20;   ↓
-
-Connection READY
-
+soundmesh://join?
+    room=<room-id>
+    host=<bootstrap-address>
+    port=<bootstrap-port>
+    version=<protocol-version>
+    token=<short-lived-join-token>
 ```
 
+The exact encoding is implementation-defined.
 
+The QR code MUST NOT contain:
 
-The participant MUST NOT be considered fully joined merely because the TCP socket opened.
+* permanent credentials;
+* user passwords;
+* long-lived secrets;
+* unnecessary personal information;
+* audio data.
 
+---
 
+# 14. QR Code Security
 
-\---
+A QR code should be considered visible to nearby people.
 
+Therefore, the QR payload MUST NOT be treated as a permanent authentication credential.
 
+Room joining SHOULD use a short-lived, room-specific join credential.
 
-\# 25. Protocol Handshake
+Example:
 
+```text
+Room ID
++
+Protocol version
++
+Short-lived join token
+```
 
+The token SHOULD:
 
-Every connection MUST begin with a protocol handshake.
+* expire;
+* be scoped to the current room;
+* become invalid when the room closes;
+* preferably become invalid after successful use or after a defined lifetime.
 
+---
 
+# 15. Room Identity
 
-The handshake should establish:
+Every active room MUST have a unique room identifier.
 
+Example:
 
+```text
+roomId = random opaque identifier
+```
 
-\* protocol version;
+The room ID must not be based solely on:
 
-\* participant ID;
+* device name;
+* IP address;
+* username;
+* timestamp;
+* phone model.
 
-\* device role;
+Room IDs exist at the application protocol level.
 
-\* supported capabilities;
+---
 
-\* session/room identity;
+# 16. Device Identity
 
-\* authentication/join authorization;
+Every participant MUST have a unique identity within the current room.
 
-\* optional transport capabilities.
+A participant identity should be generated locally.
 
+Example:
 
+```text
+participantId
+displayName
+deviceCapabilities
+protocolVersion
+```
+
+A participant ID is scoped to the room/session unless a future feature explicitly requires persistent identity.
+
+SoundMesh SHOULD avoid unnecessary persistent tracking.
+
+---
+
+# 17. Host Identity
+
+The host must also have a participant/device identity.
 
 Conceptually:
 
+```text
+Room
+ ├── Host
+ │    └── participantId
+ │
+ ├── Participant
+ │    └── participantId
+ │
+ └── Participant
+      └── participantId
+```
 
+The host additionally has room-authority responsibilities.
+
+---
+
+# 18. Transport Selection
+
+The initial implementation MAY use TCP for control traffic because it provides:
+
+* reliable delivery;
+* ordering;
+* connection state;
+* simplicity;
+* cross-platform implementation;
+* straightforward debugging.
+
+Live audio transport is a separate engineering concern.
+
+The initial live-audio transport SHOULD be selected through measurement rather than assumption.
+
+Possible approaches include:
 
 ```text
+TCP stream
+```
 
+or:
+
+```text
+Datagram-based audio transport
+```
+
+or another bounded-latency mechanism.
+
+No transport should be declared permanently optimal before real-device experiments.
+
+---
+
+# 19. Live Audio Transport Requirements
+
+The live audio transport MUST support the properties required by synchronized playback.
+
+At minimum, the audio stream needs:
+
+* sequence numbers;
+* timestamps;
+* stream/session identity;
+* bounded buffering;
+* ordering information;
+* loss detection;
+* duplicate detection where applicable;
+* backpressure;
+* stream-start coordination;
+* stream termination;
+* recovery behavior.
+
+A participant must be able to determine:
+
+```text
+Which audio frame is this?
+When was it captured?
+Which session does it belong to?
+Is it newer than what I already received?
+Can it be scheduled for output?
+```
+
+---
+
+# 20. Why Live Audio Requires Special Handling
+
+Unlike a file transfer, a live audio stream cannot simply wait for every byte to arrive before playback.
+
+The participant must continuously handle:
+
+```text
+capture
+   ↓
+transport
+   ↓
+network jitter
+   ↓
+buffer
+   ↓
+scheduled output
+```
+
+Network conditions may vary while the stream is active.
+
+Therefore SoundMesh needs a bounded jitter buffer rather than an unbounded queue.
+
+Too little buffering can cause:
+
+* underruns;
+* dropouts;
+* audible gaps.
+
+Too much buffering can cause:
+
+* excessive latency;
+* poor host/participant alignment;
+* delayed recovery.
+
+The correct buffering policy must be experimentally measured.
+
+---
+
+# 21. Audio Packetization
+
+Captured audio SHOULD be divided into bounded frames suitable for network transport.
+
+Conceptually:
+
+```text
+Captured Audio
+      ↓
+Frame 100
+Frame 101
+Frame 102
+Frame 103
+      ↓
+Network
+```
+
+Each frame should contain or be associated with:
+
+```text
+stream/session ID
+sequence number
+capture timestamp
+audio payload
+format information where required
+```
+
+The exact packet structure is implementation-defined.
+
+Frames MUST NOT rely solely on arrival order to determine playback order.
+
+---
+
+# 22. Audio Sequence Numbers
+
+Every live audio stream MUST use monotonically increasing sequence numbers or an equivalent ordering mechanism.
+
+Example:
+
+```text
+1001
+1002
+1003
+1004
+```
+
+If:
+
+```text
+1003
+```
+
+arrives after:
+
+```text
+1004
+```
+
+the participant must recognize that the frame arrived out of order.
+
+Missing sequence numbers should be detectable.
+
+Example:
+
+```text
+1001
+1002
+1004
+```
+
+indicates that frame `1003` may have been lost or delayed.
+
+The audio subsystem determines the appropriate recovery behavior.
+
+---
+
+# 23. Audio Timestamps
+
+Every live audio frame MUST be associated with timing information sufficient for synchronized output.
+
+Timestamps SHOULD originate from an appropriate monotonic/native timing source.
+
+Wall-clock time MUST NOT be used as the primary high-precision synchronization clock.
+
+The synchronization specification defines how these timestamps are interpreted.
+
+Networking is responsible for transporting them accurately.
+
+---
+
+# 24. Stream Start Coordination
+
+Participants MUST NOT simply begin output when the first audio frame arrives.
+
+The first received frame is subject to unknown network delay.
+
+Instead, the session should establish:
+
+```text
+stream established
+       ↓
+buffer sufficient audio
+       ↓
+shared timing information
+       ↓
+future output target
+       ↓
+scheduled output
+```
+
+This allows the synchronization layer to account for network and device timing.
+
+---
+
+# 25. Host Audio Latency
+
+The host presents a special synchronization problem.
+
+The external media application may produce sound directly through the host's audio output while SoundMesh simultaneously captures that audio for distribution.
+
+Therefore:
+
+```text
+External App
+     │
+     ├──────────────→ Host direct output
+     │
+     ↓
+SoundMesh Capture
+     ↓
+Network
+     ↓
+Participants
+```
+
+The host's direct audio path and participant audio path may have different latency.
+
+This latency difference MUST be measured.
+
+SoundMesh MUST NOT assume that:
+
+```text
+host capture timestamp
+=
+host audible output timestamp
+```
+
+The final host-output synchronization strategy remains an experimental architecture question.
+
+---
+
+# 26. Control Traffic
+
+Control messages include:
+
+* room state;
+* participant state;
+* session state;
+* capture state;
+* synchronization commands;
+* stream lifecycle;
+* errors;
+* recovery;
+* heartbeats.
+
+Control messages MUST remain responsive even while live audio traffic is active.
+
+---
+
+# 27. Control Plane vs Audio Plane
+
+The networking subsystem should conceptually expose:
+
+```text
+CONTROL PLANE
+
+├── room state
+├── participant state
+├── session state
+├── synchronization commands
+├── errors
+└── heartbeats
+
+
+AUDIO PLANE
+
+├── live audio frames
+├── sequence numbers
+├── capture timestamps
+├── stream state
+└── buffering telemetry
+```
+
+They may initially share a physical connection.
+
+They remain logically separate.
+
+---
+
+# 28. Protocol Independence
+
+The logical SoundMesh protocol MUST remain independent of whether the underlying transport is:
+
+```text
+TCP
+UDP/datagram
+future transport
+```
+
+The same application-level concepts should remain valid.
+
+This allows the live audio transport to evolve without redesigning room management.
+
+---
+
+# 29. Connection Lifecycle
+
+A participant connection SHOULD follow:
+
+```text
+DISCONNECTED
+      ↓
+CONNECTING
+      ↓
+CONNECTED
+      ↓
+AUTHENTICATING
+      ↓
+READY
+      ↓
+ACTIVE
+      ↓
+DEGRADED
+      ↓
+RECONNECTING
+      ↓
+CONNECTED
+```
+
+Failure states may transition to:
+
+```text
+FAILED
+```
+
+or:
+
+```text
+REMOVED
+```
+
+depending on the reason.
+
+---
+
+# 30. Connection Establishment
+
+A participant connection SHOULD follow:
+
+```text
+QR scanned
+    ↓
+Bootstrap information validated
+    ↓
+Host address resolved
+    ↓
+Transport connection established
+    ↓
+Protocol handshake
+    ↓
+Version compatibility checked
+    ↓
+Join token validated
+    ↓
+Participant registered
+    ↓
+Room/session state received
+    ↓
+Connection READY
+```
+
+The participant MUST NOT be considered fully joined merely because a socket opened.
+
+---
+
+# 31. Protocol Handshake
+
+Every connection MUST begin with a protocol handshake.
+
+The handshake should establish:
+
+* protocol version;
+* participant ID;
+* device role;
+* supported capabilities;
+* session/room identity;
+* authentication/join authorization;
+* audio transport capabilities.
+
+Conceptually:
+
+```text
 Participant → Host:
 
 HELLO
 
 
-
 Host → Participant:
 
 WELCOME
-
 ```
 
+---
 
-
-\---
-
-
-
-\# 26. Protocol Versioning
-
-
+# 32. Protocol Versioning
 
 Every protocol implementation MUST declare a protocol version.
 
-
-
 Example:
 
-
-
 ```text
-
 protocolMajor
-
 protocolMinor
-
 ```
-
-
 
 Major-version incompatibility SHOULD result in rejection.
 
-
-
 Minor-version differences MAY be supported when compatibility is explicitly defined.
-
-
 
 The application MUST NOT silently assume compatibility.
 
+---
 
-
-Example:
-
-
-
-```text
-
-Host:      1.2
-
-Participant: 1.1
-
-
-
-→ compatibility rules determine whether joining is allowed
-
-```
-
-
-
-\---
-
-
-
-\# 27. Message Envelope
-
-
+# 33. Message Envelope
 
 All SoundMesh protocol messages SHOULD use a common envelope.
 
-
-
 Conceptual structure:
 
-
-
 ```text
-
 Message {
-
-&#x20;   protocolVersion
-
-&#x20;   messageType
-
-&#x20;   messageId
-
-&#x20;   sessionId
-
-&#x20;   senderId
-
-&#x20;   generation
-
-&#x20;   timestamp
-
-&#x20;   payload
-
+    protocolVersion
+    messageType
+    messageId
+    sessionId
+    senderId
+    generation
+    timestamp
+    payload
 }
-
 ```
-
-
 
 Not every field must be transmitted in exactly this form.
 
-
-
 The final wire format is an implementation decision.
 
+The protocol MUST provide equivalent semantics.
 
+---
 
-The protocol MUST, however, provide equivalent semantics.
-
-
-
-\---
-
-
-
-\# 28. Message IDs
-
-
+# 34. Message IDs
 
 Messages that require acknowledgement SHOULD have unique message IDs.
 
-
-
 Example:
 
-
-
 ```text
-
-messageId = random/monotonic unique identifier
-
+messageId = unique identifier
 ```
-
-
 
 This allows the receiver to detect:
 
+* duplicates;
+* retries;
+* acknowledgements;
+* stale messages.
 
+---
 
-\* duplicates;
+# 35. Generation Numbers
 
-\* retries;
-
-\* acknowledgements;
-
-\* stale commands.
-
-
-
-\---
-
-
-
-\# 29. Generation Numbers
-
-
-
-Playback-related commands MUST include a generation or equivalent ordering mechanism.
-
-
+State-changing session commands MUST include a generation or equivalent ordering mechanism.
 
 Example:
 
-
-
 ```text
-
 generation = 42
-
 ```
 
+A participant receiving generation `42` after already processing generation `43` MUST NOT execute the stale state change.
 
+Generations protect against delayed network messages modifying newer session state.
 
-A participant receiving:
+---
 
+# 36. Core Message Categories
 
+The protocol SHOULD support categories such as:
 
-```text
+### Session
 
-generation 42
+* `HELLO`
+* `WELCOME`
+* `JOIN_REQUEST`
+* `JOIN_ACCEPTED`
+* `JOIN_REJECTED`
+* `LEAVE`
+* `ROOM_STATE`
+* `SESSION_STATE`
 
-```
+### Device
 
+* `DEVICE_INFO`
+* `DEVICE_CAPABILITIES`
+* `DEVICE_STATE`
 
+### Capture
 
-after already processing:
+* `CAPTURE_STATE`
+* `CAPTURE_CAPABILITIES`
+* `CAPTURE_STARTED`
+* `CAPTURE_STOPPED`
+* `CAPTURE_ERROR`
 
+### Audio Stream
 
+* `AUDIO_STREAM_INFO`
+* `AUDIO_STREAM_START`
+* `AUDIO_STREAM_STOP`
+* `AUDIO_BUFFER_STATUS`
+* `AUDIO_STREAM_ERROR`
 
-```text
+Actual audio frames may use a dedicated binary transport rather than normal control messages.
 
-generation 43
+### Synchronization
 
-```
+* `TIME_SYNC_REQUEST`
+* `TIME_SYNC_RESPONSE`
+* `SYNC_STATUS`
+* `TIMING_REPORT`
+* `DRIFT_REPORT`
+* `RESYNC_REQUEST`
 
+### Health
 
-
-MUST NOT execute the stale command.
-
-
-
-This prevents delayed network messages from accidentally modifying current playback state.
-
-
-
-\---
-
-
-
-\# 30. Core Message Categories
-
-
-
-The protocol SHOULD support message categories such as:
-
-
-
-\### Session
-
-
-
-\* `HELLO`
-
-\* `WELCOME`
-
-\* `JOIN\_REQUEST`
-
-\* `JOIN\_ACCEPTED`
-
-\* `JOIN\_REJECTED`
-
-\* `LEAVE`
-
-\* `ROOM\_STATE`
-
-
-
-\### Device
-
-
-
-\* `DEVICE\_INFO`
-
-\* `DEVICE\_CAPABILITIES`
-
-\* `DEVICE\_STATE`
-
-
-
-\### Audio
-
-
-
-\* `AUDIO\_INFO`
-
-\* `AUDIO\_REQUEST`
-
-\* `AUDIO\_TRANSFER\_START`
-
-\* `AUDIO\_TRANSFER\_PROGRESS`
-
-\* `AUDIO\_TRANSFER\_COMPLETE`
-
-\* `AUDIO\_VERIFY`
-
-\* `AUDIO\_READY`
-
-
-
-\### Synchronization
-
-
-
-\* `TIME\_SYNC\_REQUEST`
-
-\* `TIME\_SYNC\_RESPONSE`
-
-\* `SYNC\_STATUS`
-
-\* `PLAYBACK\_POSITION`
-
-\* `DRIFT\_REPORT`
-
-
-
-\### Playback
-
-
-
-\* `PREPARE`
-
-\* `PLAY`
-
-\* `PAUSE`
-
-\* `RESUME`
-
-\* `SEEK`
-
-\* `STOP`
-
-
-
-\### Health
-
-
-
-\* `PING`
-
-\* `PONG`
-
-\* `HEARTBEAT`
-
-\* `ERROR`
-
-
+* `PING`
+* `PONG`
+* `HEARTBEAT`
+* `ERROR`
 
 The exact message set may evolve.
 
+---
 
+# 37. Reliable Commands
 
-\---
-
-
-
-\# 31. Reliable Commands
-
-
-
-Playback commands such as:
-
-
-
-```text
-
-PLAY
-
-PAUSE
-
-RESUME
-
-SEEK
-
-STOP
-
-```
-
-
-
-MUST be delivered reliably.
-
-
+Commands that change room or session state MUST be delivered reliably.
 
 A command MUST NOT be silently lost.
 
-
-
 Commands should contain enough information to determine whether they are:
 
+* current;
+* duplicated;
+* stale;
+* already executed.
 
+Live audio frames are handled separately because retransmitting every lost frame may increase latency beyond the value of the missing frame.
 
-\* current;
+---
 
-\* duplicated;
+# 38. Session Command Model
 
-\* stale;
-
-\* already executed.
-
-
-
-\---
-
-
-
-\# 32. Playback Command Model
-
-
-
-A playback command should conceptually contain:
-
-
+A session command should conceptually contain:
 
 ```text
-
 command {
-
-&#x20;   generation
-
-&#x20;   commandType
-
-&#x20;   targetPlaybackTime
-
-&#x20;   audioId
-
-&#x20;   position
-
+    generation
+    commandType
+    targetTime
+    sessionId
 }
-
 ```
-
-
 
 For example:
 
-
-
 ```text
+START_AUDIO_SESSION
 
-PLAY
-
-audioId = A
-
+sessionId = S
 targetTime = T
-
-position = 0
-
 generation = 18
-
 ```
 
+This does not mean:
 
-
-The command does not mean:
-
-
-
-> play immediately.
-
-
+> begin immediately.
 
 It means:
 
+> begin the corresponding session behavior at the specified synchronized timeline point.
 
+---
 
-> prepare to begin playback at the specified shared timeline position.
-
-
-
-This is consistent with the synchronization specification.
-
-
-
-\---
-
-
-
-\# 33. Synchronization Traffic
-
-
+# 39. Synchronization Traffic
 
 Networking MUST expose a mechanism for the synchronization layer to perform timestamp exchanges.
 
-
-
 Example:
 
-
-
 ```text
-
 Participant → Host
 
 t1
-
 
 
 Host → Participant
@@ -2077,3108 +1258,1722 @@ Host → Participant
 t2 / t3
 
 
-
 Participant
 
 t4
-
 ```
 
+The exact timing algorithm is defined by `synchronization.md`.
 
+Networking MUST preserve timestamps with sufficient accuracy for the synchronization algorithm.
 
-The exact packet structure is defined by `synchronization.md`.
-
-
-
-Networking MUST preserve the timestamps required by the synchronization algorithm as accurately as the selected transport permits.
-
-
-
-\---
-
-
-
-\# 34. Heartbeats
-
-
-
+---
+ 
+# 40. Heartbeats
+ 
 Connections SHOULD use heartbeats.
-
-
-
+ 
 Conceptually:
-
-
-
+ 
 ```text
-
 Host → Participant: PING
-
 Participant → Host: PONG
-
 ```
-
-
-
+ 
 Heartbeats allow SoundMesh to detect:
+ 
+* disconnected devices;
+* stalled connections;
+* network changes;
+* temporary failures.
+ 
+Heartbeat intervals MUST be centrally configurable.
+ 
+Default configuration:
+* Interval: 5 seconds
+* Timeout: 15 seconds (3 missed intervals)
+ 
+The heartbeat mechanism runs on the native layer (Android/iOS) to avoid Flutter timing bottlenecks. Both host and participant send PING at the configured interval and expect PONG responses. The receiver of a PING must respond with a PONG containing the original messageId for correlation.
+ 
+On heartbeat timeout:
+* Host: Marks the participant as disconnected, emits HEARTBEAT_TIMEOUT error
+* Participant: Initiates bounded reconnection attempts (see Reconnection)
+ 
+---
 
-
-
-\* disconnected devices;
-
-\* stalled connections;
-
-\* network changes;
-
-\* temporary failures.
-
-
-
-Heartbeat intervals MUST NOT be hard-coded throughout the application.
-
-
-
-They should be centrally configurable.
-
-
-
-\---
-
-
-
-\# 35. Heartbeat Failure
-
-
+# 41. Heartbeat Failure
 
 Missing one heartbeat MUST NOT immediately remove a participant.
 
-
-
 Networks can temporarily experience:
 
-
-
-\* congestion;
-
-\* scheduling delays;
-
-\* radio interference;
-
-\* OS scheduling delays.
-
-
+* congestion;
+* scheduling delays;
+* radio interference;
+* OS scheduling delays.
 
 The connection manager should use a failure threshold.
 
-
-
 Conceptually:
 
-
-
 ```text
-
 healthy
-
-&#x20;  ↓
-
+   ↓
 missed heartbeat
-
-&#x20;  ↓
-
+   ↓
 degraded
-
-&#x20;  ↓
-
+   ↓
 multiple failures
-
-&#x20;  ↓
-
+   ↓
 connection lost
-
 ```
-
-
 
 Exact thresholds must be experimentally determined.
-
-
-
-\---
-
-
-
-\# 36. Network Degradation
-
-
-
+ 
+---
+ 
+# 42. Network Degradation
+ 
 The networking system SHOULD distinguish:
-
-
-
+ 
 ```text
-
 CONNECTED
-
 DEGRADED
-
 DISCONNECTED
-
 ```
-
-
-
+ 
 A degraded connection may still be usable.
-
-
-
+ 
 Examples:
-
-
-
-\* increased RTT;
-
-\* increased jitter;
-
-\* delayed heartbeat;
-
-\* packet retransmission;
-
-\* reduced throughput.
-
-
-
-The synchronization system should receive this information.
-
-
-
-It may decide to:
-
-
-
-\* increase scheduling margin;
-
-\* recalibrate;
-
-\* reduce update frequency;
-
-\* pause;
-
-\* resynchronize.
-
-
-
-\---
-
-
-
-\# 37. Reconnection
-
-
-
+ 
+* increased RTT;
+* increased jitter;
+* delayed heartbeat;
+* increased audio-frame loss;
+* reduced throughput;
+* growing jitter-buffer pressure.
+ 
+The synchronization/audio systems should receive this information.
+ 
+They may decide to:
+ 
+* increase scheduling margin;
+* increase buffering within safe bounds;
+* resynchronize;
+* temporarily stop output;
+* recover the audio stream.
+ 
+Networking only reports the observed condition.
+ 
+---
+ 
+# 43. Reconnection
+ 
 Temporary network loss SHOULD trigger reconnection attempts.
-
-
-
+ 
 Conceptually:
-
-
-
+ 
 ```text
-
 ACTIVE
-
-&#x20; ↓
-
+  ↓
 CONNECTION LOST
-
-&#x20; ↓
-
+  ↓
 RECONNECTING
-
-&#x20; ↓
-
+  ↓
 RECONNECTED
-
-&#x20; ↓
-
+  ↓
 STATE RESYNC
-
-&#x20; ↓
-
-CALIBRATION
-
-&#x20; ↓
-
-READY
-
+  ↓
+TIMING REVALIDATION
+  ↓
+AUDIO STREAM RECOVERY
+  ↓
+ACTIVE
 ```
+ 
+A participant MUST NOT simply continue normal output after reconnecting without validating its session and timing state.
+ 
+## Reconnection Implementation
+ 
+The reconnection mechanism uses bounded retries with exponential backoff:
+ 
+* Maximum attempts: 5
+* Initial delay: 1 second
+* Exponential backoff: 1s, 2s, 4s, 8s, 10s (capped at 10s)
+* State during retry: `RECONNECTING` (distinct from `FAILED`)
+* On success: Returns to `CONNECTED` → `READY`, resumes heartbeat
+* On exhaustion: Emits `RECONNECTION_FAILED` error, transitions to `FAILED`
+ 
+The participant stores the last known host IP/port during initial connection for use during reconnection. Clean disconnect (user-initiated) does not trigger reconnection.
+ 
+---
 
-
-
-A participant MUST NOT immediately resume normal playback after reconnecting without validating its state.
-
-
-
-\---
-
-
-
-\# 38. Reconnection State Recovery
-
-
+# 44. Reconnection State Recovery
 
 After reconnection, the participant should obtain:
 
-
-
-\* current room generation;
-
-\* current audio ID;
-
-\* current playback state;
-
-\* current playback position;
-
-\* current session state;
-
-\* synchronization status;
-
-\* whether it must re-download audio;
-
-\* whether recalibration is required.
-
-
+* current room generation;
+* current session ID;
+* current capture/session state;
+* current audio stream state;
+* current timing state;
+* current synchronization information;
+* whether the audio stream is still active;
+* whether a fresh stream buffer is required;
+* whether recalibration is required.
 
 The participant should then determine whether it can:
 
-
-
 ```text
-
-resume
-
+resume current session
 ```
-
-
 
 or must:
 
-
-
 ```text
-
+rebuild buffer
 resynchronize
-
+restart audio stream participation
 ```
 
+---
 
+# 45. Live Audio Stream Recovery
 
-\---
+When the network loses live audio frames, the participant MUST NOT treat the event as a file-transfer failure.
 
+Instead, the audio pipeline should determine whether the missing frames can be:
 
+* recovered within the available latency budget;
+* concealed or skipped;
+* ignored because newer frames have already arrived;
+* handled by rebuilding the buffer;
+* handled by resynchronization.
 
-\# 39. Audio Transfer
+The exact policy is an audio/synchronization decision.
 
+---
 
-
-When the selected architecture distributes audio locally, audio transfer MUST be treated as a separate phase from playback.
-
-
-
-Recommended lifecycle:
-
-
-
-```text
-
-AUDIO\_SELECTED
-
-&#x20;     ↓
-
-AUDIO\_METADATA
-
-&#x20;     ↓
-
-TRANSFER
-
-&#x20;     ↓
-
-VERIFY
-
-&#x20;     ↓
-
-DECODE/PREPARE
-
-&#x20;     ↓
-
-AUDIO\_READY
-
-```
-
-
-
-Playback MUST NOT begin until every required participant has reached an acceptable preparation state.
-
-
-
-\---
-
-
-
-\# 40. Audio Integrity
-
-
-
-Transferred audio MUST be verified.
-
-
-
-A transfer completing successfully does not necessarily prove that the resulting file is correct.
-
-
-
-The system SHOULD use a content identifier or cryptographic hash.
-
-
-
-Conceptually:
-
-
-
-```text
-
-audioId
-
-contentLength
-
-contentHash
-
-format
-
-sampleRate
-
-channels
-
-duration
-
-```
-
-
-
-The participant verifies the received content against the expected identity.
-
-
-
-\---
-
-
-
-\# 41. Audio Transfer Resumption
-
-
-
-If practical, large audio transfers SHOULD support resumption.
-
-
-
-Example:
-
-
-
-```text
-
-Host:
-
-audio size = 20 MB
-
-
-
-Participant:
-
-received = 12 MB
-
-
-
-Connection lost
-
-
-
-Reconnect
-
-
-
-Participant:
-
-resume from 12 MB
-
-```
-
-
-
-This is not mandatory for the first prototype if files are small, but the architecture SHOULD avoid making resumability impossible.
-
-
-
-\---
-
-
-
-\# 42. File Transfer Must Not Block Control
-
-
-
-Audio transfer MUST NOT prevent important control messages from being processed.
-
-
-
-For example, while a large audio file is transferring:
-
-
-
-```text
-
-AUDIO DATA
-
-AUDIO DATA
-
-AUDIO DATA
-
-
-
-&#x20;       +--> PING
-
-&#x20;       +--> ROOM STATE
-
-&#x20;       +--> ERROR
-
-&#x20;       +--> CANCEL
-
-```
-
-
-
-The networking architecture must allow control traffic to remain responsive.
-
-
-
-\---
-
-
-
-\# 43. Participant Joining
-
-
+# 46. Participant Joining
 
 A participant joining an active room should follow:
 
-
-
 ```text
-
 SCAN QR
-
-&#x20;  ↓
-
+   ↓
 CONNECT
-
-&#x20;  ↓
-
+   ↓
 AUTHENTICATE
-
-&#x20;  ↓
-
+   ↓
 RECEIVE ROOM STATE
-
-&#x20;  ↓
-
-RECEIVE AUDIO IF NECESSARY
-
-&#x20;  ↓
-
-PREPARE
-
-&#x20;  ↓
-
-CALIBRATE
-
-&#x20;  ↓
-
+   ↓
+RECEIVE SESSION STATE
+   ↓
+CALIBRATE TIMING
+   ↓
+BUFFER LIVE AUDIO
+   ↓
+RECEIVE FUTURE OUTPUT TARGET
+   ↓
 READY
-
 ```
 
+If a live audio session is already active, the participant MUST NOT begin output merely because it receives audio data.
 
+It must synchronize to a future point on the shared timeline.
 
-If playback is already active, the participant MUST NOT automatically begin playing immediately.
+---
 
-
-
-It must be synchronized to the current playback timeline.
-
-
-
-\---
-
-
-
-\# 44. Late Joining
-
-
+# 47. Late Joining
 
 Late joiners must be handled explicitly.
 
+A participant joining while the room is already active should receive:
 
+* current room state;
+* current session state;
+* current audio stream metadata;
+* synchronization information;
+* required calibration;
+* a sufficient future audio buffer;
+* a future synchronization target.
 
-A participant joining while the room is already playing should receive:
+The participant then begins output at the appropriate future point.
 
+---
 
-
-\* current audio;
-
-\* current playback state;
-
-\* current playback position;
-
-\* synchronization information;
-
-\* required calibration;
-
-\* a future synchronization target.
-
-
-
-The participant then begins at the appropriate future point.
-
-
-
-\---
-
-
-
-\# 45. Participant Leaving
-
-
+# 48. Participant Leaving
 
 A participant may leave because of:
 
-
-
-\* user action;
-
-\* connection loss;
-
-\* application termination;
-
-\* battery shutdown;
-
-\* network failure;
-
-\* host removal.
-
-
+* user action;
+* connection loss;
+* application termination;
+* battery shutdown;
+* network failure;
+* host removal.
 
 The host should update room state.
 
-
-
 Remaining participants should not wait indefinitely for a device that has already left.
 
+---
 
-
-\---
-
-
-
-\# 46. Host Failure
-
-
+# 49. Host Failure
 
 The MVP does NOT require seamless host migration.
 
-
-
 If the host disappears:
 
-
-
 ```text
-
 HOST LOST
-
-&#x20;   ↓
-
+    ↓
 ROOM DEGRADED
-
-&#x20;   ↓
-
+    ↓
 PARTICIPANTS DETECT FAILURE
-
-&#x20;   ↓
-
+    ↓
 CONTROLLED RECOVERY
-
 ```
-
-
 
 The MVP may require the session to end and be recreated.
 
+Future versions may investigate participant-to-participant host migration.
 
+---
 
-Future versions may investigate:
-
-
-
-```text
-
-Participant → new host
-
-```
-
-
-
-but this should not complicate the first synchronization architecture.
-
-
-
-\---
-
-
-
-\# 47. Network Change
-
-
+# 50. Network Change
 
 A device may change network conditions while the application is running.
 
-
-
 Examples:
 
-
-
-\* Wi-Fi disconnect;
-
-\* Wi-Fi reconnect;
-
-\* hotspot changes;
-
-\* interface changes;
-
-\* temporary network loss;
-
-\* network becomes unavailable.
-
-
+* Wi-Fi disconnect;
+* Wi-Fi reconnect;
+* hotspot changes;
+* interface changes;
+* temporary network loss;
+* network becomes unavailable.
 
 A network change MUST trigger explicit state handling.
 
-
-
 It MUST NOT be treated as an invisible implementation detail.
 
+---
 
-
-\---
-
-
-
-\# 48. IP Addresses Are Not Device Identity
-
-
+# 51. IP Addresses Are Not Device Identity
 
 An IP address MUST NOT be used as the permanent identity of a participant.
 
-
-
 IP addresses can change.
-
-
 
 For example:
 
-
-
 ```text
-
 Participant A
 
 192.168.1.7
-
-&#x20;    ↓
-
+    ↓
 network reconnect
-
-&#x20;    ↓
-
+    ↓
 192.168.1.12
-
 ```
-
-
 
 The participant identity remains unchanged.
 
+Only the connection address changes.
 
+---
 
-The connection address changes.
-
-
-
-\---
-
-
-
-\# 49. Discovery vs Connection
-
-
+# 52. Discovery vs Connection
 
 These concepts MUST remain separate.
 
-
-
-\### Discovery
-
-
+### Discovery
 
 Answers:
-
-
 
 > Where is a SoundMesh service?
 
-
-
-\### Connection
-
-
+### Connection
 
 Answers:
-
-
 
 > Can I establish communication with that device?
 
-
-
-\### Authentication
-
-
+### Authentication
 
 Answers:
-
-
 
 > Is this participant allowed into this room?
 
-
-
-\### Session registration
-
-
+### Session registration
 
 Answers:
 
-
-
 > Is this participant currently part of the room?
-
-
 
 The implementation should not collapse these responsibilities into one mechanism.
 
+---
 
-
-\---
-
-
-
-\# 50. Bonjour / Service Discovery
-
-
-
-On Apple platforms, Bonjour is a candidate for local service discovery.
-
-
-
-If used, SoundMesh must correctly declare the relevant Bonjour service types and local-network permissions.
-
-
-
-Apple's current documentation states that Bonjour registration, browsing, and resolution require local-network access.
-
-
-
-Bonjour should therefore be considered a discovery mechanism, not the SoundMesh application protocol itself.
-
-
-
-\---
-
-
-
-\# 51. Android Service Discovery
-
-
-
-Android may use appropriate local-network discovery mechanisms.
-
-
-
-Wi-Fi Direct service discovery is available for direct nearby discovery even without an existing network, but permission and platform behavior must be accounted for.
-
-
-
-The exact Android discovery mechanism is:
-
-
-
-\*\*Status: EXPERIMENTAL\*\*
-
-
-
-It must be validated on real devices before becoming an architectural requirement.
-
-
-
-\---
-
-
-
-\# 52. QR as the MVP Discovery Escape Hatch
-
-
+# 53. QR as the MVP Discovery Escape Hatch
 
 The MVP should not become dependent on automatic discovery working perfectly.
 
-
-
-QR joining provides a deterministic fallback:
-
-
+QR joining provides a deterministic bootstrap:
 
 ```text
-
 Automatic discovery
-
-&#x20;      ↓
-
+       ↓
 if unavailable
-
-&#x20;      ↓
-
+       ↓
 QR bootstrap
-
-&#x20;      ↓
-
+       ↓
 direct connection
-
 ```
 
+This allows SoundMesh to function without requiring a sophisticated discovery system.
 
+---
 
-This is especially important for cross-platform reliability.
-
-
-
-\---
-
-
-
-\# 53. Network Security Model
-
-
+# 54. Network Security Model
 
 SoundMesh is a local application, but local networks cannot automatically be considered trusted.
 
-
-
-The system SHOULD assume that another device may be present on the same Wi-Fi network.
-
-
+The system SHOULD assume another device may be present on the same Wi-Fi network.
 
 Therefore, room communication SHOULD use:
 
-
-
-\* short-lived join credentials;
-
-\* room-scoped authorization;
-
-\* authenticated protocol messages;
-
-\* integrity protection;
-
-\* no unnecessary personal data.
-
-
+* short-lived join credentials;
+* room-scoped authorization;
+* authenticated protocol messages;
+* integrity protection;
+* no unnecessary personal data.
 
 The exact cryptographic protocol is an architectural decision that must be researched and recorded in `decisions.md`.
 
+---
 
-
-\---
-
-
-
-\# 54. Encryption
-
-
+# 55. Encryption
 
 Encryption SHOULD be used for sensitive room communication.
 
-
-
-However, cryptographic implementation MUST NOT be improvised.
-
-
+Cryptographic implementation MUST NOT be improvised.
 
 The project should prefer:
 
-
-
-\* established platform cryptographic APIs;
-
-\* established protocol libraries;
-
-\* standard authenticated encryption;
-
-\* well-reviewed primitives.
-
-
+* established Android cryptographic APIs;
+* established protocol libraries;
+* standard authenticated encryption;
+* well-reviewed primitives.
 
 The MVP must not invent a custom encryption algorithm.
 
+The encryption strategy for high-throughput audio transport must also be evaluated for CPU, latency, and battery impact.
 
+---
 
-\---
-
-
-
-\# 55. Threat Model
-
-
+# 56. Threat Model
 
 The minimum networking threat model should consider:
 
-
-
-\### Unauthorized room joining
-
-
+### Unauthorized room joining
 
 A nearby device attempts to join without permission.
 
-
-
-\### QR interception
-
-
+### QR interception
 
 Someone sees the QR code and attempts to join.
 
-
-
-\### Message injection
-
-
+### Message injection
 
 A device on the same network attempts to send fake control messages.
 
+### Message replay
 
+An old session command is resent.
 
-\### Message replay
-
-
-
-An old playback command is resent.
-
-
-
-\### Stale command execution
-
-
+### Stale command execution
 
 A delayed command arrives after a newer command.
 
-
-
-\### Room impersonation
-
-
+### Room impersonation
 
 A malicious device attempts to pretend to be the host.
 
+### Audio tampering
 
+Live audio data is modified or corrupted in transit.
 
-\### Audio tampering
+### Audio stream flooding
 
+A malicious device attempts to overwhelm a participant with excessive audio data.
 
-
-Transferred audio is modified or corrupted.
-
-
-
-\### Denial of service
-
-
+### Denial of service
 
 A malicious device floods the local room with traffic.
 
-
-
 The MVP does not need enterprise-grade security, but these threats should influence protocol design.
 
+---
 
-
-\---
-
-
-
-\# 56. Message Ordering
-
-
+# 57. Message Ordering
 
 Messages must be categorized according to whether ordering matters.
 
-
-
 For example:
 
-
-
 ```text
+SESSION_STATE generation 10
 
-PLAY generation 10
+SESSION_STATE generation 11
 
-PAUSE generation 11
-
-PLAY generation 12
-
+SESSION_STATE generation 12
 ```
 
-
-
-A delayed:
-
-
-
-```text
-
-PLAY generation 10
-
-```
-
-
-
-must not execute after generation 12.
-
-
+A delayed generation `10` message must not override generation `12`.
 
 Generation numbers or equivalent ordering metadata MUST therefore be used for state-changing commands.
 
+Live audio ordering is handled separately using sequence numbers.
 
+---
 
-\---
+# 58. Duplicate Messages
 
-
-
-\# 57. Duplicate Messages
-
-
-
-The protocol should tolerate duplicate messages where practical.
-
-
+The protocol should tolerate duplicate control messages where practical.
 
 Example:
 
-
-
 ```text
-
-PLAY #42
-
-PLAY #42
-
+SESSION_UPDATE #42
+SESSION_UPDATE #42
 ```
 
-
-
-The second instance should be recognized as a duplicate rather than causing a second playback operation.
-
-
+The second instance should be recognized as a duplicate rather than causing the state transition twice.
 
 This is especially important if future transports introduce retries.
 
+---
 
-
-\---
-
-
-
-\# 58. Error Model
-
-
+# 59. Error Model
 
 Networking errors MUST be structured.
 
-
-
 Examples:
 
-
-
 ```text
-
-NETWORK\_UNAVAILABLE
-
-CONNECTION\_REFUSED
-
-CONNECTION\_TIMEOUT
-
-AUTHENTICATION\_FAILED
-
-PROTOCOL\_MISMATCH
-
-ROOM\_NOT\_FOUND
-
-ROOM\_FULL
-
-TRANSFER\_FAILED
-
-TRANSFER\_CORRUPTED
-
-PEER\_DISCONNECTED
-
-NETWORK\_CHANGED
-
-PERMISSION\_DENIED
-
-DISCOVERY\_FAILED
-
+NETWORK_UNAVAILABLE
+NETWORK_UNREACHABLE
+CONNECTION_REFUSED
+CONNECTION_TIMEOUT
+HANDSHAKE_FAILED
+HEARTBEAT_TIMEOUT
+PROTOCOL_VERSION_MISMATCH
+AUTHENTICATION_FAILED
+ROOM_NOT_FOUND
+ROOM_FULL
+PEER_DISCONNECTED
+NETWORK_CHANGED
+PERMISSION_DENIED
+DISCOVERY_FAILED
+AUDIO_TRANSPORT_FAILED
+AUDIO_STREAM_INTERRUPTED
+AUDIO_BUFFER_UNDERRUN
+AUDIO_FRAME_LOSS
+TRANSPORT_UNAVAILABLE
 ```
-
-
 
 The UI should receive actionable error categories rather than raw socket exceptions.
 
+Audio-specific errors should remain distinguishable from ordinary connection failures.
 
+---
 
-\---
+### 59.1 Error Code Definitions
 
+| Error Code | Description |
+|------------|-------------|
+| `NETWORK_UNREACHABLE` | Host unreachable at IP layer (e.g., AP/client isolation, no route to host). Distinct from CONNECTION_REFUSED. |
+| `CONNECTION_REFUSED` | Host reachable at IP layer, but no listener on the target port. |
+| `CONNECTION_TIMEOUT` | TCP connection attempt timed out. |
+| `HANDSHAKE_FAILED` | TCP connected, but protocol/version mismatch or handshake protocol failure. |
+| `HEARTBEAT_TIMEOUT` | No heartbeat response within configured timeout threshold. |
+| `PROTOCOL_VERSION_MISMATCH` | Protocol version negotiation failed (major version mismatch). |
 
-
-\# 59. Permission Errors
-
-
+# 60. Permission Errors
 
 Platform permission failures MUST be surfaced separately from ordinary network failures.
 
-
-
 For example:
 
-
-
 ```text
-
-LOCAL\_NETWORK\_PERMISSION\_DENIED
-
+LOCAL_NETWORK_PERMISSION_DENIED
 ```
 
-
-
-should not be reported simply as:
-
-
+must not simply become:
 
 ```text
-
-CONNECTION\_FAILED
-
+CONNECTION_FAILED
 ```
 
-
+Similarly, audio-capture permission failures belong to the capture subsystem and must not be disguised as network failures.
 
 This allows the UI to explain the actual problem.
 
+---
 
-
-Apple explicitly documents local-network denial as a distinct condition that networking APIs such as Network framework can surface.
-
-
-
-\---
-
-
-
-\# 60. Network State Machine
-
-
+# 61. Network State Machine
 
 The overall networking subsystem SHOULD use a state machine similar to:
 
-
-
 ```text
-
-&#x20;                        ┌───────────────┐
-
-&#x20;                        │  DISCONNECTED │
-
-&#x20;                        └───────┬───────┘
-
-&#x20;                                │
-
-&#x20;                             connect
-
-&#x20;                                │
-
-&#x20;                                ▼
-
-&#x20;                        ┌───────────────┐
-
-&#x20;                        │   CONNECTING  │
-
-&#x20;                        └───────┬───────┘
-
-&#x20;                                │
-
-&#x20;                             success
-
-&#x20;                                │
-
-&#x20;                                ▼
-
-&#x20;                        ┌───────────────┐
-
-&#x20;                        │ AUTHENTICATING │
-
-&#x20;                        └───────┬───────┘
-
-&#x20;                                │
-
-&#x20;                             success
-
-&#x20;                                │
-
-&#x20;                                ▼
-
-&#x20;                        ┌───────────────┐
-
-&#x20;                        │     READY     │
-
-&#x20;                        └───────┬───────┘
-
-&#x20;                                │
-
-&#x20;                             active
-
-&#x20;                                │
-
-&#x20;                                ▼
-
-&#x20;                        ┌───────────────┐
-
-&#x20;                        │     ACTIVE    │
-
-&#x20;                        └───────┬───────┘
-
-&#x20;                                │
-
-&#x20;                        network degradation
-
-&#x20;                                │
-
-&#x20;                                ▼
-
-&#x20;                        ┌───────────────┐
-
-&#x20;                        │   DEGRADED    │
-
-&#x20;                        └───────┬───────┘
-
-&#x20;                                │
-
-&#x20;                        connection lost
-
-&#x20;                                │
-
-&#x20;                                ▼
-
-&#x20;                        ┌───────────────┐
-
-&#x20;                        │ RECONNECTING  │
-
-&#x20;                        └───────┬───────┘
-
-&#x20;                                │
-
-&#x20;                      ┌─────────┴─────────┐
-
-&#x20;                      │                   │
-
-&#x20;                   success              failure
-
-&#x20;                      │                   │
-
-&#x20;                      ▼                   ▼
-
-&#x20;                   ACTIVE              FAILED
-
+                         ┌───────────────┐
+                         │  DISCONNECTED │
+                         └───────┬───────┘
+                                 │
+                              connect
+                                 │
+                                 ▼
+                         ┌───────────────┐
+                         │   CONNECTING  │
+                         └───────┬───────┘
+                                 │
+                              success
+                                 │
+                                 ▼
+                         ┌───────────────┐
+                         │ AUTHENTICATING│
+                         └───────┬───────┘
+                                 │
+                              success
+                                 │
+                                 ▼
+                         ┌───────────────┐
+                         │     READY     │
+                         └───────┬───────┘
+                                 │
+                              active
+                                 │
+                                 ▼
+                         ┌───────────────┐
+                         │     ACTIVE    │
+                         └───────┬───────┘
+                                 │
+                         network degradation
+                                 │
+                                 ▼
+                         ┌───────────────┐
+                         │   DEGRADED    │
+                         └───────┬───────┘
+                                 │
+                         connection lost
+                                 │
+                                 ▼
+                         ┌───────────────┐
+                         │ RECONNECTING  │
+                         └───────┬───────┘
+                                 │
+                       ┌─────────┴─────────┐
+                       │                   │
+                    success              failure
+                       │                   │
+                       ▼                   ▼
+                    ACTIVE              FAILED
 ```
 
-
-
 The exact implementation may differ, but equivalent state semantics are required.
+ 
+## 61.1 Implemented State Machine (Phase 6)
+ 
+The Phase 6 implementation uses a simplified state machine aligned with the connection lifecycle:
+ 
+```text
+DISCONNECTED
+      ↓
+CONNECTING
+      ↓
+HANDSHAKING
+      ↓
+CONNECTED
+      ↓
+READY (handshake complete, room joined)
+      ↓
+RECONNECTING (on heartbeat timeout / connection loss)
+      ↓
+CONNECTED (reconnection success)
+      ↓
+READY (state resync)
+ 
+RECONNECTING → FAILED (after 5 bounded retries)
+CONNECTED → DISCONNECTED (clean leave / disconnect())
+```
+ 
+This state machine is exposed via `NetworkConnectionState` enum on the Dart side and corresponding string states on the native side.
+ 
+---
 
-
-
-\---
-
-
-
-\# 61. Networking and Synchronization Boundary
-
-
+# 62. Networking and Synchronization Boundary
 
 Networking provides:
 
-
-
 ```text
-
 Connection
-
 Message transport
-
+Audio transport
 Timestamps
-
+Sequence numbers
 RTT measurements
-
 Connection state
-
-Playback command delivery
-
+Stream state
 ```
-
-
 
 Synchronization provides:
 
-
-
 ```text
-
 Clock offset
-
 Clock relationship
-
 Latency interpretation
-
-Scheduled playback
-
+Shared timeline
+Scheduled output
 Drift estimation
-
 Drift correction
-
 Resynchronization
-
 ```
-
-
 
 Networking MUST NOT decide whether two devices are "synchronized."
 
+---
 
-
-\---
-
-
-
-\# 62. Timing Data Requirements
-
-
+# 63. Timing Data Requirements
 
 Networking must provide timestamps from an appropriate monotonic timing source where timing measurements are required.
 
-
-
 Wall-clock time such as:
 
-
-
 ```text
-
 2026-09-05 23:00:00
-
 ```
-
-
 
 must not be assumed to be suitable for precise synchronization.
 
-
-
 The synchronization layer defines the clock model.
 
+---
 
-
-\---
-
-
-
-\# 63. Control Plane vs Timing Plane
-
-
+# 64. Control Plane vs Timing Plane
 
 The networking architecture should conceptually distinguish:
 
-
-
 ```text
-
 CONTROL PLANE
 
 ├── room state
-
 ├── participant state
-
-├── playback commands
-
-├── audio metadata
-
+├── session state
 ├── errors
-
 └── heartbeats
-
 
 
 TIMING PLANE
 
 ├── timestamp exchange
-
 ├── RTT measurements
-
-├── playback position reports
-
-└── timing diagnostics
-
+├── timing reports
+└── synchronization diagnostics
 ```
-
-
 
 They may initially use the same physical connection.
 
-
-
 They remain logically separate so the timing system can evolve independently.
 
-
-
-\---
-
-
-
-\# 64. Avoiding Flutter Timing Bottlenecks
-
-
-
-High-frequency timing traffic MUST NOT require:
-
-
+The live audio plane is separate from both logically:
 
 ```text
+AUDIO PLANE
 
-Native
-
-&#x20; ↓
-
-Flutter
-
-&#x20; ↓
-
-Native
-
-&#x20; ↓
-
-Flutter
-
+├── audio frames
+├── sequence numbers
+├── capture timestamps
+├── stream state
+└── buffering
 ```
 
+---
 
+# 65. Avoiding Flutter Timing Bottlenecks
 
-for every timing event.
+High-frequency timing and audio traffic MUST NOT require:
 
+```text
+Native
+  ↓
+Flutter
+  ↓
+Native
+  ↓
+Flutter
+```
 
+for every event.
 
 Flutter is the application/UI layer.
 
+Timing-sensitive loops and audio transport processing should remain as close as practical to native timing and audio infrastructure.
 
+Flutter should receive meaningful state rather than every low-level frame or timestamp.
 
-Timing-sensitive loops should remain as close as practical to native timing and audio infrastructure.
+---
 
-
-
-Flutter should receive meaningful state rather than every low-level event.
-
-
-
-\---
-
-
-
-\# 65. Connection Manager
-
-
+# 66. Connection Manager
 
 The application SHOULD contain a dedicated connection manager responsible for:
 
-
-
-\* connection lifecycle;
-
-\* peer registration;
-
-\* reconnect attempts;
-
-\* connection state;
-
-\* message routing;
-
-\* heartbeat;
-
-\* protocol errors;
-
-\* transport abstraction.
-
-
+* connection lifecycle;
+* peer registration;
+* reconnect attempts;
+* connection state;
+* message routing;
+* heartbeat;
+* protocol errors;
+* transport abstraction.
 
 The connection manager MUST NOT contain audio synchronization algorithms.
 
+---
 
-
-\---
-
-
-
-\# 66. Room Manager
-
-
+# 67. Room Manager
 
 A room manager should be responsible for:
 
-
-
-\* room creation;
-
-\* room identity;
-
-\* participant registration;
-
-\* participant removal;
-
-\* room state;
-
-\* host authority;
-
-\* room lifecycle.
-
-
+* room creation;
+* room identity;
+* participant registration;
+* participant removal;
+* room state;
+* host authority;
+* room lifecycle.
 
 The room manager communicates with the connection manager.
 
+---
 
-
-\---
-
-
-
-\# 67. Protocol Layer
-
-
+# 68. Protocol Layer
 
 A dedicated protocol layer should convert application events into wire messages.
 
+Conceptually:
 
+```text
+RoomManager
+     ↓
+Protocol
+     ↓
+Transport
+     ↓
+Socket / Stream
+```
+
+This prevents application code from becoming coupled directly to transport implementation details.
+
+---
+
+# 69. Live Audio Transport Layer
+
+A dedicated live-audio transport layer should handle:
+
+* stream creation;
+* frame packetization;
+* sequence numbers;
+* timestamps;
+* sending;
+* receiving;
+* reordering;
+* loss detection;
+* buffering;
+* backpressure;
+* stream termination;
+* transport statistics.
 
 Conceptually:
 
-
-
 ```text
-
-RoomManager
-
-&#x20;    ↓
-
-Protocol
-
-&#x20;    ↓
-
+AudioCapture
+      ↓
+LiveAudioTransport
+      ↓
 Transport
-
-&#x20;    ↓
-
-Socket
-
+      ↓
+Network
+      ↓
+Transport
+      ↓
+LiveAudioTransport
+      ↓
+AudioOutput
 ```
 
+This layer must remain separate from the external media application's playback controls.
 
+---
 
-This prevents application code from becoming coupled directly to TCP/UDP implementation details.
-
-
-
-\---
-
-
-
-\# 68. Transport Layer
-
-
-
-The transport abstraction should expose operations such as:
-
-
+# 70. Suggested Logical Architecture
 
 ```text
-
-connect()
-
-disconnect()
-
-send()
-
-receive()
-
-close()
-
-getState()
-
+┌─────────────────────────────────────────────┐
+│                  Flutter                    │
+│                                             │
+│ UI                                          │
+│ Room Controller                             │
+│ Session Controller                          │
+│ Application State                           │
+└──────────────────────┬──────────────────────┘
+                       │
+                  Typed API
+                       │
+┌──────────────────────▼──────────────────────┐
+│             Android Native Layer             │
+│                                             │
+│ Connection Manager                          │
+│ Room Manager                                │
+│ Protocol                                    │
+│ Control Transport                           │
+│ Live Audio Transport                        │
+│ Timing Transport                            │
+│ Network Monitoring                          │
+└───────────────┬───────────────┬─────────────┘
+                │               │
+             Control         Audio
+             Traffic         Stream
+                │               │
+                └───────┬───────┘
+                        │
+                  Local Network
 ```
 
+Audio capture and native audio output are defined by `audio.md`, not by the networking layer.
 
+---
 
-The actual API can differ.
-
-
-
-The important property is that higher layers should not need to know whether communication is:
-
-
-
-```text
-
-TCP
-
-UDP
-
-future transport
-
-```
-
-
-
-\---
-
-
-
-\# 69. Suggested Logical Architecture
-
-
-
-```text
-
-┌──────────────────────────────────────────────┐
-
-│                  Flutter                     │
-
-│                                              │
-
-│ UI                                           │
-
-│ Room Controller                              │
-
-│ Playback Controller                          │
-
-│ Application State                             │
-
-└──────────────────────┬───────────────────────┘
-
-&#x20;                      │
-
-&#x20;                 Typed API
-
-&#x20;                      │
-
-┌──────────────────────▼───────────────────────┐
-
-│            Native Networking Layer            │
-
-│                                              │
-
-│ Connection Manager                           │
-
-│ Room Manager                                 │
-
-│ Protocol                                     │
-
-│ Transport                                    │
-
-│ Discovery                                    │
-
-│ Audio Transfer                               │
-
-│ Timing Transport                             │
-
-└──────────────────────┬───────────────────────┘
-
-&#x20;                      │
-
-&#x20;             ┌────────┴─────────┐
-
-&#x20;             │                  │
-
-&#x20;          Network            Network
-
-&#x20;          Interface          Interface
-
-```
-
-
-
-\---
-
-
-
-\# 70. Network Events
-
-
+# 71. Network Events
 
 The networking subsystem SHOULD emit structured events such as:
 
-
-
 ```text
-
 PeerConnected
-
 PeerDisconnected
-
 PeerDegraded
-
 PeerReconnected
 
 RoomStateChanged
+SessionStateChanged
 
-TransferStarted
-
-TransferProgress
-
-TransferCompleted
-
-TransferFailed
+AudioStreamStarted
+AudioStreamStopped
+AudioStreamDegraded
+AudioFrameLossDetected
+AudioBufferPressureChanged
 
 NetworkChanged
 
 ProtocolError
-
 PermissionError
-
+TransportError
 ```
-
-
 
 These events should be consumed by the application state layer.
 
+---
 
-
-\---
-
-
-
-\# 71. Observability
-
-
+# 72. Observability
 
 Networking must expose diagnostic information during development.
 
-
-
 Useful metrics include:
 
-
-
-\* connection establishment time;
-
-\* RTT;
-
-\* minimum RTT;
-
-\* RTT variance;
-
-\* bytes transferred;
-
-\* transfer duration;
-
-\* reconnect count;
-
-\* heartbeat failures;
-
-\* message count;
-
-\* failed messages;
-
-\* protocol errors;
-
-\* network state;
-
-\* active participant count.
-
-
+* connection establishment time;
+* RTT;
+* minimum RTT;
+* RTT variance;
+* audio bytes transmitted;
+* audio throughput;
+* audio frame rate;
+* frame loss;
+* frame reordering;
+* stream latency;
+* jitter-buffer depth;
+* buffer underruns;
+* reconnect count;
+* heartbeat failures;
+* message count;
+* failed messages;
+* protocol errors;
+* network state;
+* active participant count.
 
 These metrics are important for determining why synchronization succeeds or fails.
 
+---
 
-
-\---
-
-
-
-\# 72. Debug Mode
-
-
+# 73. Debug Mode
 
 A development/debug mode SHOULD expose networking diagnostics.
 
-
-
 Example:
 
-
-
 ```text
-
 Room: A7F2
-
 Role: HOST
-
-Peers: 4
-
-
+Peers: 3
 
 Peer A
-
 Connected: 12.4 s
-
 RTT: 8.2 ms
-
+Audio: ACTIVE
+Buffer: 84 ms
 State: READY
 
-
-
 Peer B
-
 Connected: 11.9 s
-
 RTT: 15.4 ms
-
-State: PLAYING
-
-
+Audio: ACTIVE
+Buffer: 91 ms
+State: ACTIVE
 
 Peer C
-
 Connected: 11.7 s
-
 RTT: 24.1 ms
-
+Audio: DEGRADED
+Buffer: 42 ms
 State: DEGRADED
-
 ```
-
-
 
 This should not necessarily be visible in the production UI.
 
+---
 
-
-\---
-
-
-
-\# 73. Network Stress Testing
-
-
+# 74. Network Stress Testing
 
 Networking must be tested under:
 
-
-
-\* high latency;
-
-\* variable latency;
-
-\* packet loss;
-
-\* temporary disconnection;
-
-\* Wi-Fi interference;
-
-\* bandwidth limitation;
-
-\* multiple simultaneous participants;
-
-\* hotspot mode;
-
-\* router-based Wi-Fi;
-
-\* Android-only groups;
-
-\* iOS-only groups;
-
-\* Android/iOS mixed groups.
-
-
+* high latency;
+* variable latency;
+* packet loss;
+* temporary disconnection;
+* Wi-Fi interference;
+* bandwidth limitation;
+* multiple simultaneous participants;
+* hotspot mode;
+* router-based Wi-Fi;
+* Android-only groups.
 
 Testing should use real devices wherever platform behavior matters.
 
+The MVP does not require iOS networking validation.
 
+---
 
-\---
-
-
-
-\# 74. Device Scaling
-
-
+# 75. Device Scaling
 
 The MVP target should be:
 
-
-
 ```text
-
 2 devices
-
 ```
-
-
 
 Then:
 
-
-
 ```text
-
 3 devices
-
 ↓
-
 5 devices
-
 ↓
-
 10 devices
-
 ↓
-
 larger groups
-
 ```
-
-
 
 The system MUST NOT claim support for an arbitrary number of devices without testing.
 
-
-
 The practical limit may be determined by:
 
+* network throughput;
+* host CPU;
+* audio encoding/transport cost;
+* connection count;
+* protocol overhead;
+* synchronization quality;
+* device hardware;
+* hotspot limitations;
+* audio buffering requirements.
 
+---
 
-\* network throughput;
+# 76. Network Scaling Strategy
 
-\* host CPU;
+Unlike the previous architecture, live audio MUST be transported during an active audio session.
 
-\* transfer bandwidth;
-
-\* connection count;
-
-\* protocol overhead;
-
-\* synchronization quality;
-
-\* device hardware;
-
-\* hotspot limitations.
-
-
-
-\---
-
-
-
-\# 75. Network Scaling Strategy
-
-
-
-The architecture should avoid requiring the host to continuously stream audio to every participant.
-
-
-
-Preferred:
-
-
+The initial topology is:
 
 ```text
-
-&#x20;             Host
-
-&#x20;         /     |     \\
-
-&#x20;      transfer transfer transfer
-
-&#x20;       /         |         \\
-
-&#x20;      A          B          C
-
-
-
-then:
-
-
-
-&#x20;      A          B          C
-
-&#x20;      │          │          │
-
-&#x20;      └──── local scheduled playback ────┘
-
+                 Host
+              /   |   \
+             /    |    \
+        audio   audio   audio
+          /       |       \
+         A        B        C
 ```
 
+The host therefore has to support simultaneous live audio delivery to participants.
 
+The architecture should be measured for:
 
-This should scale better than continuously streaming the same audio stream through the host.
+* host upload throughput;
+* CPU usage;
+* memory;
+* participant latency;
+* jitter;
+* packet/frame loss;
+* synchronization quality.
 
+If direct host-to-participant streaming becomes a bottleneck, future architectures may investigate:
 
+* peer-assisted forwarding;
+* relay participants;
+* multicast where available;
+* alternative transport strategies.
 
-\---
+These are experimental and MUST NOT become assumptions without measurement.
 
+---
 
-
-\# 76. Backpressure
-
-
+# 77. Backpressure
 
 The networking layer MUST account for slow participants.
 
-
-
 A slow participant must not indefinitely block faster participants.
-
-
 
 For example:
 
-
-
 ```text
-
-Participant A → READY
-
-Participant B → READY
-
-Participant C → TRANSFERRING
-
+Participant A → AUDIO HEALTHY
+Participant B → AUDIO HEALTHY
+Participant C → AUDIO DEGRADED
 ```
 
+The host should maintain explicit per-participant stream state.
 
+The audio/synchronization layers determine the appropriate response.
 
-The host should maintain explicit readiness state.
+Networking only reports the actual transport condition.
 
+---
 
-
-Playback policy belongs to the session/synchronization layer.
-
-
-
-The networking layer only reports the actual state.
-
-
-
-\---
-
-
-
-\# 77. Cancellation
-
-
+# 78. Cancellation
 
 Long-running operations should be cancellable.
 
-
-
 Examples:
 
-
-
-\* audio transfer;
-
-\* connection attempt;
-
-\* discovery;
-
-\* reconnection;
-
-\* room joining.
-
-
+* connection attempt;
+* discovery;
+* reconnection;
+* room joining;
+* live audio stream;
+* stream recovery.
 
 A cancelled operation must clean up:
 
+* sockets;
+* audio transport buffers;
+* timers;
+* pending callbacks;
+* state;
+* background tasks.
 
+---
 
-\* sockets;
-
-\* buffers;
-
-\* timers;
-
-\* temporary files;
-
-\* pending callbacks;
-
-\* state.
-
-
-
-\---
-
-
-
-\# 78. Resource Management
-
-
+# 79. Resource Management
 
 Networking code MUST avoid:
 
+* leaked sockets;
+* unbounded audio buffers;
+* infinite retry loops;
+* orphaned timers;
+* duplicate connections;
+* stale callbacks;
+* uncontrolled background tasks;
+* unbounded packet queues.
 
+Every connection and stream must have a clear owner and lifecycle.
 
-\* leaked sockets;
+---
 
-\* unbounded buffers;
-
-\* infinite retry loops;
-
-\* orphaned timers;
-
-\* duplicate connections;
-
-\* stale callbacks;
-
-\* uncontrolled background tasks.
-
-
-
-Every connection must have a clear owner and lifecycle.
-
-
-
-\---
-
-
-
-\# 79. Duplicate Connections
-
-
+# 80. Duplicate Connections
 
 The host should prevent multiple active connections representing the same participant identity.
 
-
-
 If a participant reconnects:
 
-
-
 ```text
-
 old connection
-
-&#x20;    ↓
-
+     ↓
 new connection
-
 ```
-
-
 
 the room manager must decide which connection is authoritative.
 
-
-
 The old connection should be invalidated.
 
+---
 
-
-\---
-
-
-
-\# 80. Room Closure
-
-
+# 81. Room Closure
 
 When the host closes a room:
 
-
-
 ```text
-
-ROOM\_CLOSING
-
-&#x20;    ↓
-
+ROOM_CLOSING
+     ↓
 notify participants
-
-&#x20;    ↓
-
+     ↓
 stop accepting joins
-
-&#x20;    ↓
-
-close active transfers
-
-&#x20;    ↓
-
+     ↓
+stop live audio stream
+     ↓
+close timing activity
+     ↓
 close connections
-
-&#x20;    ↓
-
-ROOM\_CLOSED
-
+     ↓
+ROOM_CLOSED
 ```
-
-
 
 Participants should cleanly return to the disconnected state.
 
+---
 
-
-\---
-
-
-
-\# 81. Network Permissions and UX
-
-
+# 82. Network Permissions and UX
 
 Permissions should be requested close to the moment they are needed.
 
-
-
 The user should understand:
 
-
-
 ```text
-
 Why does SoundMesh need this permission?
-
 ```
-
-
 
 rather than encountering an unexplained operating-system denial.
 
-
-
 The application must distinguish:
 
-
-
 ```text
-
 Permission denied
-
 ```
-
-
 
 from:
 
-
-
 ```text
-
 No devices found
-
 ```
-
-
 
 and:
 
-
-
 ```text
-
 Network unavailable
-
 ```
 
+and:
 
+```text
+Audio capture unavailable
+```
 
-\---
+and:
 
+```text
+Source application does not permit capture
+```
 
+---
 
-\# 82. No Internet Requirement
-
-
+# 83. No Internet Requirement
 
 A successful MVP test must be possible with:
 
-
-
 ```text
-
 Internet = OFF
-
 ```
-
-
 
 while:
 
-
-
 ```text
-
 Local Wi-Fi = ON
-
 ```
-
-
 
 The following must still work:
 
+* create room;
+* join room;
+* establish local connections;
+* capture eligible external audio;
+* transport live audio;
+* synchronize output;
+* monitor session state;
+* leave.
 
+Internet access must not be required by the SoundMesh architecture itself.
 
-\* create room;
+---
 
-\* join room;
+# 84. Failure Matrix
 
-\* transfer audio;
+| Failure                            | Expected networking behavior                 |
+| ---------------------------------- | -------------------------------------------- |
+| Wi-Fi unavailable                  | Clearly report network unavailable           |
+| Host unreachable                   | Connection fails with actionable state       |
+| Wrong room token                   | Reject join                                  |
+| Protocol mismatch                  | Reject connection                            |
+| Participant disconnects            | Mark participant disconnected                |
+| Participant reconnects             | Re-authenticate and resync state             |
+| Audio stream fails                 | Report stream failure and allow recovery     |
+| Audio frames are lost              | Detect loss and expose transport degradation |
+| Network temporarily degrades       | Mark connection degraded                     |
+| Host disappears                    | Enter controlled recovery                    |
+| Duplicate command                  | Ignore duplicate                             |
+| Stale command                      | Ignore stale generation                      |
+| Room closes                        | Disconnect cleanly                           |
+| Network changes                    | Re-evaluate connection and reconnect         |
+| Internet unavailable               | No effect on local operation                 |
+| Capture permission denied          | Capture subsystem reports permission failure |
+| Source audio is not captureable    | Report source incompatibility                |
+| Audio transport underruns          | Report stream degradation                    |
+| Participant cannot maintain buffer | Mark participant degraded                    |
 
-\* synchronize;
+---
 
-\* play;
-
-\* monitor;
-
-\* leave.
-
-
-
-This is a critical product requirement.
-
-
-
-\---
-
-
-
-\# 83. Failure Matrix
-
-
-
-| Failure                         | Expected networking behavior           |
-
-| ------------------------------- | -------------------------------------- |
-
-| Wi-Fi unavailable               | Clearly report network unavailable     |
-
-| Local-network permission denied | Explain permission requirement         |
-
-| Host unreachable                | Connection fails with actionable state |
-
-| Wrong room token                | Reject join                            |
-
-| Protocol mismatch               | Reject connection                      |
-
-| Participant disconnects         | Mark participant disconnected          |
-
-| Participant reconnects          | Re-authenticate and resync state       |
-
-| Audio transfer fails            | Report failure and allow retry         |
-
-| Audio corrupted                 | Reject verification                    |
-
-| Network temporarily degrades    | Mark connection degraded               |
-
-| Host disappears                 | Enter controlled recovery              |
-
-| Duplicate command               | Ignore duplicate                       |
-
-| Stale command                   | Ignore stale generation                |
-
-| Room closes                     | Disconnect cleanly                     |
-
-| Network changes                 | Re-evaluate connection and reconnect   |
-
-| Internet unavailable            | No effect on local playback            |
-
-
-
-\---
-
-
-
-\# 84. MVP Networking Requirements
-
-
+# 85. MVP Networking Requirements
 
 The MVP networking implementation MUST support:
 
+### Required
 
+* host/participant model;
+* local Wi-Fi;
+* phone hotspot testing;
+* QR-based room joining;
+* direct host-participant connections;
+* protocol handshake;
+* room identity;
+* participant identity;
+* protocol versioning;
+* reliable control messages;
+* live audio transport;
+* audio sequence numbers;
+* audio timestamps;
+* bounded participant buffering;
+* heartbeats;
+* connection state;
+* reconnect handling;
+* network failure reporting;
+* synchronization timestamp exchange;
+* generation-based stale-command protection;
+* offline local operation.
 
-\### Required
+### Preferred
 
+* automatic local discovery;
+* rich diagnostics;
+* graceful late joining;
+* degraded-network classification;
+* stream recovery without restarting the entire room.
 
+### Experimental
 
-\* host/participant model;
+* UDP/datagram audio transport;
+* specialized timing channel;
+* Wi-Fi Direct;
+* peer-to-peer audio forwarding;
+* multicast;
+* host migration;
+* advanced transport optimization.
 
-\* local Wi-Fi;
+---
 
-\* phone hotspot testing;
-
-\* QR-based room joining;
-
-\* direct host-participant connections;
-
-\* protocol handshake;
-
-\* room identity;
-
-\* participant identity;
-
-\* protocol versioning;
-
-\* reliable control messages;
-
-\* audio transfer;
-
-\* audio integrity verification;
-
-\* heartbeats;
-
-\* connection state;
-
-\* reconnect handling;
-
-\* network failure reporting;
-
-\* synchronization timestamp exchange;
-
-\* playback command delivery;
-
-\* generation-based stale-command protection;
-
-\* offline local operation.
-
-
-
-\### Preferred
-
-
-
-\* automatic local discovery;
-
-\* transfer resumption;
-
-\* rich diagnostics;
-
-\* graceful late joining;
-
-\* degraded-network classification.
-
-
-
-\### Experimental
-
-
-
-\* UDP timing channel;
-
-\* Wi-Fi Direct;
-
-\* peer-to-peer fallback;
-
-\* host migration;
-
-\* advanced transport optimization.
-
-
-
-\---
-
-
-
-\# 85. Explicit Non-Goals
-
-
+# 86. Explicit Non-Goals
 
 The MVP networking system is NOT required to provide:
 
+* Internet audio relay;
+* cloud relay servers;
+* global device discovery;
+* remote rooms over the Internet;
+* social networking;
+* user accounts;
+* persistent device identity;
+* enterprise networking;
+* arbitrary WAN synchronization;
+* seamless host migration;
+* unlimited device scaling;
+* media-file distribution;
+* SoundMesh-owned media playback;
+* media library synchronization;
+* subtitles or video synchronization;
+* seek/pause/playback control over the external media application.
 
+---
 
-\* Internet playback;
-
-\* cloud relay servers;
-
-\* global device discovery;
-
-\* remote rooms over the Internet;
-
-\* social networking;
-
-\* user accounts;
-
-\* persistent device identity;
-
-\* enterprise networking;
-
-\* arbitrary WAN synchronization;
-
-\* seamless host migration;
-
-\* unlimited device scaling.
-
-
-
-\---
-
-
-
-\# 86. Important Architectural Rule
-
-
+# 87. Important Architectural Rule
 
 Do not optimize the networking layer for theoretical throughput before measuring the actual SoundMesh bottleneck.
 
-
-
 The important question is not:
-
-
 
 > "What networking technology is fastest?"
 
-
-
 The important question is:
 
+> "What networking architecture produces the most reliable, measurable synchronized live audio on real heterogeneous Android devices with the least unnecessary complexity?"
 
+The architecture MUST prioritize measured:
 
-> "What networking architecture produces the most reliable, measurable, cross-platform synchronization with the least unnecessary complexity?"
+```text
+latency
+jitter
+frame loss
+buffer behavior
+CPU
+memory
+battery
+synchronization quality
+```
 
+over theoretical benchmark numbers.
 
+---
 
-\---
-
-
-
-\# 87. Experimental Networking Plan
-
-
+# 88. Experimental Networking Plan
 
 Networking should be validated progressively.
 
+## Experiment 1 — Basic Local Connection
 
-
-\## Experiment 1 — Basic Local Connection
-
-
-
-Two phones on the same Wi-Fi network.
-
-
+Two Android phones on the same Wi-Fi network.
 
 Verify:
 
+* connection;
+* handshake;
+* message exchange;
+* disconnect.
 
+---
 
-\* connection;
-
-\* handshake;
-
-\* message exchange;
-
-\* disconnect.
-
-
-
-\---
-
-
-
-\## Experiment 2 — QR Bootstrap
-
-
+## Experiment 2 — QR Bootstrap
 
 Verify:
-
-
 
 ```text
-
 QR
-
 → connect
-
 → authenticate
-
 → join
-
 ```
 
+---
 
-
-\---
-
-
-
-\## Experiment 3 — Offline Operation
-
-
+## Experiment 3 — Offline Operation
 
 Disable Internet access.
 
+Verify room creation, joining, control, and local networking.
 
+---
 
-Verify complete room functionality.
+## Experiment 4 — Live Audio Transport
 
+Use one Android device as the host.
 
-
-\---
-
-
-
-\## Experiment 4 — Audio Transfer
-
-
-
-Transfer the same audio file to two phones.
-
-
+Capture eligible external application audio.
 
 Verify:
 
+* audio frames are captured;
+* frames are packetized;
+* frames reach a participant;
+* sequence numbers are correct;
+* timestamps are preserved;
+* participant buffering works;
+* audio output is produced.
 
+---
 
-\* integrity;
+## Experiment 5 — Two-Device Synchronization
 
-\* duration;
-
-\* metadata;
-
-\* playback readiness.
-
-
-
-\---
-
-
-
-\## Experiment 5 — Timestamp Exchange
-
-
+Host and participant receive the same live captured audio.
 
 Measure:
 
+* capture-to-output latency;
+* network latency;
+* jitter;
+* output timing difference;
+* audible synchronization.
 
+Compare results against `synchronization.md`.
 
-\* RTT;
+---
 
-\* RTT variance;
+## Experiment 6 — External Source Compatibility
 
-\* clock offset estimation.
+Test several eligible external audio sources where technically and legally appropriate.
 
+Examples may include:
 
+* YouTube;
+* VLC;
+* browser audio;
+* Spotify;
+* other Android media applications.
 
-Compare results against the synchronization specification.
+Verify whether each source permits capture.
 
+The test must record incompatibilities rather than assuming every application is captureable.
 
+---
 
-\---
+## Experiment 7 — Host Direct Output vs Participant Output
 
+Measure:
 
+```text
+External app
+     ↓
+Host direct audio
+```
 
-\## Experiment 6 — Hotspot
+against:
 
+```text
+External app
+     ↓
+Capture
+     ↓
+Network
+     ↓
+Participant output
+```
 
+Determine the actual latency difference.
 
-Use one phone as a hotspot.
+This experiment is critical to the host synchronization architecture.
 
+---
 
+## Experiment 8 — Hotspot
+
+Use one Android phone as a hotspot.
 
 Test:
 
-
-
 ```text
-
 Host + 1 participant
-
 Host + 2 participants
-
 Host + 4 participants
-
 ```
 
+Measure connection reliability and live audio behavior.
 
+---
 
-\---
-
-
-
-\## Experiment 7 — Cross-Platform
-
-
-
-Test:
-
-
-
-```text
-
-Android → Android
-
-iOS → iOS
-
-Android → iOS
-
-iOS → Android
-
-```
-
-
-
-\---
-
-
-
-\## Experiment 8 — Network Stress
-
-
+## Experiment 9 — Network Stress
 
 Introduce:
 
-
-
-\* congestion;
-
-\* temporary disconnect;
-
-\* reconnect;
-
-\* high RTT;
-
-\* packet loss.
-
-
-
-Measure synchronization impact.
-
-
-
-\---
-
-
-
-\## Experiment 9 — Scaling
-
-
-
-Test:
-
-
-
-```text
-
-2
-
-3
-
-5
-
-10
-
-```
-
-
-
-devices where hardware availability permits.
-
-
+* congestion;
+* temporary disconnect;
+* reconnect;
+* high RTT;
+* jitter;
+* packet loss;
+* bandwidth limitation.
 
 Measure:
 
+* audio loss;
+* buffering;
+* underruns;
+* synchronization impact;
+* recovery time.
 
+---
 
-\* connection time;
+## Experiment 10 — Long Session
 
-\* transfer time;
+Run a continuous live audio session.
 
-\* RTT;
+Measure:
 
-\* synchronization quality;
+* drift;
+* buffer stability;
+* memory usage;
+* CPU usage;
+* battery impact;
+* frame loss;
+* reconnection behavior.
 
-\* CPU;
+---
 
-\* memory;
+## Experiment 11 — Scaling
 
-\* battery;
+Test:
 
-\* failure rate.
+```text
+2
+3
+5
+10
+```
 
+devices where hardware availability permits.
 
+Measure:
 
-\---
+* connection time;
+* audio throughput;
+* host CPU;
+* participant CPU;
+* memory;
+* network usage;
+* synchronization quality;
+* failure rate.
 
+---
 
-
-\# 88. Networking Acceptance Criteria
-
-
+# 89. Networking Acceptance Criteria
 
 The networking architecture is considered MVP-ready only when:
 
+1. two real Android devices can create and join a local room;
+2. the room works without Internet access;
+3. QR joining works reliably;
+4. participants receive unique identities;
+5. protocol versions are validated;
+6. reliable control messages work;
+7. live captured audio can be transported between devices;
+8. live audio frames contain usable sequence and timing information;
+9. participants maintain bounded audio buffers;
+10. the synchronization layer can perform timestamp exchanges;
+11. stale session commands cannot override newer state;
+12. heartbeats detect meaningful connection failures;
+13. temporary disconnections can be detected and handled;
+14. network failures produce actionable states;
+15. live audio transport remains responsive while control traffic is active;
+16. the architecture does not require Flutter for high-frequency timing or audio transport operations;
+17. network behavior is measurable;
+18. two real devices can produce synchronized audible output from the captured external audio;
+19. source applications that refuse capture are handled explicitly;
+20. host direct-output latency versus participant-output latency has been measured;
+21. background/foreground-service interaction required for the capture architecture has been validated;
+22. all important networking behavior has automated or repeatable tests;
+23. no Internet connection is required for ordinary SoundMesh operation;
+24. the networking architecture does not turn SoundMesh into a media player or file-distribution system.
 
+---
 
-1\. two real devices can create and join a local room;
-
-2\. the room works without Internet access;
-
-3\. QR joining works reliably;
-
-4\. participants receive a unique identity;
-
-5\. protocol versions are validated;
-
-6\. audio can be transferred and verified;
-
-7\. control commands are reliably delivered;
-
-8\. stale playback commands cannot override newer commands;
-
-9\. heartbeats detect meaningful connection failures;
-
-10\. temporary disconnections can be detected and handled;
-
-11\. the synchronization layer can perform timestamp exchanges;
-
-12\. network failures produce actionable states;
-
-13\. Android and iOS implementations can communicate through the same logical protocol;
-
-14\. the architecture does not require Flutter for high-frequency timing operations;
-
-15\. network behavior is measurable;
-
-16\. all important networking behavior has automated or repeatable tests;
-
-17\. no Internet connection is required for ordinary playback.
-
-
-
-\---
-
-
-
-\# 89. Open Questions
-
-
+# 90. Open Questions
 
 The following remain intentionally unresolved until experiments provide evidence.
 
-
-
-1\. Which exact Flutter networking abstraction should be used?
-
-2\. Should the initial implementation place all socket handling in native code?
-
-3\. Should TCP be implemented using native platform APIs or a shared Dart implementation?
-
-4\. What exact wire serialization format should be used?
-
-5\. JSON, MessagePack, protobuf, or another format?
-
-6\. Should timing probes use TCP initially?
-
-7\. Does UDP measurably improve synchronization?
-
-8\. What local discovery mechanism is most reliable cross-platform?
-
-9\. How reliable is Bonjour for the intended environment?
-
-10\. How reliable is Android service discovery across target devices?
-
-11\. How much should QR joining replace automatic discovery?
-
-12\. What exact join-token mechanism should be used?
-
-13\. Should connections use TLS or another authenticated encrypted transport?
-
-14\. How should encryption keys be established?
-
-15\. What is the best host failure strategy after MVP?
-
-16\. What is the practical maximum number of participants?
-
-17\. How should hotspot-specific limitations be handled?
-
-18\. How should network changes be detected on each platform?
-
-19\. How aggressively should reconnect attempts occur?
-
-20\. Should large audio transfers support resumable chunks in MVP?
-
-21\. Should the host distribute audio to all participants or should participants obtain it another way?
-
-22\. What transport behavior is required for background/locked devices?
-
-23\. Which network diagnostics should be visible to users?
-
-24\. Which diagnostics should remain developer-only?
-
-25\. Which networking choices produce the best synchronization results on real heterogeneous phones?
-
-
+1. Which exact Flutter networking abstraction should be used?
+2. Should initial socket handling remain entirely in native Android code?
+3. Should control transport use TCP initially?
+4. Should live audio use TCP initially?
+5. Does a datagram transport measurably improve live audio behavior?
+6. What exact wire serialization format should be used?
+7. JSON, MessagePack, protobuf, or another format?
+8. Should timing probes initially share the control transport?
+9. Does a specialized timing channel improve synchronization?
+10. What local discovery mechanism is most reliable on target Android devices?
+11. How much should QR joining replace automatic discovery?
+12. What exact join-token mechanism should be used?
+13. Should connections use TLS or another authenticated encrypted transport?
+14. How should encryption keys be established?
+15. What audio frame size provides the best latency/CPU tradeoff?
+16. Should the live audio stream use PCM or a compressed representation?
+17. What jitter-buffer depth provides the best reliability without excessive latency?
+18. How should lost audio frames be handled?
+19. How should the host's direct audio latency be measured?
+20. Should the host also route captured audio through the SoundMesh output pipeline?
+21. What transport behavior is required while the host switches to an external media application?
+22. What background/foreground-service behavior is required on target Android versions?
+23. How should source applications that disable capture be communicated to the user?
+24. What is the practical maximum number of participants?
+25. How should hotspot-specific limitations be handled?
+26. How should network changes be detected?
+27. How aggressively should reconnect attempts occur?
+28. Which diagnostics should be visible to users?
+29. Which diagnostics should remain developer-only?
+30. Which networking choices produce the best synchronization results on real heterogeneous Android phones?
 
 These questions MUST NOT silently become implementation decisions.
 
-
-
 They must be resolved through:
 
-
-
 ```text
-
 research
-
 → experiment
-
 → measurement
-
 → decision
-
 → documentation
-
 ```
-
-
 
 with major decisions recorded in `DOCS/decisions.md`.
 
+---
 
-
-\---
-
-
-
-\# 90. Final Networking Principle
-
-
+# 91. Final Networking Principle
 
 SoundMesh does not need the fanciest networking stack.
 
-
-
 It needs a networking layer that is:
 
-
-
-\* local-first;
-
-\* reliable;
-
-\* measurable;
-
-\* cross-platform;
-
-\* resilient;
-
-\* secure enough for its environment;
-
-\* simple enough to maintain;
-
-\* capable of providing precise timing information;
-
-\* independent from the Flutter UI;
-
-\* compatible with the synchronization architecture.
-
-
+* local-first;
+* reliable;
+* measurable;
+* low-latency;
+* resilient;
+* secure enough for its environment;
+* simple enough to maintain;
+* capable of carrying live captured audio;
+* capable of providing precise timing information;
+* independent from the Flutter UI;
+* compatible with the synchronization architecture.
 
 The networking system exists to make this possible:
 
-
-
 ```text
+                    SOUND MESH
 
-&#x20;                SOUND MESH
-
-&#x20;                    │
-
-&#x20;             ┌──────┴──────┐
-
-&#x20;             │             │
-
-&#x20;         NETWORK        TIMING
-
-&#x20;             │             │
-
-&#x20;      connect devices   measure clocks
-
-&#x20;      transfer audio   estimate latency
-
-&#x20;      send commands    schedule playback
-
-&#x20;      detect failure   correct drift
-
-&#x20;             │             │
-
-&#x20;             └──────┬──────┘
-
-&#x20;                    │
-
-&#x20;             COORDINATED AUDIO
-
-&#x20;                    │
-
-&#x20;         Multiple phones behave
-
-&#x20;            like one speaker
-
+                        │
+             ┌──────────┼──────────┐
+             │          │          │
+          NETWORK     AUDIO      TIMING
+             │          │          │
+       connect devices  │    measure clocks
+       send commands    │    estimate latency
+       detect failure   │    schedule output
+             │          │    correct drift
+             │          │          │
+             └──────────┼──────────┘
+                        │
+                 LIVE AUDIO SESSION
+                        │
+              Multiple phones behave
+                 like one speaker
 ```
 
+**Core principle:**
 
+> The network should carry the live sound and the coordination required to synchronize it, without turning SoundMesh into a media player.
 
-\*\*Core principle:\*\*
-
-
-
-> The network should carry coordination, not unnecessary complexity.
-
-
-
-> SoundMesh should make the network invisible to the user while making its behavior observable to the engineers.
-
-
-
+> SoundMesh should make network complexity invisible to the user while making its behavior observable to the engineers.

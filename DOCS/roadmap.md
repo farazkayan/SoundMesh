@@ -1,3017 +1,2197 @@
-\# SoundMesh — Engineering Roadmap
+# SoundMesh — Engineering Roadmap
 
+**Document Status:** REQUIRED
+**Document Type:** Engineering Roadmap / Build Plan
+**Applies To:** Entire SoundMesh repository
+**Primary Authority:** Development sequencing, milestones, dependencies, and scope
 
+**Related Documents:**
 
-\*\*Document Status:\*\* REQUIRED
+* `DOCS/blueprint.md`
+* `DOCS/architecture.md`
+* `DOCS/networking.md`
+* `DOCS/synchronization.md`
+* `DOCS/audio.md`
+* `DOCS/ui-ux.md`
+* `DOCS/decisions.md`
+* `DOCS/testing.md`
+* `DOCS/AI/ai-context.md`
+* `DOCS/AI/rules.md`
+* `DOCS/AI/task-protocol.md`
+* `AGENTS.md`
 
-\*\*Document Type:\*\* Engineering Roadmap / Build Plan
+---
 
-\*\*Applies To:\*\* Entire SoundMesh repository
-
-\*\*Primary Authority:\*\* Development sequencing, milestones, dependencies, and scope
-
-\*\*Related Documents:\*\*
-
-
-
-\* `DOCS/blueprint.md`
-
-\* `DOCS/architecture.md`
-
-\* `DOCS/networking.md`
-
-\* `DOCS/synchronization.md`
-
-\* `DOCS/audio.md`
-
-\* `DOCS/ui-ux.md`
-
-\* `DOCS/decisions.md`
-
-\* `DOCS/testing.md`
-
-\* `DOCS/AI/ai-context.md`
-
-\* `DOCS/AI/rules.md`
-
-\* `DOCS/AI/task-protocol.md`
-
-\* `AGENTS.md`
-
-
-
-\---
-
-
-
-\# 1. Purpose
-
-
+# 1. Purpose
 
 This document defines the recommended development order for SoundMesh.
 
-
-
 The roadmap exists to prevent the project from becoming:
 
-
-
-\* UI-first
-
-\* feature-heavy
-
-\* architecture-heavy without proof
-
-\* difficult to debug
-
-\* overloaded with speculative infrastructure
-
-\* focused on low-risk features while the core technical risk remains unproven
-
-
+* UI-first
+* feature-heavy
+* architecture-heavy without proof
+* difficult to debug
+* overloaded with speculative infrastructure
+* focused on low-risk features while the core technical risk remains unproven
 
 SoundMesh must be built in an order that attacks the highest-risk assumptions first.
 
+---
 
+# 2. Core Roadmap Principle
 
-\---
+The project follows:
 
+> **Prove the hardest technical assumption first, then build the product around the proven system.**
 
+For the current SoundMesh architecture, the highest-risk question is:
 
-\# 2. Core Roadmap Principle
+> **Can SoundMesh capture eligible external-app audio on Android, transport that live audio between nearby devices, and produce sufficiently synchronized physical audio output across heterogeneous phones?**
 
+This is substantially different from the previous file-distribution architecture.
 
+SoundMesh no longer depends on:
 
-The project should follow:
+* transferring an audio file
+* storing a shared audio asset
+* decoding the same file on every device
+* SoundMesh-owned media playback
+* synchronized play/pause/seek commands
 
+The external media application is now the source of truth for media playback.
 
+SoundMesh synchronizes the **live sound produced by that external application**.
 
-> \*\*Prove the hardest technical assumption first, then build the product around the proven system.\*\*
+---
 
+# 3. Development Strategy
 
-
-The hardest assumption is:
-
-
-
-> Can multiple heterogeneous phones reliably produce sufficiently synchronized audio using local networking and native audio scheduling?
-
-
-
-Therefore the project must not spend excessive development time polishing the application before this question is answered.
-
-
-
-\---
-
-
-
-\# 3. Development Strategy
-
-
-
-The roadmap follows these broad stages:
-
-
+The roadmap follows:
 
 ```text
-
-Foundation
-
-&#x20;   ↓
-
-Technical Spike
-
-&#x20;   ↓
-
+Repository Foundation
+        ↓
+Flutter / Native Foundation
+        ↓
+Android Capture Feasibility
+        ↓
+Two-Device Local Networking
+        ↓
+Room + QR Bootstrap
+        ↓
+Live Audio Transport
+        ↓
+Native Audio Output
+        ↓
+End-to-End Capture Pipeline
+        ↓
+Clock Synchronization
+        ↓
 Two-Device Synchronization
-
-&#x20;   ↓
-
-Reliable Room System
-
-&#x20;   ↓
-
-Audio Pipeline
-
-&#x20;   ↓
-
+        ↓
+Drift Detection / Correction
+        ↓
 Multi-Device Scaling
-
-&#x20;   ↓
-
-Recovery \& Resilience
-
-&#x20;   ↓
-
-Premium UX
-
-&#x20;   ↓
-
-Diagnostics \& Polish
-
-&#x20;   ↓
-
-Competition Validation
-
-&#x20;   ↓
-
-Release / Submission
-
+        ↓
+Failure Recovery
+        ↓
+Full Product UX
+        ↓
+Physical Validation
+        ↓
+Performance / Reliability
+        ↓
+Competition Hardening
 ```
 
+The roadmap deliberately brings **external-audio capture and live transport forward** because these are fundamental architectural risks.
 
+---
 
-\---
+# 4. Phase 0 — Repository Foundation
 
+**Status:** REQUIRED
 
-
-\# 4. Phase 0 — Repository Foundation
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Objective
-
-
+## Objective
 
 Create a clean engineering foundation before implementing product functionality.
 
+## Tasks
 
+* initialize repository structure
+* establish branches
+* establish documentation
+* establish `AGENTS.md`
+* establish AI development rules
+* configure formatting
+* configure linting
+* configure basic testing
+* establish package/project naming
+* establish development conventions
+* establish issue/task conventions
 
-\### Tasks
-
-
-
-\* initialize repository structure
-
-\* establish branches
-
-\* create documentation
-
-\* establish `AGENTS.md`
-
-\* establish AI development rules
-
-\* configure formatting
-
-\* configure linting
-
-\* configure basic testing
-
-\* establish package/project naming
-
-\* establish development conventions
-
-\* establish issue/task conventions
-
-
-
-\### Expected result
-
-
+## Expected Result
 
 The repository is ready for multiple developers and AI coding agents.
 
+## Exit Criteria
 
+* repository builds
+* project structure is understood
+* documentation is accessible
+* AI agents have repository instructions
+* basic CI/static checks exist where practical
 
-\### Exit criteria
+---
 
+# 5. Phase 1 — Flutter Application Shell
 
+**Status:** REQUIRED
 
-\* repository builds
-
-\* project structure is understood
-
-\* documentation is accessible
-
-\* AI agents have repository instructions
-
-\* basic CI/static checks exist where practical
-
-
-
-\---
-
-
-
-\# 5. Phase 1 — Flutter Application Shell
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Objective
-
-
+## Objective
 
 Create the smallest working Flutter application.
 
+## Tasks
 
+* initialize Flutter project
+* configure Android
+* establish app entry point
+* establish basic navigation
+* establish theme
+* establish design tokens
+* create placeholder screens
 
-\### Tasks
-
-
-
-\* initialize Flutter project
-
-\* configure Android
-
-\* configure iOS
-
-\* establish app entry point
-
-\* establish basic navigation
-
-\* establish theme
-
-\* implement initial design tokens
-
-\* create placeholder screens
-
-
-
-\### Initial screens
-
-
+## Initial Screens
 
 ```text
-
 Home
-
 Create Room
-
 Join Room
-
 Room
-
 Settings
-
 Diagnostics
-
 ```
-
-
 
 These do not need complete functionality yet.
 
+The MVP platform target is Android.
 
+iOS is not a required implementation target for the current architecture because arbitrary external-app audio capture is not part of the MVP.
 
-\### Exit criteria
+## Exit Criteria
 
+* application launches
+* navigation works
+* theme is applied
+* Android build works
+* design foundation exists
 
+---
 
-\* application launches
+# 6. Phase 2 — Native Android Bridge
 
-\* navigation works
+**Status:** REQUIRED
 
-\* theme is applied
+## Objective
 
-\* Android build works
-
-\* iOS build works where development environment permits
-
-
-
-\---
-
-
-
-\# 6. Phase 2 — Native Platform Bridge
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Objective
-
-
-
-Prove that Flutter can communicate cleanly with native Android/iOS systems.
-
-
-
-\### Tasks
-
-
-
-Create the initial native abstraction boundary.
-
-
+Establish a clean Flutter-to-native boundary for functionality that cannot safely live entirely in Flutter.
 
 Conceptually:
 
-
-
 ```text
-
 Flutter
-
-&#x20;  ↓
-
+   ↓
 Typed interface
-
-&#x20;  ↓
-
-Android / iOS implementation
-
+   ↓
+Native Android
 ```
 
+## Initial Native Capabilities
 
+The bridge should eventually expose controlled interfaces for:
 
-\### Initial capabilities
-
-
-
-The bridge should eventually support:
-
-
-
-\* device information
-
-\* native timing
-
-\* network operations
-
-\* audio operations
-
-
+* device information
+* native timing
+* networking
+* audio capture
+* audio output
+* session state
 
 Do not implement the entire system at once.
 
+## Important Rule
 
+Realtime audio and timing-critical operations must remain native.
 
-\### Exit criteria
+Flutter must not become the realtime audio processing or scheduling layer.
 
+## Exit Criteria
 
+A simple typed Flutter → native → Flutter operation works reliably.
 
-A simple typed Flutter → native → Flutter operation works reliably on supported platforms.
+---
 
+# 7. Phase 3 — Android External-Audio Capture Feasibility
 
+**Status:** CRITICAL / HIGHEST EARLY RISK
 
-\---
+## Objective
 
+Prove that SoundMesh can capture eligible external-app audio on real Android hardware.
 
+This phase exists **before building the complete audio pipeline**.
 
-\# 7. Phase 3 — Local Networking Spike
+## Core Experiment
 
+```text
+External Media App
+        ↓
+Android AudioPlaybackCapture
+        ↓
+Captured Audio Frames
+        ↓
+Local inspection
+```
 
+## Tasks
 
-\*\*Status:\*\* CRITICAL
+Implement the smallest possible native capture prototype that can:
 
+* request required user permission
+* create the MediaProjection session
+* configure AudioPlaybackCapture
+* capture eligible external-app audio
+* inspect captured frames
+* report capture format
+* report capture timestamps where available
+* detect capture interruption
+* stop capture cleanly
 
+## Test Sources
 
-\### Objective
+Test multiple real applications where permitted, for example:
 
+* YouTube
+* VLC
+* Spotify
+* browser-based media
 
+Do not assume every application allows capture.
 
-Prove that nearby devices can establish reliable local connections.
+## Required Failure Cases
 
+Test:
 
+* permission denied
+* permission revoked
+* source application refuses capture
+* capture becomes unavailable
+* unsupported format
+* capture interruption
+* route changes
+* application backgrounding
 
-\### First target
+## Exit Criteria
 
+At least one eligible external audio source can be captured reliably on physical Android hardware.
 
+The capture pipeline must produce inspectable audio frames.
+
+If Android capture limitations prevent the required product behavior, the architecture must be reconsidered before substantial downstream work continues.
+
+---
+
+# 8. Phase 4 — Local Networking Foundation
+
+**Status:** CRITICAL
+
+## Objective
+
+Prove that nearby physical Android devices can establish reliable local connections.
+
+## First Target
 
 Two physical devices.
 
-
-
-\### Tasks
-
-
-
-Implement the smallest possible networking prototype:
-
-
+## Flow
 
 ```text
-
 Host
-
-&#x20;↓
-
+ ↓
 Create room
-
-&#x20;↓
-
+ ↓
 Expose connection information
-
-&#x20;↓
-
+ ↓
 Participant
-
-&#x20;↓
-
+ ↓
 Connect
-
-&#x20;↓
-
+ ↓
 Handshake
-
 ```
 
-
-
-\### Test
-
-
-
-Send simple messages:
-
-
+## Basic Messages
 
 ```text
-
 PING
-
 PONG
-
 HELLO
-
 WELCOME
-
 ```
 
+## Do Not Build Yet
 
+* live audio transport
+* complex discovery
+* cloud infrastructure
+* large-room management
+* advanced authentication
+* unnecessary network abstraction
 
-\### Do not build yet
+## Existing Verification
 
+The original two-device networking spike has already been verified on physical Android hardware in both host and participant role directions.
 
+TCP hosting, connection, and structured message exchange were confirmed after resolving:
 
-\* audio streaming
+* main-thread dispatch for Pigeon Flutter API callbacks
+* hosting-socket idempotency/generation guards
+* frame-parser state corruption caused by payload-length state being reused across header/payload phases
 
-\* complex discovery
+iOS remains structurally implemented but untested and is not an MVP requirement.
 
-\* cloud infrastructure
+## Exit Criteria
 
-\* advanced authentication
+Two physical Android devices reliably connect and exchange structured messages over the intended local network.
 
-\* large room management
+---
 
+# 9. Phase 5 — Room Protocol
 
+**Status:** REQUIRED
 
-\### Exit criteria
+## Objective
 
+Turn the networking foundation into an actual SoundMesh room.
 
+## Implement
 
-Two physical phones can reliably connect and exchange structured messages over the intended local network.
+* room ID
+* participant ID
+* session ID
+* host state
+* participant state
+* protocol version
+* message IDs
+* generation numbers
+* connection state
+* capture/session state
+* room lifecycle
 
-Status: VERIFIED — Real two-device testing completed successfully on
-physical Android hardware in both host/participant role directions.
-TCP hosting, connection, and PING/PONG/HELLO/WELCOME message exchange
-confirmed working after fixing: main-thread dispatch for Pigeon
-FlutterApi callbacks, hosting-socket idempotency/generation guards, and
-a frame-parser state corruption bug (payloadBytesRead reuse across
-header/payload phases). iOS remains structurally implemented but
-UNTESTED (no macOS/Xcode access).
-
-
-
-\---
-
-
-
-\# 8. Phase 4 — Room Protocol
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Objective
-
-
-
-Turn the networking spike into an actual SoundMesh room.
-
-
-
-\### Implement
-
-
-
-\* room ID
-
-\* participant ID
-
-\* session ID
-
-\* host state
-
-\* participant state
-
-\* handshake
-
-\* protocol version
-
-\* message IDs
-
-\* generation numbers
-
-\* connection state
-
-
-
-\### Basic room lifecycle
-
-
+## Basic Room Lifecycle
 
 ```text
-
 CREATED
-
-&#x20;↓
-
+   ↓
 DISCOVERABLE
-
-&#x20;↓
-
+   ↓
 JOINING
-
-&#x20;↓
-
+   ↓
 READY
-
-&#x20;↓
-
+   ↓
 CLOSED
-
 ```
 
+The production state machine will later expand to represent active audio sessions and recovery.
 
-
-\### Exit criteria
-
-
+## Exit Criteria
 
 Two devices can join and maintain a valid room state.
 
+---
 
+# 10. Phase 6 — QR Room Bootstrap
 
-\---
+**Status:** REQUIRED
 
-
-
-\# 9. Phase 5 — QR Joining
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Objective
-
-
+## Objective
 
 Replace technical connection setup with the intended user experience.
 
-
-
-\### Flow
-
-
+## Flow
 
 ```text
-
 Host
-
-&#x20;↓
-
+ ↓
 Create Room
-
-&#x20;↓
-
-QR displayed
-
-
+ ↓
+Display QR
 
 Participant
-
-&#x20;↓
-
+ ↓
 Join Room
-
-&#x20;↓
-
+ ↓
 Scan QR
-
-&#x20;↓
-
+ ↓
 Connect
-
 ```
 
+## Requirements
 
+* QR generation
+* QR parsing
+* protocol-version validation
+* room identification
+* short-lived join information
+* invalid QR handling
+* expired token handling
+* connection failure handling
 
-\### Requirements
+## Exit Criteria
 
+A participant can join a room without manually entering an IP address.
 
+---
 
-\* QR payload parsing
+# 11. Phase 7 — Live Audio Transport
 
-\* QR generation
+**Status:** CRITICAL
 
-\* version validation
+## Objective
 
-\* invalid QR handling
+Transport captured audio frames from the host to participants in realtime.
 
-\* expired/invalid token handling
+This replaces the obsolete audio-file distribution pipeline.
 
-\* connection failure handling
-
-
-
-\### Exit criteria
-
-
-
-A participant can join without manually entering an IP address.
-
-
-
-\---
-
-
-
-\# 10. Phase 6 — Audio Asset Pipeline
-
-
-
-\*\*Status:\*\* CRITICAL
-
-
-
-\### Objective
-
-
-
-Get an audio file from the host to another device and prepare it for local playback.
-
-
-
-\### Flow
-
-
+## Flow
 
 ```text
-
-Select audio
-
-&#x20;↓
-
-Identify asset
-
-&#x20;↓
-
-Transfer
-
-&#x20;↓
-
-Verify integrity
-
-&#x20;↓
-
-Store locally
-
-&#x20;↓
-
-Prepare decoder
-
-&#x20;↓
-
-Prepare audio engine
-
+Host Capture
+     ↓
+Captured Frames
+     ↓
+Timestamp
+     ↓
+Sequence Number
+     ↓
+Packetization
+     ↓
+Local Audio Transport
+     ↓
+Participant
 ```
 
-
-
-\### Implement
-
-
-
-\* audio metadata
-
-\* file transfer
-
-\* content hashing
-
-\* transfer progress
-
-\* failure handling
-
-\* local storage
-
-\* preparation state
-
-
-
-\### Exit criteria
-
-
-
-Two devices possess and can independently prepare the same audio asset.
-
-
-
-\---
-
-
-
-\# 11. Phase 7 — Native Audio Playback
-
-
-
-\*\*Status:\*\* CRITICAL
-
-
-
-\### Objective
-
-
-
-Prove reliable local audio playback through the native audio layer.
-
-
-
-\### Requirements
-
-
-
-The system must be able to:
-
-
-
-\* load audio
-
-\* prepare audio
-
-\* start
-
-\* pause
-
-\* resume
-
-\* stop
-
-\* report playback state
-
-\* report playback position where supported
-
-
-
-\### Important
-
-
-
-Do not attempt advanced synchronization yet.
-
-
-
-First prove that each device can reliably play audio independently.
-
-
-
-\### Exit criteria
-
-
-
-A physical device can play the selected test audio reliably.
-
-
-
-\---
-
-
-
-\# 12. Phase 8 — Native Playback Scheduling Spike
-
-
-
-\*\*Status:\*\* HIGHEST TECHNICAL PRIORITY
-
-
-
-\### Objective
-
-
-
-Prove that native audio can be scheduled for a future target time.
-
-
-
-The prototype should support:
-
-
+## Conceptual Frame
 
 ```text
-
-Current time
-
-&#x20;    ↓
-
-Future target
-
-&#x20;    ↓
-
-Native scheduler
-
-&#x20;    ↓
-
-Playback
-
+AudioFrame {
+    sessionGeneration
+    sequenceNumber
+    captureTimestamp
+    sampleFormat
+    sampleRate
+    channels
+    payload
+}
 ```
 
+The exact wire representation remains implementation-defined.
 
+## Requirements
 
-\### Test
+* frame sequencing
+* timestamps
+* bounded buffering
+* packet framing
+* packet loss detection
+* reordering detection
+* jitter measurement
+* backpressure
+* stream start/stop
+* stream configuration
+* stream statistics
 
+## Transport
 
+The exact transport is not permanently decided by this roadmap.
 
-Schedule two devices to begin playback at the same logical target.
+Candidate approaches may include:
 
+* TCP
+* WebSocket
+* UDP-based transport
+* QUIC
+* another suitable local streaming mechanism
 
+The decision must be driven by measurements.
 
-\### Important
+A live-audio transport must avoid allowing control traffic or unrelated congestion to introduce unacceptable audio latency.
 
+## Exit Criteria
 
+One host can transmit captured live audio frames to one participant over the local network with measurable latency and sequence integrity.
 
-Do not use:
+---
 
+# 12. Phase 8 — Native Synchronized Audio Output
 
+**Status:** CRITICAL
+
+## Objective
+
+Prove that participant devices can turn received audio frames into stable native audio output.
+
+## Requirements
+
+* native audio output
+* audio buffer
+* jitter buffer
+* frame scheduling
+* output timestamps
+* underrun detection
+* route detection
+* output-state reporting
+
+## Flow
 
 ```text
-
-send PLAY
-
+Received Frames
+      ↓
+Jitter Buffer
+      ↓
+Timing / Scheduling
+      ↓
+Native Audio Output
 ```
 
+## Important
 
+Do not attempt to hide this pipeline inside Flutter.
 
-as the primary mechanism.
+Realtime audio output must remain native.
 
+## Exit Criteria
 
+A physical Android participant can receive test audio frames and output them reliably through its native audio system.
 
-\### Exit criteria
+---
 
+# 13. Phase 9 — End-to-End Capture Pipeline
 
+**Status:** MILESTONE
 
-Two devices can be scheduled for a future playback event.
+## Objective
 
+Connect the actual host capture system to the participant output system.
 
-
-\---
-
-
-
-\# 13. Phase 9 — Clock Synchronization
-
-
-
-\*\*Status:\*\* CRITICAL
-
-
-
-\### Objective
-
-
-
-Create a relationship between host and participant timing systems.
-
-
-
-\### Implement
-
-
-
-\* monotonic timestamps
-
-\* timestamp exchange
-
-\* RTT calculation
-
-\* clock-offset estimation
-
-\* multiple measurements
-
-\* outlier rejection
-
-\* timing uncertainty
-
-\* confidence
-
-
-
-\### Test
-
-
-
-Run repeated calibration measurements between two devices.
-
-
-
-\### Exit criteria
-
-
-
-The system produces a stable, inspectable clock relationship.
-
-
-
-\---
-
-
-
-\# 14. Phase 10 — Two-Device Synchronized Playback
-
-
-
-\*\*Status:\*\* MILESTONE 1
-
-
-
-\### Objective
-
-
-
-Prove the core SoundMesh concept.
-
-
-
-\### Full flow
-
-
+## Full Flow
 
 ```text
+External Media App
+        ↓
+AudioPlaybackCapture
+        ↓
+Captured Frames
+        ↓
+Timestamp + Sequence
+        ↓
+Audio Transport
+        ↓
+Participant Jitter Buffer
+        ↓
+Native Audio Output
+```
 
+## Test
+
+Host:
+
+```text
+External media app plays audio
+```
+
+Participant:
+
+```text
+Receives and outputs the captured audio
+```
+
+## Measure
+
+* capture latency
+* transport latency
+* jitter
+* buffer fill
+* output latency
+* underruns
+* dropped frames
+* sequence gaps
+
+## Exit Criteria
+
+A real external audio source on the host can be heard on a participant through the complete SoundMesh pipeline.
+
+This is a major proof milestone.
+
+---
+
+# 14. Phase 10 — Monotonic Clock and Clock Synchronization
+
+**Status:** CRITICAL
+
+## Objective
+
+Create a measurable timing relationship between participating devices.
+
+## Implement
+
+* monotonic timestamps
+* timestamp exchange
+* RTT calculation
+* clock-offset estimation
+* multiple measurements
+* outlier rejection
+* timing uncertainty
+* confidence
+
+## Test
+
+Run repeated measurements between two physical Android devices.
+
+## Exit Criteria
+
+The system produces a stable and inspectable timing relationship.
+
+---
+
+# 15. Phase 11 — Audio Timing and Calibration
+
+**Status:** CRITICAL
+
+## Objective
+
+Measure the timing differences that matter specifically to live audio.
+
+Clock synchronization alone is insufficient.
+
+The system must account for:
+
+* capture timing
+* network timing
+* participant buffering
+* output scheduling
+* output-device latency
+* host direct-output latency
+
+## Critical Model
+
+The host may hear the external application's audio directly while participants hear captured and replayed audio.
+
+Therefore:
+
+```text
+Host external output
+        ↓
+      latency A
+
+Host capture
+        ↓
+Network
+        ↓
+Participant buffer
+        ↓
+Participant output
+        ↓
+      latency B
+```
+
+SoundMesh must measure the relevant difference.
+
+## Objective
+
+Determine whether the host's direct output and participant output can be aligned sufficiently for the intended experience.
+
+## Exit Criteria
+
+The system has measurable timing information for the capture-to-output pipeline and can establish an experimentally validated synchronization target.
+
+---
+
+# 16. Phase 12 — Shared Live-Audio Timeline
+
+**Status:** CRITICAL
+
+## Objective
+
+Create a shared timeline for live audio frames.
+
+Instead of:
+
+```text
+PLAY
+```
+
+the system works conceptually as:
+
+```text
+Captured frame
+      ↓
+Capture timestamp
+      ↓
+Shared timeline
+      ↓
+Future output target
+      ↓
+Native scheduled output
+```
+
+Participants should receive enough buffered audio to schedule output against a future target rather than immediately outputting every received packet.
+
+## Exit Criteria
+
+Two devices can use the shared timing model to schedule captured live audio toward a common timeline.
+
+---
+
+# 17. Phase 13 — Two-Device External-Audio Synchronization
+
+**Status:** MILESTONE 1 / HIGHEST PRODUCT PROOF
+
+## Objective
+
+Prove the complete SoundMesh concept with two physical Android devices.
+
+## Full Flow
+
+```text
 Host creates room
-
-&#x20;↓
-
+        ↓
 Participant scans QR
-
-&#x20;↓
-
+        ↓
 Connect
-
-&#x20;↓
-
-Audio transferred
-
-&#x20;↓
-
-Integrity verified
-
-&#x20;↓
-
-Audio prepared
-
-&#x20;↓
-
-Clock calibrated
-
-&#x20;↓
-
-Future target calculated
-
-&#x20;↓
-
-Both devices schedule playback
-
-&#x20;↓
-
-Playback begins
-
-&#x20;↓
-
-Actual timing measured
-
+        ↓
+Capture permission
+        ↓
+External media app
+        ↓
+Live audio capture
+        ↓
+Audio stream
+        ↓
+Participant buffering
+        ↓
+Clock calibration
+        ↓
+Timing calibration
+        ↓
+Shared live-audio timeline
+        ↓
+Scheduled native output
+        ↓
+Physical synchronization measurement
 ```
 
+## Exit Criteria
 
+Two physical Android devices demonstrate repeatable, perceptually coherent synchronized audio from an external media source.
 
-\### Exit criteria
-
-
-
-Two physical devices demonstrate repeatable synchronized playback.
-
-
-
-\### Required evidence
-
-
-
-\* logs
-
-\* synchronization measurements
-
-\* test configuration
-
-\* application version
-
-\* device models
-
-\* network conditions
-
-\* repeated runs
-
-
-
-This is the first major proof that SoundMesh's core idea is technically viable.
-
-
-
-\---
-
-
-
-\# 15. Phase 11 — Synchronization Monitoring
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Objective
-
-
-
-Ensure devices remain synchronized after startup.
-
-
-
-\### Implement
-
-
-
-\* playback monitoring
-
-\* position measurement
-
-\* drift estimation
-
-\* synchronization error calculation
-
-\* health state
-
-
-
-\### States
-
-
-
-```text
-
-SYNCHRONIZED
-
-DEGRADED
-
-RECOVERING
-
-RESYNC\_REQUIRED
-
-```
-
-
-
-\### Exit criteria
-
-
-
-The system can detect synchronization degradation.
-
-
-
-\---
-
-
-
-\# 16. Phase 12 — Drift Correction
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Objective
-
-
-
-Correct gradual timing divergence.
-
-
-
-\### Preferred correction hierarchy
-
-
-
-```text
-
-Detect
-
-&#x20;↓
-
-Estimate
-
-&#x20;↓
-
-Tiny playback-rate correction
-
-&#x20;↓
-
-Re-measure
-
-&#x20;↓
-
-Small position correction
-
-&#x20;↓
-
-Controlled resync if required
-
-```
-
-
-
-\### Requirements
-
-
-
-Corrections must avoid:
-
-
-
-\* audible artifacts
-
-\* oscillation
-
-\* repeated unnecessary corrections
-
-\* unstable feedback loops
-
-
-
-\### Exit criteria
-
-
-
-Controlled drift can be detected and corrected without destabilizing playback.
-
-
-
-\---
-
-
-
-\# 17. Phase 13 — Playback Controls
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Implement
-
-
-
-\* play
-
-\* pause
-
-\* resume
-
-\* seek
-
-\* stop
-
-
-
-\### Important
-
-
-
-All playback-affecting operations must operate against the shared session timeline.
-
-
-
-\### Exit criteria
-
-
-
-Two devices remain logically coordinated through normal playback controls.
-
-
-
-\---
-
-
-
-\# 18. Phase 14 — Multi-Device Expansion
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Progression
-
-
-
-```text
-
-2
-
-&#x20;↓
-
-3
-
-&#x20;↓
-
-5
-
-&#x20;↓
-
-10
-
-```
-
-
-
-Do not jump directly to large-scale testing.
-
-
-
-\### Measure
-
-
-
-\* startup spread
-
-\* steady-state spread
-
-\* RTT
-
-\* calibration duration
-
-\* CPU
-
-\* memory
-
-\* bandwidth
-
-\* battery
-
-\* failure rate
-
-
-
-\### Exit criteria
-
-
-
-The architecture behaves predictably as participants increase.
-
-
-
-\---
-
-
-
-\# 19. Phase 15 — Device Heterogeneity
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Objective
-
-
-
-Test whether the system works across different hardware.
-
-
-
-Test combinations such as:
-
-
-
-```text
-
-Android + Android
-
-Android + iOS
-
-iOS + iOS
-
-Older + newer device
-
-Different manufacturers
-
-Different speaker hardware
-
-```
-
-
-
-\### Important
-
-
-
-Identical-device testing is not sufficient.
-
-
-
-\### Exit criteria
-
-
-
-Known compatible device classes are documented.
-
-
-
-Unsupported/problematic configurations are explicitly documented.
-
-
-
-\---
-
-
-
-\# 20. Phase 16 — Failure Recovery
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Implement and test
-
-
-
-\* participant disconnect
-
-\* participant reconnect
-
-\* network interruption
-
-\* network change
-
-\* failed audio transfer
-
-\* calibration failure
-
-\* audio preparation failure
-
-\* playback failure
-
-\* late joining
-
-\* host failure
-
-
-
-\### MVP host failure behavior
-
-
-
-Controlled recovery is acceptable.
-
-
-
-Seamless host migration is not required.
-
-
-
-\### Exit criteria
-
-
-
-Expected failures produce controlled states instead of crashes or silent corruption.
-
-
-
-\---
-
-
-
-\# 21. Phase 17 — Audio Edge Cases
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-\### Test
-
-
-
-\* different formats
-
-\* different sample rates
-
-\* stereo
-
-\* mono
-
-\* unsupported audio
-
-\* large files
-
-\* short files
-
-\* long files
-
-\* audio route changes
-
-\* interruption
-
-\* screen lock
-
-\* backgrounding
-
-\* Bluetooth
-
-
-
-\### Bluetooth
-
-
-
-Remain experimental unless testing demonstrates acceptable behavior.
-
-
-
-\---
-
-
-
-\# 22. Phase 18 — Production Room State Machine
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-Expand room state handling.
-
-
-
-Target conceptual state flow:
-
-
-
-```text
-
-CREATED
-
-&#x20;↓
-
-DISCOVERABLE
-
-&#x20;↓
-
-JOINING
-
-&#x20;↓
-
-CALIBRATING
-
-&#x20;↓
-
-READY
-
-&#x20;↓
-
-PLAYING
-
-&#x20;↓
-
-PAUSED
-
-&#x20;↓
-
-RECOVERING
-
-&#x20;↓
-
-PLAYING
-
-&#x20;↓
-
-ENDING
-
-&#x20;↓
-
-CLOSED
-
-```
-
-
-
-\### Exit criteria
-
-
-
-Invalid transitions are rejected and recovery states are explicit.
-
-
-
-\---
-
-
-
-\# 23. Phase 19 — Real SoundMesh UI
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-Only after the core system is proven should the complete polished UI be integrated.
-
-
-
-\### Implement
-
-
-
-\* Home
-
-\* Create Room
-
-\* Room Waiting
-
-\* QR display
-
-\* Join Room
-
-\* QR scanner
-
-\* Device list
-
-\* Mesh visualization
-
-\* Audio picker
-
-\* Preparing
-
-\* Synchronizing
-
-\* Playback
-
-\* Device details
-
-\* Diagnostics
-
-\* Settings
-
-\* Error/recovery screens
-
-
-
-\### Principle
-
-
-
-The UI should expose simple actions while hiding technical complexity.
-
-
-
-\---
-
-
-
-\# 24. Phase 20 — UX Refinement
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-Improve:
-
-
-
-\* transitions
-
-\* loading states
-
-\* empty states
-
-\* errors
-
-\* recovery guidance
-
-\* accessibility
-
-\* responsive layouts
-
-\* animation
-
-\* typography
-
-\* spacing
-
-\* visual hierarchy
-
-
-
-\### Quality bar
-
-
-
-The application should feel intentional and premium rather than like a technical prototype.
-
-
-
-\---
-
-
-
-\# 25. Phase 21 — Diagnostics
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-Implement a diagnostic interface useful during testing.
-
-
-
-Possible metrics:
-
-
-
-```text
-
-Connected devices
-
-Connection state
-
-RTT
-
-Clock offset
-
-Timing uncertainty
-
-Calibration confidence
-
-Playback state
-
-Playback position
-
-Estimated drift
-
-Correction state
-
-Network state
-
-Audio state
-
-```
-
-
-
-\### Rule
-
-
-
-Diagnostics should be useful to developers without exposing unnecessary technical complexity to ordinary users.
-
-
-
-\---
-
-
-
-\# 26. Phase 22 — Performance Optimization
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-Only optimize after measurement.
-
-
-
-Measure:
-
-
-
-\* CPU
-
-\* memory
-
-\* battery
-
-\* thermal behavior
-
-\* bandwidth
-
-\* startup time
-
-\* calibration time
-
-\* audio preparation time
-
-
-
-\### Priority
-
-
-
-```text
-
-Audio stability
-
-&#x20;↓
-
-Synchronization
-
-&#x20;↓
-
-Networking
-
-&#x20;↓
-
-Application responsiveness
-
-&#x20;↓
-
-Visual performance
-
-```
-
-
-
-\---
-
-
-
-\# 27. Phase 23 — Reliability Campaign
-
-
-
-\*\*Status:\*\* CRITICAL
-
-
-
-Run repeated sessions.
-
-
-
-Example:
-
-
-
-```text
-
-50 sessions
-
-100 sessions
-
-```
-
-
-
-where practical.
-
-
+## Required Evidence
 
 Record:
 
+* application version
+* device models
+* Android versions
+* source application
+* source audio
+* network conditions
+* calibration results
+* synchronization measurements
+* repeated runs
+* anomalies
+* failure cases
 
+This is the first definitive proof that the actual SoundMesh architecture works.
 
-\* successful room creation
+---
 
-\* successful joining
+# 18. Phase 14 — Drift Detection
 
-\* successful transfer
+**Status:** REQUIRED
 
-\* successful calibration
+## Objective
 
-\* successful playback
+Detect gradual divergence between devices during a live session.
 
-\* synchronization failures
+## Implement
 
-\* recovery failures
+* output timing monitoring
+* drift estimation
+* synchronization error calculation
+* health state
+* threshold detection
 
-\* crashes
-
-
-
-The exact number of runs may change depending on available devices and development time.
-
-
-
-\---
-
-
-
-\# 28. Phase 24 — Physical Synchronization Validation
-
-
-
-\*\*Status:\*\* CRITICAL
-
-
-
-Use external measurement to validate actual sound output.
-
-
-
-\### Procedure
-
-
+## States
 
 ```text
-
-Multiple phones
-
-&#x20;↓
-
-Known test signal
-
-&#x20;↓
-
-Simultaneous recording
-
-&#x20;↓
-
-Waveform analysis
-
-&#x20;↓
-
-Measured onset differences
-
+SYNCHRONIZED
+DEGRADED
+RECOVERING
+RESYNC_REQUIRED
 ```
 
+## Exit Criteria
 
+The system can detect synchronization degradation during an active live-audio session.
 
-\### Goal
+---
 
+# 19. Phase 15 — Drift Correction
 
+**Status:** REQUIRED
 
-Confirm that software synchronization corresponds to physical acoustic synchronization.
+## Objective
 
+Correct gradual timing divergence without destabilizing the audio experience.
 
-
-\### Required reporting
-
-
-
-For important experiments:
-
-
-
-\* test ID
-
-\* device models
-
-\* audio asset
-
-\* network
-
-\* software version
-
-\* number of runs
-
-\* measured spread
-
-\* anomalies
-
-\* conclusion
-
-
-
-\---
-
-
-
-\# 29. Phase 25 — Competitive Differentiation
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-The project should identify and demonstrate why SoundMesh is compelling beyond the basic concept.
-
-
-
-Potential demonstrated strengths:
-
-
-
-\* fast QR onboarding
-
-\* local-first operation
-
-\* automatic calibration
-
-\* synchronization diagnostics
-
-\* drift correction
-
-\* heterogeneous device support
-
-\* robust recovery
-
-\* measurable synchronization
-
-
-
-Claims must be supported by evidence.
-
-
-
-\---
-
-
-
-\# 30. Phase 26 — Demo Engineering
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-Create a reliable demonstration environment.
-
-
-
-\### Demo goal
-
-
-
-The first impression should communicate:
-
-
-
-> Multiple phones are behaving like one speaker.
-
-
-
-\### Demo sequence
-
-
+## Preferred Correction Hierarchy
 
 ```text
-
-Open SoundMesh
-
-&#x20;↓
-
-Create Room
-
-&#x20;↓
-
-Show QR
-
-&#x20;↓
-
-Multiple phones scan
-
-&#x20;↓
-
-Devices appear
-
-&#x20;↓
-
-Audio selected
-
-&#x20;↓
-
-Preparing
-
-&#x20;↓
-
-Synchronizing
-
-&#x20;↓
-
-Play
-
-&#x20;↓
-
-All phones play together
-
+Detect
+  ↓
+Estimate
+  ↓
+Small timing/rate correction
+  ↓
+Re-measure
+  ↓
+Controlled position correction
+  ↓
+Full resynchronization if necessary
 ```
 
+The exact correction mechanism remains an engineering decision.
 
+## Requirements
 
-The demo should avoid unnecessary technical explanations.
+Corrections must avoid:
 
+* audible artifacts
+* oscillation
+* repeated unnecessary correction
+* unstable feedback loops
+* buffer instability
 
+## Exit Criteria
 
-\---
+Controlled drift can be detected and corrected without destabilizing the live session.
 
+---
 
+# 20. Phase 16 — Multi-Device Scaling
 
-\# 31. Phase 27 — Competition Hardening
+**Status:** REQUIRED
 
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-Before submission:
-
-
-
-\* freeze major architecture
-
-\* resolve critical bugs
-
-\* test supported devices
-
-\* test core flows repeatedly
-
-\* verify build/release process
-
-\* verify repository cleanliness
-
-\* verify open-source requirements
-
-\* verify documentation
-
-\* verify demo
-
-\* verify submission materials
-
-
-
-No major architecture changes should be introduced immediately before submission without strong justification.
-
-
-
-\---
-
-
-
-\# 32. Phase 28 — Submission Preparation
-
-
-
-\*\*Status:\*\* REQUIRED
-
-
-
-Prepare:
-
-
-
-\* final source repository
-
-\* license
-
-\* README
-
-\* demo video
-
-\* project description
-
-\* technical explanation
-
-\* screenshots
-
-\* architecture summary
-
-\* testing evidence
-
-\* student verification materials
-
-\* required competition submission information
-
-
-
-All competition requirements must be checked against the current official rules before submission.
-
-
-
-\---
-
-
-
-\# 33. Milestone Definitions
-
-
-
-\## M0 — Repository Ready
-
-
+## Progression
 
 ```text
-
-Docs
-
-\+
-
-Project structure
-
-\+
-
-AI rules
-
-\+
-
-Build
-
+2
+ ↓
+3
+ ↓
+5
+ ↓
+10
 ```
 
+The actual supported maximum should be determined experimentally.
 
+## Measure
 
-\---
+* synchronization spread
+* startup time
+* calibration duration
+* RTT
+* jitter
+* packet loss
+* CPU
+* memory
+* bandwidth
+* buffer behavior
+* underruns
+* battery
+* recovery behavior
 
+## Exit Criteria
 
+The architecture behaves predictably as participant count increases.
 
-\## M1 — Two Devices Connected
+---
 
+# 21. Phase 17 — Device Heterogeneity
 
+**Status:** REQUIRED
+
+## Objective
+
+Determine how synchronization behaves across different Android hardware.
+
+Test combinations involving:
+
+* older + newer Android devices
+* different manufacturers
+* different chipsets
+* different speaker hardware
+* different Android versions
+* different output routes
+
+Identical-device testing is insufficient.
+
+## Exit Criteria
+
+Known compatible device classes and known limitations are documented.
+
+Unsupported/problematic configurations are explicitly documented.
+
+---
+
+# 22. Phase 18 — Failure and Recovery
+
+**Status:** CRITICAL
+
+## Implement and Test
+
+* participant disconnect
+* participant reconnect
+* temporary network interruption
+* network change
+* packet loss
+* jitter spikes
+* audio underrun
+* capture interruption
+* capture permission revocation
+* source application becoming unavailable
+* calibration failure
+* output failure
+* audio route change
+* late joining
+* host failure
+
+## Participant Recovery
+
+A reconnecting participant should:
 
 ```text
-
-Phone A
-
-&#x20;↕
-
-Phone B
-
+Reconnect
+   ↓
+Re-establish timing
+   ↓
+Receive current stream configuration
+   ↓
+Refill buffer
+   ↓
+Synchronize to future target
+   ↓
+Rejoin active output
 ```
 
+There is no file to download or old playback position to seek to.
 
+## Host Failure
 
-Structured local communication works.
+Controlled recovery is acceptable.
 
+Seamless host migration is not required for MVP.
 
+## Exit Criteria
 
-\---
+Expected failures produce controlled states instead of crashes or silent corruption.
 
+---
 
+# 23. Phase 19 — Production Room State Machine
 
-\## M2 — Audio Transfer Works
+**Status:** REQUIRED
 
+Expand the room/session state model.
 
-
-Both devices have the same verified audio asset.
-
-
-
-\---
-
-
-
-\## M3 — Two Devices Synchronized
-
-
-
-Both devices perform scheduled synchronized playback.
-
-
-
-This is the most important technical milestone.
-
-
-
-\---
-
-
-
-\## M4 — Synchronization Maintained
-
-
-
-Drift is measured and controlled.
-
-
-
-\---
-
-
-
-\## M5 — Five Devices
-
-
-
-Five physical phones participate in one room.
-
-
-
-\---
-
-
-
-\## M6 — Recovery
-
-
-
-Disconnects and other failures are handled predictably.
-
-
-
-\---
-
-
-
-\## M7 — Production UX
-
-
-
-The full intended user experience is implemented.
-
-
-
-\---
-
-
-
-\## M8 — Validation Complete
-
-
-
-Physical measurements and repeated tests support synchronization claims.
-
-
-
-\---
-
-
-
-\## M9 — Competition Ready
-
-
-
-The project is stable, documented, demonstrable, and ready for submission.
-
-
-
-\---
-
-
-
-\# 34. Dependency Graph
-
-
-
-The approximate dependency structure is:
-
-
+Target conceptual lifecycle:
 
 ```text
+CREATED
+   ↓
+DISCOVERABLE
+   ↓
+JOINING
+   ↓
+READY
+   ↓
+CAPTURE_PERMISSION_REQUIRED
+   ↓
+CAPTURING
+   ↓
+STREAMING
+   ↓
+SYNCHRONIZING
+   ↓
+ACTIVE
+   ↓
+DEGRADED
+   ↓
+RECOVERING
+   ↓
+ACTIVE
+   ↓
+ENDING
+   ↓
+CLOSED
+```
 
-Repository
+Error states may branch from appropriate points.
 
-&#x20;  ↓
+The application must reject invalid transitions.
 
-Flutter shell
+## Important
 
-&#x20;  ↓
+Do not reintroduce:
 
-Native bridge
+```text
+PLAYING
+PAUSED
+RESUMING
+SEEKING
+```
 
-&#x20;  ↓
+as SoundMesh-owned media-player states.
 
+If the external media application stops producing audio, SoundMesh should represent the resulting capture/session condition rather than pretending it controlled the external playback.
+
+---
+
+# 24. Phase 20 — Real SoundMesh UI
+
+**Status:** REQUIRED
+
+The polished UI can now be integrated around proven system capabilities.
+
+## Implement
+
+* Home
+* Create Room
+* Room Waiting
+* QR display
+* Join Room
+* QR scanner
+* Device list
+* Mesh visualization
+* Capture permission UX
+* Capture-ready state
+* External media handoff
+* Waiting for audio state
+* Live audio session
+* Synchronization state
+* Device details
+* Diagnostics
+* Settings
+* Error/recovery states
+
+## Do Not Implement
+
+* audio picker
+* media library
+* track list
+* Now Playing screen
+* SoundMesh-owned seek bar
+* playback controls
+* file-transfer progress
+
+## Principle
+
+The UI exposes simple actions while hiding technical complexity.
+
+---
+
+# 25. Phase 21 — UX Refinement
+
+**Status:** REQUIRED
+
+Improve:
+
+* transitions
+* loading states
+* empty states
+* capture permission explanations
+* external media handoff
+* errors
+* recovery guidance
+* accessibility
+* responsive layouts
+* animation
+* typography
+* spacing
+* visual hierarchy
+* background-session feedback
+* notification UX
+
+## Quality Bar
+
+The application should feel intentional and premium rather than like a technical prototype.
+
+---
+
+# 26. Phase 22 — Diagnostics
+
+**Status:** REQUIRED
+
+Implement a diagnostic interface useful during development and advanced testing.
+
+## Possible Metrics
+
+```text
+Connected devices
+Connection state
+RTT
+Clock offset
+Timing uncertainty
+Calibration confidence
+
+Capture state
+Capture source availability
+Capture format
+
+Audio stream state
+Packet loss
+Sequence gaps
+Jitter
+Buffer fill
+Underruns
+
+Output route
+Output latency
+Capture-to-network latency
+Network-to-output latency
+
+Estimated synchronization error
+Drift rate
+Correction state
+
+Recovery events
+Reconnect count
+```
+
+## Rule
+
+Diagnostics should expose actual measurements.
+
+Do not invent metrics simply because they look useful.
+
+---
+
+# 27. Phase 23 — Performance Optimization
+
+**Status:** REQUIRED
+
+Optimize only after measurement.
+
+## Measure
+
+* CPU
+* memory
+* battery
+* thermal behavior
+* bandwidth
+* startup time
+* connection time
+* calibration time
+* capture latency
+* transport latency
+* buffer behavior
+* output latency
+* audio underruns
+
+## Priority
+
+```text
+Audio stability
+      ↓
+Synchronization
+      ↓
+Capture reliability
+      ↓
 Networking
-
-&#x20;  ↓
-
-Room protocol
-
-&#x20;  ↓
-
-Audio transfer
-
-&#x20;  ↓
-
-Native playback
-
-&#x20;  ↓
-
-Playback scheduling
-
-&#x20;  ↓
-
-Clock synchronization
-
-&#x20;  ↓
-
-Two-device synchronized playback
-
-&#x20;  ↓
-
-Monitoring
-
-&#x20;  ↓
-
-Drift correction
-
-&#x20;  ↓
-
-Playback controls
-
-&#x20;  ↓
-
-Multi-device scaling
-
-&#x20;  ↓
-
-Recovery
-
-&#x20;  ↓
-
-Polished UX
-
-&#x20;  ↓
-
-Physical validation
-
-&#x20;  ↓
-
-Competition hardening
-
+      ↓
+Application responsiveness
+      ↓
+Visual performance
 ```
 
+Visual optimization must never compromise realtime audio.
 
+---
 
-\---
+# 28. Phase 24 — Reliability Campaign
 
+**Status:** CRITICAL
 
-
-\# 35. What Must NOT Happen
-
-
-
-The following development order is discouraged:
-
-
-
-```text
-
-Beautiful UI
-
-&#x20;↓
-
-Animations
-
-&#x20;↓
-
-Settings
-
-&#x20;↓
-
-Accounts
-
-&#x20;↓
-
-Cloud backend
-
-&#x20;↓
-
-Playlists
-
-&#x20;↓
-
-Social features
-
-&#x20;↓
-
-...
-
-&#x20;↓
-
-Eventually investigate synchronization
-
-```
-
-
-
-This is backwards for SoundMesh.
-
-
-
-The core technical risk must be attacked early.
-
-
-
-\---
-
-
-
-\# 36. Parallel Development
-
-
-
-Some work can happen in parallel after dependencies are stable.
-
-
+Run repeated complete sessions.
 
 Example:
 
-
-
 ```text
-
-Synchronization Team
-
-&#x20;       │
-
-&#x20;       ├── Clock model
-
-&#x20;       ├── Scheduling
-
-&#x20;       └── Drift correction
-
-
-
-Networking Team
-
-&#x20;       │
-
-&#x20;       ├── Room protocol
-
-&#x20;       ├── QR joining
-
-&#x20;       └── Recovery
-
-
-
-UI Team
-
-&#x20;       │
-
-&#x20;       ├── Screens
-
-&#x20;       ├── Components
-
-&#x20;       └── Design system
-
+50 sessions
+100 sessions
 ```
 
+where practical.
 
+Record:
 
-However, parallel work must respect file ownership and architectural boundaries.
+* successful room creation
+* successful joining
+* successful capture
+* successful stream startup
+* successful synchronization
+* synchronization failures
+* packet-loss behavior
+* recovery failures
+* capture failures
+* crashes
+* audio underruns
+* abnormal termination
 
+The exact number of runs may change depending on available hardware and development time.
 
+---
+
+# 29. Phase 25 — Physical Synchronization Validation
+
+**Status:** CRITICAL
+
+Software timing metrics are not sufficient.
+
+Validate the actual physical sound.
+
+## Procedure
+
+```text
+Multiple phones
+      ↓
+Known test signal
+      ↓
+Simultaneous acoustic recording
+      ↓
+Waveform analysis
+      ↓
+Measured onset differences
+```
+
+The test signal must pass through the same relevant capture/output architecture being validated.
+
+## Goal
+
+Determine whether software synchronization corresponds to physical acoustic synchronization.
+
+## Required Reporting
+
+For important experiments:
+
+* test ID
+* device models
+* Android versions
+* source application
+* source/test signal
+* network conditions
+* software version
+* number of runs
+* measured spread
+* anomalies
+* conclusion
+
+---
+
+# 30. Phase 26 — External Source Compatibility
+
+**Status:** REQUIRED
+
+## Objective
+
+Establish which external media applications can actually be captured.
+
+Test a representative set of applications.
+
+For each source, record:
+
+```text
+Source application
+Capture permitted?
+Capture format
+Capture stability
+Background behavior
+Observed limitations
+```
+
+Do not claim universal compatibility.
+
+## Exit Criteria
+
+The supported source-app behavior is documented and the UI communicates unsupported sources correctly.
+
+---
+
+# 31. Phase 27 — Competition Differentiation
+
+**Status:** REQUIRED
+
+The project should identify and demonstrate measurable strengths.
+
+Potential demonstrated strengths:
+
+* fast QR onboarding
+* local-first operation
+* external-app compatibility where permitted
+* automatic calibration
+* synchronization diagnostics
+* drift correction
+* heterogeneous Android support
+* robust recovery
+* measurable physical synchronization
+
+Claims must be supported by evidence.
+
+Do not claim:
+
+> “Perfect synchronization”
+
+unless the evidence genuinely supports that statement under a clearly defined test condition.
+
+---
+
+# 32. Phase 28 — Demo Engineering
+
+**Status:** REQUIRED
+
+Create a reliable demonstration environment.
+
+## Demo Goal
+
+The first impression should communicate:
+
+> **Multiple phones are behaving like one speaker.**
+
+## Demo Sequence
+
+```text
+Open SoundMesh
+      ↓
+Create Room
+      ↓
+Show QR
+      ↓
+Multiple phones scan
+      ↓
+Devices appear
+      ↓
+Allow audio capture
+      ↓
+Devices synchronize
+      ↓
+Open external media app
+      ↓
+Play audio
+      ↓
+SoundMesh captures it
+      ↓
+All phones output together
+      ↓
+Show synchronization
+```
+
+The demo should avoid unnecessary technical explanations.
+
+The external media app should remain visibly separate from SoundMesh's own UI model.
+
+---
+
+# 33. Phase 29 — Competition Hardening
+
+**Status:** REQUIRED
+
+Before submission:
+
+* freeze major architecture
+* resolve critical bugs
+* test supported devices
+* test core flows repeatedly
+* verify Android build/release process
+* verify repository cleanliness
+* verify open-source requirements
+* verify documentation
+* verify demo
+* verify synchronization evidence
+* verify competition requirements
+* verify submission materials
+
+No major architecture changes should be introduced immediately before submission without strong justification.
+
+---
+
+# 34. Phase 30 — Submission Preparation
+
+**Status:** REQUIRED
+
+Prepare:
+
+* final source repository
+* license
+* README
+* demo video
+* project description
+* technical explanation
+* screenshots
+* architecture summary
+* testing evidence
+* physical synchronization evidence
+* student verification materials
+* required competition submission information
+
+Competition requirements must be checked against the current official rules before submission.
+
+---
+
+# 35. Milestone Definitions
+
+## M0 — Repository Ready
+
+```text
+Docs
+ +
+Project structure
+ +
+AI rules
+ +
+Build
+```
+
+---
+
+## M1 — Android Capture Proven
+
+```text
+External Media App
+        ↓
+AudioPlaybackCapture
+        ↓
+Captured Frames
+```
+
+At least one eligible external source produces usable captured audio on physical Android hardware.
+
+---
+
+## M2 — Two Devices Connected
+
+```text
+Phone A
+   ↕
+Phone B
+```
+
+Structured local communication works.
+
+---
+
+## M3 — Live Audio Transport
+
+```text
+Host Capture
+     ↓
+Network
+     ↓
+Participant
+```
+
+Captured audio frames successfully travel between devices.
+
+---
+
+## M4 — Native Participant Output
+
+```text
+Captured Audio
+      ↓
+Transport
+      ↓
+Jitter Buffer
+      ↓
+Native Output
+```
+
+The participant can hear the live captured audio.
+
+---
+
+## M5 — End-to-End Pipeline
+
+```text
+External App
+     ↓
+Capture
+     ↓
+Transport
+     ↓
+Buffer
+     ↓
+Output
+```
+
+The real external audio source works through the entire system.
+
+---
+
+## M6 — Two-Device Synchronization
+
+```text
+Phone A
+   +
+Phone B
+   ↓
+Shared Timeline
+   ↓
+Measured Synchronized Output
+```
+
+This is the most important technical milestone.
+
+---
+
+## M7 — Synchronization Maintained
+
+Drift is:
+
+* measured
+* detected
+* controlled
+
+---
+
+## M8 — Five Devices
+
+Five physical Android phones participate in one room.
+
+---
+
+## M9 — Recovery
+
+Disconnects, interruptions, packet loss, and other expected failures are handled predictably.
+
+---
+
+## M10 — Production UX
+
+The complete intended user experience is implemented.
+
+---
+
+## M11 — Physical Validation Complete
+
+Physical measurements support the project's synchronization claims.
+
+---
+
+## M12 — Reliability Validated
+
+Repeated real-device sessions demonstrate acceptable reliability.
+
+---
+
+## M13 — Competition Ready
+
+The project is:
+
+* stable
+* documented
+* demonstrable
+* measurable
+* open source
+* submission-ready
+
+---
+
+# 36. Dependency Graph
+
+The approximate dependency structure is:
+
+```text
+Repository
+    ↓
+Flutter Shell
+    ↓
+Native Android Bridge
+    ↓
+Android Capture Feasibility
+    ↓
+Local Networking
+    ↓
+Room Protocol
+    ↓
+QR Bootstrap
+    ↓
+Live Audio Transport
+    ↓
+Native Audio Output
+    ↓
+End-to-End Capture Pipeline
+    ↓
+Clock Synchronization
+    ↓
+Timing / Latency Calibration
+    ↓
+Shared Live-Audio Timeline
+    ↓
+Two-Device Synchronization
+    ↓
+Drift Detection
+    ↓
+Drift Correction
+    ↓
+Multi-Device Scaling
+    ↓
+Failure / Recovery
+    ↓
+Production UX
+    ↓
+Physical Validation
+    ↓
+Reliability
+    ↓
+Competition Hardening
+```
+
+---
+
+# 37. What Must NOT Happen
+
+The following development order is discouraged:
+
+```text
+Beautiful UI
+    ↓
+Animations
+    ↓
+Settings
+    ↓
+Cloud backend
+    ↓
+Accounts
+    ↓
+Social features
+    ↓
+Playlists
+    ↓
+Media library
+    ↓
+Eventually investigate audio capture
+    ↓
+Eventually investigate synchronization
+```
+
+This is backwards for SoundMesh.
+
+The core technical risk must be attacked early.
+
+---
+
+# 38. Obsolete Development Patterns
+
+The following architecture must NOT be reintroduced:
+
+```text
+Select audio
+    ↓
+Identify audio asset
+    ↓
+Transfer file
+    ↓
+Verify hash
+    ↓
+Store locally
+    ↓
+Decode
+    ↓
+Prepare playback
+    ↓
+PLAY
+```
+
+That workflow belonged to the previous SoundMesh architecture.
+
+The current architecture is:
+
+```text
+External media app
+       ↓
+Live audio capture
+       ↓
+Capture timestamp
+       ↓
+Live transport
+       ↓
+Jitter buffer
+       ↓
+Shared timeline
+       ↓
+Scheduled native output
+```
+
+---
+
+# 39. Parallel Development
+
+Some work can happen in parallel after dependencies are stable.
+
+Example:
+
+```text
+Audio / Synchronization
+        │
+        ├── Clock model
+        ├── Timing calibration
+        ├── Jitter buffer
+        └── Drift correction
+
+Networking
+        │
+        ├── Room protocol
+        ├── QR joining
+        ├── Audio transport
+        └── Recovery
+
+Android Audio
+        │
+        ├── Capture
+        ├── Native output
+        ├── Route management
+        └── Foreground service
+
+UI
+        │
+        ├── Screens
+        ├── Components
+        ├── Session states
+        └── Diagnostics
+```
+
+Parallel work must respect file ownership and architectural boundaries.
 
 Two AI agents must not simultaneously modify the same critical subsystem without coordination.
 
+---
 
-
-\---
-
-
-
-\# 37. AI Development Strategy
-
-
+# 40. AI Development Strategy
 
 AI agents should receive small, well-defined tasks.
 
-
-
 Bad:
-
-
 
 > Build SoundMesh.
 
-
-
 Good:
 
-
-
-> Implement the participant-side timestamp exchange described in `synchronization.md`, add unit tests for RTT and offset calculation, and do not modify the transport layer.
-
-
+> Implement participant-side timestamp exchange described in `synchronization.md`, add unit tests for RTT and offset estimation, and do not modify the audio transport layer.
 
 Every AI task should specify:
 
-
-
-\* objective
-
-\* scope
-
-\* allowed files
-
-\* relevant specifications
-
-\* acceptance criteria
-
-\* tests
-
-\* known constraints
-
-
+* objective
+* scope
+* allowed files
+* relevant specifications
+* acceptance criteria
+* tests
+* known constraints
 
 The detailed procedure belongs in:
 
-
-
 ```text
-
 DOCS/AI/task-protocol.md
-
 ```
 
+---
 
-
-\---
-
-
-
-\# 38. Definition of Phase Completion
-
-
+# 41. Definition of Phase Completion
 
 A phase is not complete because code exists.
 
-
-
 A phase is complete when:
 
-
-
 ```text
-
 Implementation
-
-\+
-
+      +
 Tests
-
-\+
-
-Verification
-
-\+
-
+      +
+Real-device verification where applicable
+      +
 Documentation
-
-\+
-
+      +
 Acceptance criteria
-
 ```
-
-
 
 have been satisfied.
 
+For realtime audio phases, real-device validation is strongly preferred over emulator-only validation.
 
+---
 
-\---
-
-
-
-\# 39. Roadmap Change Policy
-
-
+# 42. Roadmap Change Policy
 
 This roadmap is a living plan.
 
-
-
 It may change when:
 
-
-
-\* experiments invalidate an assumption
-
-\* platform limitations appear
-
-\* a technical approach proves unreliable
-
-\* competition requirements change
-
-\* testing reveals a better architecture
-
-
+* experiments invalidate an assumption
+* Android platform limitations appear
+* capture compatibility is lower than expected
+* a transport approach proves unreliable
+* synchronization measurements reveal a better approach
+* competition requirements change
+* testing reveals a better architecture
 
 However, roadmap changes must not silently change architectural decisions.
 
+Architecture changes belong in:
 
+```text
+DOCS/decisions.md
+```
 
-Architecture changes belong in `decisions.md`.
+---
 
-
-
-\---
-
-
-
-\# 40. Priority Levels
-
-
+# 43. Priority Levels
 
 Every roadmap task should be classified as:
 
+## P0 — Core Risk
 
-
-\### P0 — Core Risk
-
-
-
-Must happen immediately.
-
-
+Must be investigated immediately.
 
 Examples:
 
+* Android external-audio capture
+* live audio transport
+* native output
+* clock synchronization
+* timing calibration
+* two-device synchronization
+* physical synchronization measurement
 
+---
 
-\* native scheduling
-
-\* clock synchronization
-
-\* two-device playback
-
-
-
-\### P1 — Core Product
-
-
+## P1 — Core Product
 
 Required for MVP.
 
+Examples:
 
+* room protocol
+* QR joining
+* capture permission UX
+* live session
+* drift detection
+* recovery
+* multi-device support
+
+---
+
+## P2 — Quality
+
+Important after the core system works.
 
 Examples:
 
+* diagnostics
+* performance optimization
+* accessibility refinement
+* source compatibility testing
+* improved recovery UX
 
+---
 
-\* QR joining
-
-\* audio transfer
-
-\* playback controls
-
-\* recovery
-
-
-
-\### P2 — Quality
-
-
-
-Important after core functionality.
-
-
-
-Examples:
-
-
-
-\* diagnostics
-
-\* performance optimization
-
-\* accessibility refinement
-
-
-
-\### P3 — Polish
-
-
+## P3 — Polish
 
 Useful but not blocking.
 
-
-
 Examples:
 
+* advanced animations
+* visual refinement
+* secondary interaction improvements
 
+---
 
-\* advanced animations
-
-\* additional visual effects
-
-
-
-\### P4 — Future
-
-
+## P4 — Future
 
 Not part of MVP.
 
-
-
 Examples:
 
+* iOS support
+* cloud rooms
+* remote sessions
+* social features
+* large-scale Internet-based rooms
+* advanced host migration
 
+---
 
-\* cloud rooms
+# 44. Recommended Immediate Build Sequence
 
-\* social features
-
-\* large-scale remote sessions
-
-
-
-\---
-
-
-
-\# 41. Recommended Immediate Build Sequence
-
-
-
-The first implementation sequence should be:
-
-
+The current implementation sequence should be:
 
 ```text
-
-1\. Flutter project
-
-2\. Native bridge
-
-3\. Two-device local networking
-
-4\. Room protocol
-
-5\. QR joining
-
-6\. Audio transfer
-
-7\. Native local playback
-
-8\. Native scheduled playback
-
-9\. Clock synchronization
-
-10\. Two-device synchronized playback
-
-11\. Physical synchronization measurement
-
-12\. Drift monitoring
-
-13\. Drift correction
-
-14\. Playback controls
-
-15\. Three-device testing
-
-16\. Five-device testing
-
-17\. Recovery
-
-18\. Full UI integration
-
-19\. Performance
-
-20\. Competition hardening
-
+1. Flutter project
+2. Native Android bridge
+3. Android external-audio capture spike
+4. Two-device local networking
+5. Room protocol
+6. QR joining
+7. Live audio frame transport
+8. Native participant audio output
+9. End-to-end capture → transport → output
+10. Clock synchronization
+11. Capture/output latency measurement
+12. Shared live-audio timeline
+13. Two-device synchronized external audio
+14. Physical synchronization measurement
+15. Drift monitoring
+16. Drift correction
+17. Three-device testing
+18. Five-device testing
+19. Recovery
+20. External-source compatibility testing
+21. Full UI integration
+22. Diagnostics
+23. Performance optimization
+24. Reliability campaign
+25. Competition hardening
 ```
 
+This sequence deliberately prioritizes the highest-risk assumptions.
 
+---
 
-This order deliberately prioritizes technical risk.
+# 45. Hard Stop Conditions
 
+Development should pause and reassess the architecture if any of the following occurs:
 
+### Capture
 
-\---
+* required external audio cannot be captured on Android
+* supported applications consistently refuse capture
+* capture is too unstable for live use
+* capture timestamps cannot support the required timing model
 
+### Transport
 
+* local transport introduces unacceptable latency
+* buffering becomes unbounded
+* packet loss causes unrecoverable audio behavior
+* transport blocks the entire session because of one slow participant
 
-\# 42. The Most Important Milestone
+### Output
 
+* native output cannot schedule audio reliably
+* output latency cannot be measured sufficiently
+* device route changes destroy synchronization
 
+### Synchronization
+
+* clock relationship cannot be estimated reliably
+* capture/output latency cannot be calibrated
+* physical output cannot be brought into a sufficiently coherent timing relationship
+
+### Product Model
+
+* SoundMesh begins requiring users to select, transfer, or manage media files
+* SoundMesh begins implementing its own media-player controls
+* SoundMesh's architecture becomes dependent on a media library
+
+These conditions require investigation before simply adding more features.
+
+---
+
+# 46. The Most Important Milestone
 
 The single most important milestone is:
 
+> **Two real Android phones receiving the same live external-app audio through SoundMesh and producing measured, repeatable, perceptually coherent synchronized sound.**
 
+The important word is **live**.
 
-> \*\*Two real phones playing the same audio at a measured, repeatable, perceptually coherent synchronization level.\*\*
+The system must demonstrate:
 
+```text
+External App
+     ↓
+Capture
+     ↓
+Network
+     ↓
+Buffer
+     ↓
+Scheduling
+     ↓
+Physical Output
+     ↓
+Measured Synchronization
+```
 
+A synchronized local test file is no longer sufficient to prove the actual SoundMesh architecture.
 
-Until this exists, SoundMesh is primarily a hypothesis.
+---
 
+# 47. Evidence-Driven Development
 
+For every high-risk subsystem:
 
-Once this exists, the remaining work becomes progressively more about:
+```text
+Unknown
+   ↓
+Experiment
+   ↓
+Measurement
+   ↓
+Evidence
+   ↓
+Decision
+   ↓
+Implementation
+   ↓
+Test
+   ↓
+Reliable Feature
+```
 
+Examples:
 
+```text
+Can Android capture this source?
+        ↓
+Test it
+        ↓
+Record result
+        ↓
+Document compatibility
+```
 
-\* reliability
+```text
+Can two devices stay synchronized?
+        ↓
+Measure it
+        ↓
+Analyze drift
+        ↓
+Implement correction
+        ↓
+Re-measure
+```
 
-\* scaling
+Do not turn assumptions into architecture merely because they sound technically reasonable.
 
-\* recovery
+---
 
-\* UX
-
-\* polish
-
-\* competition presentation
-
-
-
-\---
-
-
-
-\# 43. Final Roadmap Principle
-
-
+# 48. Final Roadmap Principle
 
 Do not ask:
 
-
-
 > “What feature should we build next?”
-
-
 
 Ask:
 
-
-
-> \*\*“What is the highest-risk assumption we can prove or disprove next?”\*\*
-
-
+> **“What is the highest-risk assumption we can prove or disprove next?”**
 
 That question should guide SoundMesh development.
 
-
-
 The project should continuously move from:
 
-
-
 ```text
-
 Unknown
-
-&#x20;↓
-
+   ↓
 Experiment
-
-&#x20;↓
-
+   ↓
 Evidence
-
-&#x20;↓
-
+   ↓
 Decision
-
-&#x20;↓
-
+   ↓
 Implementation
-
-&#x20;↓
-
+   ↓
 Test
-
-&#x20;↓
-
-Reliable feature
-
+   ↓
+Reliable Feature
 ```
-
-
 
 rather than:
 
-
-
 ```text
-
 Idea
-
-&#x20;↓
-
+   ↓
 Code
-
-&#x20;↓
-
+   ↓
 Hope
-
 ```
 
+---
 
-
-\---
-
-
-
-\# 44. Final Objective
-
-
+# 49. Final Objective
 
 The roadmap ultimately leads to one simple demonstration:
 
-
-
 ```text
+              SOUND MESH
 
-&#x20;       SOUND MESH
+          📱         📱
+            \       /
+             \     /
+              📱
+             /   \
+            /     \
+          📱       📱
 
+             🔊 🔊 🔊
 
-
-&#x20;    📱      📱
-
-&#x20;      \\    /
-
-&#x20;       \\  /
-
-&#x20;        📱
-
-&#x20;       /  \\
-
-&#x20;      /    \\
-
-&#x20;    📱      📱
-
-
-
-&#x20;       🔊🔊🔊
-
-&#x20;  One synchronized system
-
+        One synchronized system
 ```
 
+The underlying system may contain:
 
+* Android audio capture
+* realtime networking
+* timestamps
+* jitter buffers
+* clock synchronization
+* latency calibration
+* native scheduling
+* drift correction
+* recovery
+* multi-device coordination
 
-The engineering underneath may be complex.
+But the user should experience only:
 
+```text
+Create
+  ↓
+Join
+  ↓
+Connect
+  ↓
+Allow capture
+  ↓
+Open media app
+  ↓
+Play
+  ↓
+Everyone hears it together
+```
 
+The roadmap exists to ensure that engineering complexity is introduced **only when it is necessary to make that experience reliable.**
 
-The roadmap exists to ensure that complexity is introduced \*\*only when it is necessary to make the experience reliable.\*\*
-
-
-
-\*\*End of Engineering Roadmap.\*\*
-
-
-
+**End of Engineering Roadmap.**

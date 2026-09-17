@@ -47,7 +47,12 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
           color: SoundMeshColors.primaryText,
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            // Cancel in-flight connecting so no orphaned connection is left
+            // running in the background, matching RoomScreen's back.
+            ref.read(joinRoomFlowProvider.notifier).reset();
+            Navigator.pop(context);
+          },
         ),
       ),
       body: SafeArea(
@@ -173,8 +178,12 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
               labelStyle: TextStyle(color: SoundMeshColors.mutedText),
             ),
             onChanged: (value) {
-              final port = int.tryParse(value) ?? 8765;
-              ref.read(joinRoomFlowProvider.notifier).setHostPort(port);
+              final port = int.tryParse(value);
+              // Out-of-range ports are rejected at join time; the platform
+              // layer would crash (iOS) or wrap (Android) on invalid values.
+              if (port != null) {
+                ref.read(joinRoomFlowProvider.notifier).setHostPort(port);
+              }
             },
           ),
         ),

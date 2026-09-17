@@ -1,2624 +1,548 @@
-\# SoundMesh Audio API Contract
+# SoundMesh Audio API Contract
 
+Status: EXPERIMENTAL
+Model: DEC-085 (Model B — Capture, not Distribution)
 
+---
 
-\*\*File:\*\* `DOCS/interfaces/audio-api.md`
+# 1. Purpose
 
-\*\*Status:\*\* EXPERIMENTAL
+This contract defines how SoundMesh obtains audio from the host device and
+makes it available, as a live stream, to the synchronization and playback
+systems. It replaces the pre-DEC-085 file-distribution contract in full.
 
-\*\*Owner:\*\* Faraz
+SoundMesh does not own, store, or manage audio files. It captures audio
+that is already playing in another application on the host device and
+transports it live to participants.
 
-\*\*Primary Consumers:\*\* Core API, Playback API, Device API, Synchronization System, Networking System, Integration Tests
+---
 
+# 2. Scope
 
+This contract covers:
+- Requesting and managing capture permission on the host device
+- Starting, stopping, and monitoring a capture session
+- Discovering the format of captured audio
+- Exposing captured audio as a live stream to the Audio Transport layer
 
-\---
+This contract does NOT cover:
+- Networking/packetization of the captured stream (see networking.md,
+  Phase 8 transport work)
+- Native audio output/rendering on participant devices (see playback-api.md)
+- Any form of audio file selection, storage, or library browsing —
+  these concepts do not exist in SoundMesh
 
+---
 
+# 3. Authority
 
-\# 1. Purpose
+This document is subordinate to `audio.md` and `decisions.md` (DEC-085).
+Where they conflict, `decisions.md` wins, since it records the explicit,
+dated pivot decision. If this document appears to conflict with either,
+STOP and flag it rather than resolving the conflict inline.
 
+---
 
+# 4. Audio Mental Model
 
-The Audio API defines the authoritative interface for preparing, validating, loading, and describing audio used by SoundMesh.
-
-
-
-Its purpose is to ensure that audio handling remains independent from:
-
-
-
-\* UI implementation
-
-\* room management
-
-\* network transport
-
-\* synchronization algorithms
-
-\* playback scheduling
-
-\* platform-specific audio engines
-
-
-
-The Audio API establishes the boundary through which the rest of SoundMesh interacts with audio resources.
-
-
-
-The core principle is:
-
-
-
-> \*\*Consumers request audio operations through the Audio API rather than directly manipulating platform audio engines or audio-processing internals.\*\*
-
-
-
-\---
-
-
-
-\# 2. Scope
-
-
-
-The Audio API is responsible for:
-
-
-
-\* audio resource identification
-
-\* audio selection
-
-\* audio metadata
-
-\* audio validation
-
-\* audio availability
-
-\* audio preparation
-
-\* local audio readiness
-
-\* audio integrity
-
-\* audio loading
-
-\* audio resource lifecycle
-
-\* audio-related errors
-
-
-
-The Audio API does \*\*not\*\* own:
-
-
-
-\* room membership
-
-\* network transport
-
-\* QR joining
-
-\* clock synchronization
-
-\* drift estimation
-
-\* playback scheduling
-
-\* UI rendering
-
-\* synchronization correction
-
-\* platform-specific playback timing
-
-
-
-Those responsibilities belong to their respective systems.
-
-
-
-\---
-
-
-
-\# 3. Authority
-
-
-
-The Audio API follows the SoundMesh authority hierarchy:
-
-
-
-1\. Approved architectural decisions
-
-2\. Interface contracts
-
-3\. Core architecture specification
-
-4\. Audio/networking/synchronization specifications
-
-5\. Approved integration tests
-
-6\. Existing implementation
-
-7\. AI assumptions
-
-
-
-When documentation conflicts with implementation, AI agents must not silently choose the implementation.
-
-
-
-\---
-
-
-
-\# 4. Audio Mental Model
-
-
-
-SoundMesh should preferably distribute an audio resource to participating devices before playback.
-
-
-
-Conceptually:
-
-
-
-```text id="9c5m1a"
-
-&#x20;                   Audio Resource
-
-&#x20;                         │
-
-&#x20;                         ▼
-
-&#x20;                  Audio Preparation
-
-&#x20;                         │
-
-&#x20;                         ▼
-
-&#x20;                Local Device Storage
-
-&#x20;                         │
-
-&#x20;                         ▼
-
-&#x20;                Local Audio Pipeline
-
-&#x20;                         │
-
-&#x20;                         ▼
-
-&#x20;             Scheduled Synchronized Playback
+SoundMesh does not select, own, or store audio. The host does not pick a
+song from within SoundMesh — the host opens some other app (a video app,
+a music app, a browser) and plays audio there as normal. SoundMesh's job
+is to capture that audio as it plays and deliver it live to participants.
 
 ```
-
-
-
-The goal is to avoid continuously streaming the audio from the host during normal playback.
-
-
-
-This separates two problems:
-
-
-
-```text id="3v3s7x"
-
-Audio Distribution
-
-&#x20;       +
-
-Playback Synchronization
-
+External App (host device)
+        ↓ (plays audio normally, unaware of SoundMesh)
+Android AudioPlaybackCapture
+        ↓
+Native Capture Engine (this contract)
+        ↓ (live PCM stream)
+Audio Transport (networking.md / Phase 8)
+        ↓
+Native Output Engine (playback-api.md)
 ```
 
+There is no "Audio Resource" with an ID, duration, or integrity hash.
+There is no local storage of audio content. There is a live stream with a
+start time, a format, and an end (when capture stops).
 
+Continuous transport from host to participants is the expected model, not
+an exception to be avoided. The old preference for one-time distribution
+plus local playback (previously documented here) is retired by DEC-085.
 
-The synchronization system primarily needs to coordinate \*\*when\*\* each device plays the same prepared audio.
+---
 
+# 5. Capture Session Identity
 
+Each capture session has:
+- `sessionId` — unique per capture start, not per audio content (there is
+  no "audio content ID" anymore)
+- `generation` — increments each time capture is (re)started, consistent
+  with `networking.md`'s generation-awareness requirement, so downstream
+  consumers can detect and discard stale-generation data
 
-\---
+There is no persistent identity for "a piece of audio" — only for a
+capture session.
 
+---
 
+# 6. Capture Metadata
 
-\# 5. Audio Resource Identity
+Metadata available about an active capture session:
+- `sessionId`
+- `generation`
+- `sampleRate` (discovered at capture start, not user-selectable)
+- `channelCount` (discovered at capture start)
+- `startedAt` (device-local monotonic timestamp, not wall clock)
+- `sourceAppKnown` — UNDECIDED whether Android exposes which app is the
+  audio source reliably; if it does not, this field should be omitted
+  rather than guessed at
 
+There is no title, artist, duration, or any file-derived metadata. None
+of that exists for a live external capture.
 
+---
 
-Every audio resource used by SoundMesh must have an identifiable representation.
+# 7. Supported Audio Characteristics
 
+SoundMesh does not restrict format by file type (there is no file). It
+must instead support whatever `AudioPlaybackCapture` yields, which is
+typically raw PCM at a sample rate/channel configuration determined by
+the source app and the Android audio framework — not chosen by SoundMesh.
 
+UNDECIDED: whether SoundMesh normalizes/resamples all captured audio to
+one canonical internal format immediately at capture, or passes through
+whatever format was captured and lets downstream layers adapt. This must
+be decided based on Phase 5's real-device experiment results (do
+different source apps actually yield different formats in practice?)
+before Phase 8 (transport) can be finalized.
 
-Conceptual:
+---
 
+# 8. Capture Permission
 
+Android requires explicit user consent (`MediaProjection`) before any
+`AudioPlaybackCapture` session can start. This is a per-session grant, not
+a persistent app permission — the user will see this prompt each time
+capture starts, unless Android's platform behavior changes.
 
-```text id="h0r5u3"
+---
 
-audioId
+# 9. `requestCapturePermission()`
+
+Requests the `MediaProjection` consent needed for capture.
+
+Returns one of:
+- `GRANTED`
+- `DENIED`
+
+Must not be called from a background/foreground-service-only context —
+it requires an active Activity to present the system consent dialog.
+
+---
+
+# 10. `startCapture()`
+
+Starts a capture session. Must only be called after
+`requestCapturePermission()` has returned `GRANTED` for this session.
+
+On success: transitions capture state to `CAPTURING`, assigns a new
+`sessionId` and increments `generation`, and begins exposing a live PCM
+stream to the Audio Transport layer.
+
+On failure: returns one of the error codes in §14, and capture state
+remains/returns to a non-capturing state.
+
+---
+
+# 11. `stopCapture()`
+
+Stops the current capture session cleanly: releases the
+`MediaProjection` session, stops the foreground service if one was
+started for this purpose, and transitions capture state to `STOPPED`.
+
+Must be safe to call even if no capture is active (no-op, not an error).
+
+---
+
+# 12. `getCaptureState()`
+
+Returns the current capture state and, if capturing, the session
+metadata from §6. Replaces the retired `getPlaybackState()` from the old
+model — capture state is the source of truth now, not playback state.
+
+---
+
+# 13. Local Audio Availability
+
+There is no concept of "local availability" — captured audio is never
+stored, only streamed live. If a participant disconnects and reconnects,
+they receive whatever is currently being captured from that point
+forward; there is no "catching up" on missed audio, since nothing is
+retained. (This may need revisiting for UX reasons — flag to Faraz if a
+smoother rejoin experience becomes a requirement; do not build a hidden
+buffer/cache to solve this without it being an explicit decision.)
+
+---
+
+# 14. Errors
+
+- `PERMISSION_DENIED` — user declined `MediaProjection`
+- `CAPTURE_UNSUPPORTED` — device/Android version does not support
+  `AudioPlaybackCapture`
+- `SOURCE_APP_BLOCKED` — the app currently playing audio has opted out of
+  capture (Android allows apps to set this)
+- `CAPTURE_START_FAILED` — generic native failure; must include the
+  underlying exception/message, not just this code alone
+- `CAPTURE_INTERRUPTED` — an active capture session was interrupted
+  (source app stopped, another app took over audio focus in a way that
+  ends capture, or the system revoked the `MediaProjection` grant)
+- `NO_AUDIO_PLAYING` — UNDECIDED whether Android can reliably distinguish
+  "capturing but silence because nothing is playing" from "capture
+  failed" — if it can, this should be a distinct informational state, not
+  an error; confirm during Phase 5's real-device experiment
+
+---
+
+# 15. Capture State
 
 ```
-
-
-
-The exact format is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-The audio ID must not be confused with:
-
-
-
-\* filename
-
-\* local filesystem path
-
-\* network URL
-
-\* database row ID
-
-\* user-visible title
-
-
-
-The exact persistence scope is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 6. Audio Metadata
-
-
-
-An audio resource may expose metadata such as:
-
-
-
-```text id="p9cz0v"
-
-AudioMetadata
-
-├── audioId
-
-├── filename
-
-├── duration
-
-├── format
-
-├── size
-
-├── sampleRate
-
-├── channels
-
-└── integrityHash
-
+IDLE → REQUESTING_PERMISSION → PERMISSION_GRANTED → CAPTURING → STOPPED
+                              ↘ PERMISSION_DENIED
+CAPTURING → FAILED (on interruption/unrecoverable error)
 ```
 
+This state must be observable by the UI (Mahin's side) as "Capture
+Status," replacing the old playback-state concepts (`play`/`pause`/`seek`
+states no longer apply here — see playback-api.md for what remains on the
+output side).
 
+---
 
-Exact schema:
+# 16. Readiness
 
+A participant is "ready" to receive audio once connected and the Audio
+Transport layer (Phase 8) has confirmed format compatibility with the
+currently active capture session (if one is active). There is no
+"preparation" step involving loading/decoding a file — that entire
+category of work is retired.
 
+---
 
-\*\*UNDECIDED\*\*
+# 17. Playback Separation
 
+Capture (this contract) is fully separate from output (`playback-api.md`).
+The host captures; every device (host included, if it chooses to also
+output the audio) plays via the native output engine. Capture does not
+imply playback, and playback does not imply capture — a host could
+theoretically capture without locally outputting, though this needs
+explicit confirmation as a supported mode versus an oversight (UNDECIDED).
 
+---
 
-Metadata must describe the actual audio resource.
+# 18. Sample Rate / Channel Configuration
 
+Not user-selectable. Discovered at capture start (§6) and must be
+propagated to participants before/at stream start so the output engine
+(playback-api.md) can configure itself correctly. A change in captured
+format mid-session (e.g. source app changes its own output format) is
+UNDECIDED behavior — likely needs to be treated as a new generation
+rather than an in-place format change; confirm during implementation and
+flag if it happens in practice.
 
+---
 
-AI agents must not fabricate metadata.
+# 19. Resampling
 
+If Phase 8 or Phase 9 requires a canonical sample rate different from
+what was captured, resampling responsibility and location (capture side
+vs. transport side vs. output side) is UNDECIDED — do not implement
+resampling silently in this layer without it being agreed as this
+layer's responsibility.
 
+---
 
-\---
+# 20. Audio Output Routing
 
+Not this contract's concern — see `playback-api.md`. Capture is agnostic
+to where output eventually renders.
 
+---
 
-\# 7. Supported Audio Formats
+# 21. Audio Interruptions
 
+A capture session may be interrupted by:
+- The source app stopping playback
+- The source app losing audio focus to another app
+- The user revoking the `MediaProjection` grant via system UI
+- The system reclaiming resources
 
+All of these must surface as `CAPTURE_INTERRUPTED` (§14), with as much
+detail as Android provides about which case occurred, logged even if not
+exposed as a distinct error code yet.
 
-SoundMesh may support common formats such as:
+---
 
+# 22. Background Behavior
 
+Per Android requirements, capture must run inside a foreground service
+with a persistent notification while active — this is a platform
+requirement, not a SoundMesh design choice, and must not be worked around.
+The foreground-service notification's exact UX is UNDECIDED and may need
+Mahin's input — do not finalize its appearance unilaterally.
 
-```text id="7xq2tm"
+---
 
-MP3
+# 23. Native Audio Boundary
 
-AAC
+### Android
+All capture logic (§9–§15) lives entirely natively (Kotlin), using
+`AudioPlaybackCapture` and `MediaProjection`. Flutter only ever sees
+Pigeon-typed state (`CaptureState`, `CaptureMetadata`, error codes) —
+never raw PCM frames, never Android-specific capture APIs.
 
-M4A
+### iOS
+Not supported. iOS sandboxing prevents an app from capturing audio
+playing in another app in the background. iOS devices in SoundMesh are
+participants/listeners only — they never implement this contract's
+capture side, only the receive side defined in `playback-api.md`. This
+is a documented platform limitation, not a gap to be filled.
 
-WAV
+---
 
-FLAC
+# 24. Flutter Boundary
+
+Flutter-facing surface is limited to:
+- `requestCapturePermission()`
+- `startCapture()`
+- `stopCapture()`
+- `getCaptureState()`
+- A capture-state-changed event stream (state transitions, errors,
+  metadata updates — not per-frame data)
+
+No raw audio data crosses this boundary, per `architecture.md`'s
+Flutter/native separation requirement.
+
+---
+
+# 25. Audio Events
+
+Events emitted to Flutter (via the existing `Dispatchers.Main`-safe
+callback pattern):
+- `onCaptureStateChanged(state, metadata?)`
+- `onCaptureError(errorCode, message)`
+
+Both must be dispatched on the main dispatcher, consistent with the
+existing audited pattern from the `onConnectionError` threading fix.
+
+---
+
+# 26. Errors
+
+See §14 for the full list. All errors surfaced to Flutter must include
+both a stable error code and a human-readable message with underlying
+native detail where available — never a bare code with no context.
+
+---
+
+# 27. Concurrency
+
+- Only one capture session may be active at a time per host device.
+- `startCapture()` while already `CAPTURING` should return an error
+  (UNDECIDED whether this is a distinct `ALREADY_CAPTURING` code or
+  folded into `CAPTURE_START_FAILED` — propose, don't assume) rather than
+  silently restarting.
+- All native capture work happens off the Flutter/UI thread.
+
+---
+
+# 28. Generation Awareness
+
+Every capture start increments `generation` (§5). Transport (Phase 8) and
+output (Phase 9) layers must discard any data tagged with a generation
+older than the current one, to avoid mixing audio from a stopped/restarted
+session with the current one.
+
+---
+
+# 29. Caching
+
+None. Captured audio is never cached, written to disk, or retained beyond
+what's needed to hand frames to the transport layer in near-real-time.
+This is a deliberate consequence of the live-capture model, not an
+oversight — do not add caching without it being a new, explicit decision.
+
+---
+
+# 30. Audio Distribution
+
+Retired concept. There is no distribution step — see §4. This section
+number is kept only so cross-references from other documents predating
+DEC-085 can be found and corrected; it has no active content.
+
+---
+
+# 31. Live Transport Handoff
+
+Captured PCM frames are handed to the Audio Transport layer
+(`networking.md`, Phase 8) as they arrive, with minimal internal
+buffering (only enough to smooth over native scheduling jitter, not to
+build up a meaningful backlog). Exact buffer sizing is UNDECIDED and
+belongs to Phase 8's evidence-based transport decision, not this contract.
+
+---
+
+# 32. UI Consumption
+
+Mahin's UI consumes:
+- `CaptureState` (§15) — rendered as "Capture Status" per `ui-ux.md`
+- `CaptureMetadata` (§6) — informational display only
+- Error events (§14/§26) — rendered as user-facing failure messages,
+  with copy appropriate to each error code (not a single generic
+  "something went wrong")
+
+The UI does not and cannot control capture format, source selection, or
+any file-related concept — those controls do not exist in this model.
+
+---
+
+# 33. Contract Testing
+
+### Permission
+- Request granted → state transitions correctly
+- Request denied → state transitions correctly, no capture starts
+
+### Capture Lifecycle
+- Start → Capturing → Stop → Idle, repeatable without leaks
+- Start while already capturing → correct error, no duplicate session
+
+### Format Discovery
+- Metadata populated correctly at capture start
+- Format propagated in a form Phase 8/9 can consume
+
+### Interruption
+- Source app stopped mid-capture → `CAPTURE_INTERRUPTED`
+- MediaProjection revoked mid-capture → `CAPTURE_INTERRUPTED`
+
+### Error Coverage
+- Each error code in §14 has at least one test forcing that condition
+  (where feasible on-device; some may only be testable manually)
+
+---
+
+# 34. Real-Device Testing
+
+Required per Phase 5 (`farazwork.md` §10): capture tested against at
+least 2–3 real external apps, on real hardware, with results (Android
+version, device model, source app, granted Y/N, captured Y/N, format
+observed, failure reason if any) recorded in the completion report and
+in a new `decisions.md` entry. Simulators/mocks cannot substitute for
+this — `AudioPlaybackCapture` behavior is not reliably mockable.
+
+---
+
+# 35. AI Implementation Rules
+
+- Do not implement any operation not listed in §9–§12 without first
+  adding it to this contract.
+- Do not reintroduce any file-based concept (`selectAudio`, `audioId`,
+  file paths, duration, format lists) — these are retired, not merely
+  deprecated.
+- Do not guess at any UNDECIDED item in this document — implement the
+  minimum needed to make progress, flag the UNDECIDED item explicitly in
+  the completion report, and do not treat your own choice as final.
+
+---
+
+# 36. AI Stop Conditions
+
+STOP and report rather than proceeding if:
+- A source app cannot be captured and no documented Android workaround
+  exists
+- Captured format varies unpredictably in a way that can't be reliably
+  discovered before/at capture start
+- The foreground-service notification requirement conflicts with an
+  existing UI flow in a way that needs Mahin's input
+- Any UNDECIDED item in this document turns out to block forward progress
+  entirely (not just needing a placeholder default)
+
+---
+
+# 37. Contract Change Procedure
+
+Any change to the operations in §9–§12, the error codes in §14, or the
+state machine in §15 must follow: identify problem → propose change →
+get it approved → update this document → update implementation → update
+tests. No silent contract drift, per `rules.md`.
+
+---
+
+# 38. Dependency Map
 
 ```
-
-
-
-The final supported-format list is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Platform differences must be explicitly considered.
-
-
-
-A format supported on one platform must not automatically be assumed to work identically on another.
-
-
-
-The implementation should prefer formats that provide reliable cross-platform decoding and predictable playback behavior.
-
-
-
-\---
-
-
-
-\# 8. Audio Selection
-
-
-
-The Audio API may receive an audio resource selected by the user.
-
-
-
-Conceptual operation:
-
-
-
-```text id="9z2f2b"
-
-selectAudio()
-
+Audio Capture (this contract)
+        ↓ live PCM + metadata
+Audio Transport (networking.md)
+        ↓ ordered packet stream
+Native Output (playback-api.md)
+        ↓ scheduled playback
+Synchronization (sync-api.md)
+        ↑ timing coordination (independent of audio content)
 ```
 
-
-
-Selection may originate from:
-
-
-
-\* local file picker
-
-\* application library
-
-\* imported file
-
-\* future supported source
-
-
-
-The exact source model is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-The Audio API must not assume that audio comes from a network URL unless the contract explicitly allows it.
-
-
-
-\---
-
-
-
-\# 9. `selectAudio()`
-
-
-
-Conceptual input:
-
-
-
-```text id="h4k6jw"
-
-AudioSelectionRequest
-
-```
-
-
-
-Conceptual result:
-
-
-
-```text id="l7w0q4"
-
-AudioResource
-
-```
-
-
-
-Potential failures:
-
-
-
-```text id="m4m1pd"
-
-AUDIO\_NOT\_FOUND
-
-AUDIO\_ACCESS\_DENIED
-
-AUDIO\_FORMAT\_UNSUPPORTED
-
-AUDIO\_INVALID
-
-AUDIO\_SELECTION\_CANCELLED
-
-INTERNAL\_ERROR
-
-```
-
-
-
-Final error names are:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 10. Audio Validation
-
-
-
-Before an audio resource becomes eligible for synchronized playback, it should be validated.
-
-
-
-Validation may include:
-
-
-
-```text id="7q8u3n"
-
-Resource exists
-
-Resource is readable
-
-Format is supported
-
-Audio can be decoded
-
-Metadata is valid
-
-Duration is known
-
-Integrity information is available
-
-```
-
-
-
-The exact validation requirements are:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-A resource that fails validation must not be reported as ready.
-
-
-
-\---
-
-
-
-\# 11. Audio Preparation
-
-
-
-Audio preparation converts an audio resource into a form suitable for local playback.
-
-
-
-Conceptual:
-
-
-
-```text id="x7q3sd"
-
-Audio Resource
-
-&#x20;     ↓
-
-Validation
-
-&#x20;     ↓
-
-Decode / Prepare
-
-&#x20;     ↓
-
-Local Playback Representation
-
-&#x20;     ↓
-
-READY
-
-```
-
-
-
-Preparation may include:
-
-
-
-\* decoding
-
-\* buffering
-
-\* caching
-
-\* resampling
-
-\* format conversion
-
-\* loading into a native playback pipeline
-
-
-
-Exact preparation behavior is:
-
-
-
-\*\*EXPERIMENTAL\*\*
-
-
-
-AI agents must not assume that preparation means fully decoding an entire file into memory.
-
-
-
-\---
-
-
-
-\# 12. `prepareAudio()`
-
-
-
-Conceptual operation:
-
-
-
-```text id="f4t2sq"
-
-prepareAudio(audioId)
-
-```
-
-
-
-Conceptual result:
-
-
-
-```text id="q8j4ka"
-
-AudioPreparationResult
-
-```
-
-
-
-Possible result states:
-
-
-
-```text id="0j7f8m"
-
-PREPARING
-
-READY
-
-FAILED
-
-```
-
-
-
-Exact schema:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Preparation must be asynchronous where required.
-
-
-
-Large audio files must not block the UI thread.
-
-
-
-\---
-
-
-
-\# 13. Local Audio Availability
-
-
-
-For synchronized playback, each participating device should have access to the required audio resource locally whenever possible.
-
-
-
-Conceptual state:
-
-
-
-```text id="4r6zqk"
-
-NOT\_AVAILABLE
-
-DOWNLOADING
-
-VERIFYING
-
-AVAILABLE
-
-INVALID
-
-FAILED
-
-```
-
-
-
-Exact state model:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-A device must not report `AVAILABLE` merely because a file exists.
-
-
-
-Integrity and usability may also need to be established.
-
-
-
-\---
-
-
-
-\# 14. Audio Integrity
-
-
-
-Distributed audio must be verified to ensure that participating devices are playing equivalent content.
-
-
-
-A cryptographic or content hash may be used.
-
-
-
-Conceptual:
-
-
-
-```text id="1c3r9a"
-
-Audio Resource
-
-&#x20;      │
-
-&#x20;      ▼
-
-&#x20;  Hash / Digest
-
-&#x20;      │
-
-&#x20;      ▼
-
-Compare Across Devices
-
-```
-
-
-
-The exact algorithm is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Potential candidates include modern cryptographic hashes.
-
-
-
-The system must not rely solely on:
-
-
-
-```text
-
-filename
-
-file size
-
-duration
-
-```
-
-
-
-to establish content equality.
-
-
-
-\---
-
-
-
-\# 15. `verifyAudioIntegrity()`
-
-
-
-Conceptual operation:
-
-
-
-```text id="h6s0aa"
-
-verifyAudioIntegrity(audioId, expectedHash)
-
-```
-
-
-
-Conceptual result:
-
-
-
-```text id="8j3xq0"
-
-{
-
-&#x20;   valid: true
-
-}
-
-```
-
-
-
-Exact request and result types:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Possible failures:
-
-
-
-```text id="0m4b0n"
-
-AUDIO\_NOT\_FOUND
-
-HASH\_UNAVAILABLE
-
-HASH\_MISMATCH
-
-READ\_FAILED
-
-INTERNAL\_ERROR
-
-```
-
-
-
-Final error taxonomy remains:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 16. Audio Readiness
-
-
-
-Audio readiness must be distinguished from playback readiness.
-
-
-
-A device may have:
-
-
-
-```text id="b8q2pf"
-
-Audio: READY
-
-Sync: NOT\_READY
-
-Playback: NOT\_READY
-
-```
-
-
-
-Therefore:
-
-
-
-> \*\*Audio readiness does not imply synchronized playback readiness.\*\*
-
-
-
-The Audio API reports audio readiness only.
-
-
-
-The Playback and Sync systems determine whether playback can begin.
-
-
-
-\---
-
-
-
-\# 17. Audio Resource State
-
-
-
-Conceptual state machine:
-
-
-
-```text id="f3d7rm"
-
-UNAVAILABLE
-
-&#x20;   │
-
-&#x20;   ▼
-
-SELECTED
-
-&#x20;   │
-
-&#x20;   ▼
-
-VALIDATING
-
-&#x20;   │
-
-&#x20;   ├──────► INVALID
-
-&#x20;   │
-
-&#x20;   ▼
-
-PREPARING
-
-&#x20;   │
-
-&#x20;   ├──────► FAILED
-
-&#x20;   │
-
-&#x20;   ▼
-
-READY
-
-```
-
-
-
-This is a conceptual model.
-
-
-
-Exact state transitions remain:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-No AI agent may invent additional lifecycle transitions without updating the contract.
-
-
-
-\---
-
-
-
-\# 18. Audio Loading
-
-
-
-The Audio API may provide an operation for loading prepared audio into the local audio pipeline.
-
-
-
-Conceptual:
-
-
-
-```text id="d1j5c4"
-
-loadAudio(audioId)
-
-```
-
-
-
-Possible states:
-
-
-
-```text id="h9c2s8"
-
-NOT\_LOADED
-
-LOADING
-
-LOADED
-
-FAILED
-
-```
-
-
-
-Exact semantics are:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Loading must not be confused with starting playback.
-
-
-
-\---
-
-
-
-\# 19. Playback Separation
-
-
-
-The Audio API must not expose a shortcut that bypasses synchronized scheduling.
-
-
-
-Incorrect:
-
-
-
-```text id="w8f4zq"
-
-audio.play()
-
-```
-
-
-
-if this immediately starts playback on the device.
-
-
-
-Correct conceptual flow:
-
-
-
-```text id="k3t8v1"
-
-Audio API
-
-&#x20;  │
-
-&#x20;  ▼
-
-Audio prepared
-
-&#x20;  │
-
-&#x20;  ▼
-
-Playback API
-
-&#x20;  │
-
-&#x20;  ▼
-
-Synchronization system determines timing
-
-&#x20;  │
-
-&#x20;  ▼
-
-Scheduled local playback
-
-```
-
-
-
-The Audio API provides the prepared audio.
-
-
-
-The Playback API controls execution.
-
-
-
-\---
-
-
-
-\# 20. Actual Playback Position
-
-
-
-Actual playback position is primarily a Playback concern.
-
-
-
-The Audio API may expose low-level information required by the Playback System.
-
-
-
-However, it must not redefine playback state.
-
-
-
-For example:
-
-
-
-```text id="5c1p9k"
-
-Audio API:
-
-"What audio resource is loaded?"
-
-
-
-Playback API:
-
-"Where is playback currently?"
-
-
-
-Sync API:
-
-"How far is this device from the shared timeline?"
-
-```
-
-
-
-This separation must remain intact.
-
-
-
-\---
-
-
-
-\# 21. Sample Rate
-
-
-
-Sample rate is potentially critical to synchronization and audio correctness.
-
-
-
-Potential values:
-
-
-
-```text id="v2e8qa"
-
-44100 Hz
-
-48000 Hz
-
-96000 Hz
-
-```
-
-
-
-Actual supported rates vary by platform and hardware.
-
-
-
-The Audio API may expose the actual effective sample rate.
-
-
-
-The exact representation is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-AI agents must not assume that all devices use the same sample rate.
-
-
-
-If resampling is required, ownership must be explicitly defined.
-
-
-
-\---
-
-
-
-\# 22. Channel Configuration
-
-
-
-Potential channel configurations include:
-
-
-
-```text id="8k4r2m"
-
-Mono
-
-Stereo
-
-Multi-channel
-
-```
-
-
-
-SoundMesh MVP requirements are:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-The implementation must not silently convert channel layouts in a way that changes the intended audio without documenting the behavior.
-
-
-
-\---
-
-
-
-\# 23. Resampling
-
-
-
-Different devices may expose different native sample rates.
-
-
-
-Conceptually:
-
-
-
-```text id="j5n8q3"
-
-Source Audio
-
-&#x20;    │
-
-&#x20;    ▼
-
-Target Device Format
-
-&#x20;    │
-
-&#x20;    ▼
-
-Resampling
-
-&#x20;    │
-
-&#x20;    ▼
-
-Playback
-
-```
-
-
-
-Whether SoundMesh performs resampling itself or delegates it to platform audio systems is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Resampling behavior must be considered when evaluating synchronization accuracy.
-
-
-
-\---
-
-
-
-\# 24. Audio Output Routing
-
-
-
-A device may have multiple possible output routes:
-
-
-
-```text id="q0y6s9"
-
-Built-in Speaker
-
-Wired Headphones
-
-Bluetooth
-
-External Audio Device
-
-```
-
-
-
-The Audio API may expose the current route.
-
-
-
-Exact representation:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Bluetooth audio is currently considered:
-
-
-
-\*\*EXPERIMENTAL\*\*
-
-
-
-Bluetooth introduces additional and potentially variable latency.
-
-
-
-It must not be assumed to behave like a built-in speaker.
-
-
-
-\---
-
-
-
-\# 25. Audio Interruptions
-
-
-
-Audio playback may be interrupted by the operating system or another application.
-
-
-
-Examples:
-
-
-
-```text id="s4g7e2"
-
-Incoming call
-
-Alarm
-
-Other audio application
-
-System audio interruption
-
-Audio route change
-
-Headphone disconnect
-
-Bluetooth disconnect
-
-```
-
-
-
-The Audio API may report such conditions.
-
-
-
-The policy for responding to them belongs primarily to Playback/Core.
-
-
-
-Exact interruption state model:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 26. Background Behavior
-
-
-
-Background audio behavior differs between Android and iOS.
-
-
-
-The Audio API must not assume identical platform behavior.
-
-
-
-Background playback requirements are:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Platform-specific implementation must remain behind the platform abstraction boundary.
-
-
-
-\---
-
-
-
-\# 27. Native Audio Boundary
-
-
-
-SoundMesh timing-critical audio functionality may require native implementations.
-
-
-
-\### Android
-
-
-
-Potential technologies include:
-
-
-
-```text id="2r8xk9"
-
-Oboe
-
-AAudio
-
-AudioTrack
-
-```
-
-
-
-\### iOS
-
-
-
-Potential technologies include:
-
-
-
-```text id="q4n5x1"
-
-AVAudioEngine
-
-AVAudioPlayerNode
-
-AVAudioTime
-
-AVAudioSession
-
-```
-
-
-
-These are implementation technologies, not part of the public Audio API.
-
-
-
-The final implementation may differ.
-
-
-
-Flutter code must not directly depend on low-level native audio internals.
-
-
-
-\---
-
-
-
-\# 28. Flutter Boundary
-
-
-
-The Flutter layer should interact with audio through the defined abstraction.
-
-
-
-Conceptually:
-
-
-
-```text id="n3p8t4"
-
-Flutter UI
-
-&#x20;   │
-
-&#x20;   ▼
-
-Core / Audio API
-
-&#x20;   │
-
-&#x20;   ▼
-
-Platform Abstraction
-
-&#x20;   │
-
-&#x20;   ├── Android Native Audio
-
-&#x20;   │
-
-&#x20;   └── iOS Native Audio
-
-```
-
-
-
-Timing-sensitive operations should remain close to the native audio engine.
-
-
-
-High-frequency realtime callbacks across the Flutter/native boundary should be avoided unless demonstrated to be safe.
-
-
-
-\---
-
-
-
-\# 29. Audio Events
-
-
-
-Potential audio events include:
-
-
-
-```text id="v7k2m0"
-
-AUDIO\_SELECTED
-
-AUDIO\_VALIDATED
-
-AUDIO\_PREPARATION\_STARTED
-
-AUDIO\_PREPARATION\_COMPLETED
-
-AUDIO\_PREPARATION\_FAILED
-
-AUDIO\_AVAILABILITY\_CHANGED
-
-AUDIO\_INTEGRITY\_VERIFIED
-
-AUDIO\_INTEGRITY\_FAILED
-
-AUDIO\_ROUTE\_CHANGED
-
-AUDIO\_INTERRUPTED
-
-```
-
-
-
-The event architecture is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Event payloads must be explicitly defined before implementation.
-
-
-
-\---
-
-
-
-\# 30. Errors
-
-
-
-Audio errors should use structured error codes.
-
-
-
-Potential examples:
-
-
-
-```text id="u2f6s9"
-
-AUDIO\_NOT\_FOUND
-
-AUDIO\_ACCESS\_DENIED
-
-AUDIO\_INVALID
-
-AUDIO\_FORMAT\_UNSUPPORTED
-
-AUDIO\_DECODE\_FAILED
-
-AUDIO\_PREPARATION\_FAILED
-
-AUDIO\_NOT\_READY
-
-AUDIO\_NOT\_AVAILABLE
-
-AUDIO\_INTEGRITY\_FAILED
-
-AUDIO\_HASH\_MISMATCH
-
-AUDIO\_OUTPUT\_UNAVAILABLE
-
-AUDIO\_ROUTE\_CHANGED
-
-AUDIO\_INTERRUPTED
-
-INTERNAL\_ERROR
-
-```
-
-
-
-These are candidate errors only.
-
-
-
-Final names and semantics:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-AI agents must not create competing error systems.
-
-
-
-\---
-
-
-
-\# 31. Concurrency
-
-
-
-Audio operations may occur concurrently with:
-
-
-
-\* room changes
-
-\* network transfers
-
-\* playback preparation
-
-\* synchronization calibration
-
-\* user interaction
-
-
-
-The implementation must prevent:
-
-
-
-\* simultaneous conflicting preparation
-
-\* stale preparation results
-
-\* outdated audio replacing newer selected audio
-
-\* playback using invalidated resources
-
-\* race conditions between selection and preparation
-
-
-
-Exact concurrency semantics:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 32. Generation Awareness
-
-
-
-Audio preparation must be aware of the possibility that the active playback generation changes.
-
-
-
-Example:
-
-
-
-```text id="w0j7qp"
-
-Generation 1:
-
-Song A
-
-
-
-Generation 2:
-
-Song B
-
-```
-
-
-
-A delayed preparation result for Song A must not overwrite the active state for Song B.
-
-
-
-Generation semantics are shared with the Playback and Synchronization systems.
-
-
-
-\---
-
-
-
-\# 33. Caching
-
-
-
-SoundMesh may cache prepared audio resources.
-
-
-
-Potential benefits:
-
-
-
-\* faster replay
-
-\* reduced network transfer
-
-\* reduced preparation time
-
-\* improved resilience
-
-
-
-Caching policy is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-The implementation must define how stale or invalid cached resources are detected.
-
-
-
-A cached file must not be assumed valid indefinitely.
-
-
-
-Integrity verification remains authoritative where required.
-
-
-
-\---
-
-
-
-\# 34. Audio Distribution
-
-
-
-When audio must be distributed to participants, the Networking System handles transport.
-
-
-
-The Audio API should provide the information necessary for transfer, such as:
-
-
-
-```text id="z8q5mc"
-
-resource identity
-
-metadata
-
-size
-
-integrity information
-
-availability
-
-```
-
-
-
-The Audio API must not directly implement:
-
-
-
-```text id="m5s8r3"
-
-TCP transfer
-
-UDP transfer
-
-socket management
-
-QR networking
-
-peer discovery
-
-```
-
-
-
-Those belong to Networking.
-
-
-
-\---
-
-
-
-\# 35. Distribution Flow
-
-
-
-The conceptual flow is:
-
-
-
-```text id="c8v3y5"
-
-Host selects audio
-
-&#x20;       │
-
-&#x20;       ▼
-
-Audio validation
-
-&#x20;       │
-
-&#x20;       ▼
-
-Audio metadata + integrity information
-
-&#x20;       │
-
-&#x20;       ▼
-
-Networking distributes resource
-
-&#x20;       │
-
-&#x20;       ▼
-
-Participant receives resource
-
-&#x20;       │
-
-&#x20;       ▼
-
-Participant verifies integrity
-
-&#x20;       │
-
-&#x20;       ▼
-
-Participant prepares audio
-
-&#x20;       │
-
-&#x20;       ▼
-
-All required devices report audio READY
-
-&#x20;       │
-
-&#x20;       ▼
-
-Playback system proceeds toward synchronized scheduling
-
-```
-
-
-
-This flow must remain compatible with:
-
-
-
-\* `networking.md`
-
-\* `playback-api.md`
-
-\* `sync-api.md`
-
-
-
-\---
-
-
-
-\# 36. UI Consumption
-
-
-
-The UI may display:
-
-
-
-```text id="n9r4u1"
-
-Selected song
-
-Filename
-
-Duration
-
-Preparation state
-
-Download state
-
-Audio availability
-
-Audio errors
-
-```
-
-
-
-The UI must not directly manipulate:
-
-
-
-\* native audio engines
-
-\* audio buffers
-
-\* decoding pipelines
-
-\* synchronization timing
-
-\* audio integrity state
-
-
-
-The UI consumes authoritative state.
-
-
-
-\---
-
-
-
-\# 37. Contract Testing
-
-
-
-The Audio API must have contract tests covering at minimum:
-
-
-
-\### Selection
-
-
-
-```text id="a8m3y7"
-
-Valid audio can be selected
-
-Invalid resources are rejected
-
-Unsupported formats are rejected
-
-Cancellation is represented correctly
-
-```
-
-
-
-\### Validation
-
-
-
-```text id="f2q7s1"
-
-Unreadable resources fail validation
-
-Invalid audio fails validation
-
-Valid audio passes validation
-
-```
-
-
-
-\### Preparation
-
-
-
-```text id="m4c8v0"
-
-Preparation produces a valid result
-
-Preparation failures are observable
-
-Stale preparation cannot overwrite newer state
-
-```
-
-
-
-\### Integrity
-
-
-
-```text id="k7d3p2"
-
-Correct audio passes integrity verification
-
-Modified audio fails integrity verification
-
-Missing integrity information is handled explicitly
-
-```
-
-
-
-\### Availability
-
-
-
-```text id="r5x9n4"
-
-Audio availability is truthful
-
-Missing audio is not reported as available
-
-```
-
-
-
-\### Separation
-
-
-
-```text id="b6q1t8"
-
-Audio operations do not start unscheduled playback
-
-Audio API does not modify room membership
-
-Audio API does not implement network transport
-
-Audio API does not calculate synchronization metrics
-
-```
-
-
-
-\---
-
-
-
-\# 38. Real-Device Testing
-
-
-
-Audio behavior must eventually be tested on physical devices.
-
-
-
-Minimum target:
-
-
-
-```text id="q3m7x2"
-
-2 physical phones
-
-```
-
-
-
-Testing should include:
-
-
-
-\* same audio on both devices
-
-\* different device hardware
-
-\* different speaker hardware
-
-\* different sample rates where applicable
-
-\* audio preparation
-
-\* audio integrity verification
-
-\* output routing
-
-\* interruption behavior
-
-\* playback preparation
-
-\* long-duration playback
-
-\* synchronization interaction
-
-
-
-For SoundMesh, simulated audio behavior is not sufficient for final synchronization validation.
-
-
-
-\---
-
-
-
-\# 39. AI Implementation Rules
-
-
-
-AI agents implementing Audio API functionality MUST:
-
-
-
-1\. Read this contract before modifying audio abstraction code.
-
-2\. Read `audio.md`.
-
-3\. Read `architecture.md`.
-
-4\. Read `playback-api.md` when playback behavior is involved.
-
-5\. Read `sync-api.md` when timing behavior is involved.
-
-6\. Read `networking.md` when audio distribution is involved.
-
-7\. Preserve the distinction between audio preparation and playback.
-
-8\. Never fabricate audio metadata.
-
-9\. Never fabricate readiness.
-
-10\. Never bypass scheduled playback.
-
-11\. Never silently change supported-format behavior.
-
-12\. Never directly expose platform-specific implementation details to unrelated consumers.
-
-13\. Add or update contract tests when behavior changes.
-
-14\. Document new behavior.
-
-15\. Stop when required semantics are undefined.
-
-
-
-\---
-
-
-
-\# 40. AI Stop Conditions
-
-
-
-The agent MUST STOP and report a blocker when:
-
-
-
-1\. The required audio resource schema is undefined.
-
-2\. Supported-format behavior is unclear.
-
-3\. Audio readiness semantics are unclear.
-
-4\. Integrity requirements are unclear.
-
-5\. Resampling behavior is required but undefined.
-
-6\. Channel behavior is required but undefined.
-
-7\. Audio route behavior conflicts between platforms or documents.
-
-8\. A requested feature requires modifying Playback semantics.
-
-9\. A requested feature requires modifying Sync semantics.
-
-10\. A requested feature requires modifying Networking semantics.
-
-11\. Existing code contradicts this contract.
-
-12\. A new public operation is required but unspecified.
-
-13\. The agent would need to invent metadata.
-
-14\. The agent would need to fabricate readiness.
-
-15\. The agent would need to bypass the synchronized playback architecture.
-
-
-
-The agent must not resolve these conditions by guessing.
-
-
-
-\---
-
-
-
-\# 41. Contract Change Procedure
-
-
-
-Any breaking or cross-subsystem Audio API change must be documented before implementation.
-
-
-
-Use:
-
-
-
-```text id="u6y3p9"
-
-Current Contract:
-
-<existing behavior>
-
-
-
-Proposed Change:
-
-<new behavior>
-
-
-
-Reason:
-
-<why the change is necessary>
-
-
-
-Affected Systems:
-
-<Audio / Playback / Sync / Networking / Core / UI>
-
-
-
-Compatibility Impact:
-
-<breaking or non-breaking>
-
-
-
-Required Updates:
-
-<implementation / tests / documentation>
-
-
-
-Decision:
-
-UNDECIDED
-
-```
-
-
-
-Cross-subsystem changes require coordination with the affected subsystem owners.
-
-
-
-\---
-
-
-
-\# 42. Dependency Map
-
-
-
-```text id="0x5r8n"
-
-&#x20;                    ┌──────────────┐
-
-&#x20;                    │   Core API   │
-
-&#x20;                    └──────┬───────┘
-
-&#x20;                           │
-
-&#x20;                           ▼
-
-&#x20;                    ┌──────────────┐
-
-&#x20;                    │  Audio API   │
-
-&#x20;                    └──────┬───────┘
-
-&#x20;                           │
-
-&#x20;             ┌─────────────┼─────────────┐
-
-&#x20;             ▼             ▼             ▼
-
-&#x20;        Networking      Playback        Device
-
-&#x20;             │             │
-
-&#x20;             │             ▼
-
-&#x20;             │           Sync
-
-&#x20;             │             │
-
-&#x20;             └─────────────┼─────────────┘
-
-&#x20;                           ▼
-
-&#x20;                    Integration Tests
-
-```
-
-
-
-The Audio API provides audio resources and preparation state.
-
-
-
-It does not become the owner of network transfer, playback timing, or synchronization.
-
-
-
-\---
-
-
-
-\# 43. Relationship to Other Contracts
-
-
-
-This contract must remain consistent with:
-
-
-
-```text id="p2v8q4"
-
-DOCS/interfaces/core-api.md
-
-DOCS/interfaces/room-api.md
-
-DOCS/interfaces/device-api.md
-
-DOCS/interfaces/playback-api.md
-
-DOCS/interfaces/sync-api.md
-
-DOCS/interfaces/README.md
-
-DOCS/audio.md
-
-DOCS/networking.md
-
-DOCS/synchronization.md
-
-DOCS/architecture.md
-
-DOCS/testing.md
-
-DOCS/contract-testing.md
-
-DOCS/AI/rules.md
-
-DOCS/AI/task-protocol.md
-
-DOCS/AI/integration-protocol.md
-
-```
-
-
-
-\---
-
-
-
-\# 44. Current Open Questions
-
-
-
-The following remain intentionally unresolved:
-
-
-
-```text id="m8c4z1"
-
-1\. Exact AudioResource schema
-
-2\. Exact audioId format
-
-3\. Supported audio formats
-
-4\. Maximum supported file size
-
-5\. Metadata schema
-
-6\. Integrity hash algorithm
-
-7\. Local storage strategy
-
-8\. Cache strategy
-
-9\. Preparation semantics
-
-10\. Decode strategy
-
-11\. Sample-rate normalization
-
-12\. Resampling ownership
-
-13\. Channel configuration requirements
-
-14\. Audio route model
-
-15\. Bluetooth behavior
-
-16\. Background playback requirements
-
-17\. Interruption state model
-
-18\. Event architecture
-
-19\. Audio transfer integration
-
-20\. Native audio abstraction details
-
-21\. Flutter/native data representation
-
-22\. Exact error taxonomy
-
-23\. Generation handling details
-
-24\. Audio library/import sources
-
-25\. Audio persistence lifecycle
-
-```
-
-
-
-These questions must remain visible until explicitly resolved.
-
-
-
-\---
-
-
-
-\# 45. Definition of Done
-
-
-
-Audio API implementation is complete only when:
-
-
-
-```text id="s9x2k7"
-
-□ Audio resource identity is defined
-
-□ Audio metadata is defined
-
-□ Supported formats are defined
-
-□ Validation behavior is implemented
-
-□ Preparation behavior is implemented
-
-□ Audio readiness is truthful
-
-□ Integrity verification is implemented where required
-
-□ Audio distribution boundary is respected
-
-□ Playback is not started directly by Audio API
-
-□ Platform-specific implementation remains behind the abstraction
-
-□ Structured errors are implemented
-
-□ Contract tests exist
-
-□ Integration tests exist
-
-□ Real-device audio testing has been performed
-
-□ Documentation matches implementation
-
-□ No undocumented public behavior exists
-
-□ No fake metadata or readiness exists
-
-□ Git diff has been reviewed
-
-```
-
-
-
-\---
-
-
-
-\# 46. Final Principle
-
-
-
-The Audio API answers:
-
-
-
-> \*\*“What audio resource are we using, is it valid, and is it prepared and available for playback?”\*\*
-
-
-
-It does not answer:
-
-
-
-> “When should it play?”
-
-
-
-That belongs to Playback and Synchronization.
-
-
-
-It does not answer:
-
-
-
-> “How do we transfer it?”
-
-
-
-That belongs to Networking.
-
-
-
-It does not answer:
-
-
-
-> “Which devices are members?”
-
-
-
-That belongs to Room.
-
-
-
-It does not answer:
-
-
-
-> “How synchronized are the devices?”
-
-
-
-That belongs to Sync.
-
-
-
-\*\*Audio provides the material.
-
-Networking distributes it.
-
-Playback executes it.
-
-Synchronization determines when it executes.\*\*
-
-
-
-The boundaries must remain explicit so independently developed AI components cannot silently build incompatible systems.
-
-
-
+Audio Capture has no dependency on Networking, Room, or Device systems —
+it is intentionally isolated, per Phase 5's scope.
+
+---
+
+# 39. Relationship to Other Contracts
+
+- `core-api.md` — already updated to reflect this model
+  (`startCapture()`/`getCaptureState()` referenced there directly)
+- `playback-api.md` — STILL PRE-DEC-085 as of this writing; must be
+  rewritten to consume this contract's live stream instead of a prepared
+  file resource before Phase 9 begins
+- `networking.md` / `sync-api.md` — unaffected by this rewrite except
+  where they reference the old audio-distribution model, which should be
+  understood as superseded
+
+---
+
+# 40. Current Open Questions
+
+1. Does capture format vary across different source apps in practice, or
+   is it consistently normalized by Android? (Resolve in Phase 5.)
+2. Can "capturing but source is silent" be distinguished from "capture
+   failed"? (§14, §7)
+3. Where should resampling responsibility live, if needed at all? (§19)
+4. Is host-side simultaneous local output of the captured audio a
+   supported mode, or does the host rely on hearing the source app
+   directly? (§17)
+5. What is the foreground-service notification's UX? (§22 — needs Mahin)
+6. What happens to an in-progress capture session if the host device's
+   screen locks or the app is backgrounded? (Not yet addressed — flag if
+   this surfaces during Phase 5 testing.)
+7. Exact `ALREADY_CAPTURING`-vs-`CAPTURE_START_FAILED` error distinction.
+   (§27)
+
+---
+
+# 41. Definition of Done (for Phase 5's implementation of this contract)
+
+- `requestCapturePermission()`, `startCapture()`, `stopCapture()`,
+  `getCaptureState()` implemented and Pigeon-exposed
+- Real external app audio captured and observed on a physical device
+- All §14 error cases distinctly reachable and tested (where feasible)
+- Real-device experiment table completed and recorded
+- This document updated to match what was actually built, including
+  resolving or explicitly carrying forward each §40 open question
+
+---
+
+# 42. Final Principle
+
+SoundMesh does not manage audio. It borrows a moment of audio already
+playing elsewhere and shares that moment, live, with other devices. Every
+operation in this contract should be evaluated against that principle —
+if an operation implies ownership, storage, or control over audio content
+itself, it does not belong here.

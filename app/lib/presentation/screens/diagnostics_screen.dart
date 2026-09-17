@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:soundmesh/application/providers/capture_provider.dart';
 import 'package:soundmesh/application/repositories/device_info_repository.dart';
 import 'package:soundmesh/application/repositories/timing_info_repository.dart';
 import 'package:soundmesh/src/soundmesh_messages.g.dart';
 
-class DiagnosticsScreen extends StatefulWidget {
+class DiagnosticsScreen extends ConsumerStatefulWidget {
   final DeviceInfoRepository Function()? deviceRepositoryBuilder;
   final TimingInfoRepository Function()? timingRepositoryBuilder;
 
@@ -15,10 +17,10 @@ class DiagnosticsScreen extends StatefulWidget {
   });
 
   @override
-  State<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
+  ConsumerState<DiagnosticsScreen> createState() => _DiagnosticsScreenState();
 }
 
-class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
+class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
   late final DeviceInfoRepository _deviceRepository;
   late final TimingInfoRepository _timingRepository;
   DeviceInfo? _deviceInfo;
@@ -84,13 +86,15 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final captureState = ref.watch(captureStateProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Diagnostics')),
-      body: _buildBody(),
+      body: _buildBody(captureState),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(CaptureUiStateData captureState) {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(),
@@ -205,11 +209,157 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                 icon: const Icon(Icons.refresh),
                 label: const Text('Read Again'),
               ),
+              const SizedBox(height: 32),
+              const Divider(),
+              const SizedBox(height: 16),
+              _buildCaptureSection(captureState),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildCaptureSection(CaptureUiStateData captureState) {
+    final theme = Theme.of(context);
+    final isCapturing = captureState.state == CaptureUiState.capturing;
+    final canStart = captureState.state == CaptureUiState.permissionGranted;
+    final canRequest = captureState.state == CaptureUiState.idle ||
+        captureState.state == CaptureUiState.permissionDenied ||
+        captureState.state == CaptureUiState.stopped ||
+        captureState.state == CaptureUiState.failed;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Audio Capture (Phase 5)',
+          style: theme.textTheme.titleMedium,
+        ),
+        const SizedBox(height: 16),
+        _CaptureInfoRow(
+          label: 'State',
+          value: _formatCaptureState(captureState.state),
+          valueColor: _getStateColor(captureState.state, theme),
+        ),
+        if (captureState.metadata != null) ...[
+          const SizedBox(height: 8),
+          _CaptureInfoRow(
+            label: 'Session ID',
+            value: captureState.metadata!.sessionId,
+            isMultiLine: true,
+          ),
+          _CaptureInfoRow(
+            label: 'Generation',
+            value: captureState.metadata!.generation.toString(),
+          ),
+          _CaptureInfoRow(
+            label: 'Sample Rate',
+            value: '${captureState.metadata!.sampleRate} Hz',
+          ),
+          _CaptureInfoRow(
+            label: 'Channels',
+            value: captureState.metadata!.channelCount.toString(),
+          ),
+          _CaptureInfoRow(
+            label: 'Started At',
+            value: '${captureState.metadata!.startedAtNanos} ns',
+            isMultiLine: true,
+          ),
+        ],
+        if (captureState.error != null) ...[
+          const SizedBox(height: 8),
+          _CaptureInfoRow(
+            label: 'Error',
+            value: '${captureState.error!.code}: ${captureState.error!.message}',
+            valueColor: theme.colorScheme.error,
+            isMultiLine: true,
+          ),
+        ],
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: canRequest
+                    ? () => ref.read(captureStateProvider.notifier).requestPermission()
+                    : null,
+                icon: const Icon(Icons.security_rounded),
+                label: const Text('Request Permission'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: canStart
+                    ? () => ref.read(captureStateProvider.notifier).start()
+                    : null,
+                icon: const Icon(Icons.mic_rounded),
+                label: const Text('Start Capture'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: isCapturing
+                ? () => ref.read(captureStateProvider.notifier).stop()
+                : null,
+            icon: const Icon(Icons.stop_rounded),
+            label: const Text('Stop Capture'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: isCapturing ? theme.colorScheme.error : theme.disabledColor,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: () => ref.read(captureStateProvider.notifier).refresh(),
+          icon: const Icon(Icons.refresh),
+          label: const Text('Refresh State'),
+        ),
+      ],
+    );
+  }
+
+  String _formatCaptureState(CaptureUiState state) {
+    switch (state) {
+      case CaptureUiState.idle:
+        return 'IDLE';
+      case CaptureUiState.requestingPermission:
+        return 'REQUESTING PERMISSION...';
+      case CaptureUiState.permissionGranted:
+        return 'PERMISSION GRANTED';
+      case CaptureUiState.permissionDenied:
+        return 'PERMISSION DENIED';
+      case CaptureUiState.capturing:
+        return 'CAPTURING';
+      case CaptureUiState.stopped:
+        return 'STOPPED';
+      case CaptureUiState.failed:
+        return 'FAILED';
+    }
+  }
+
+  Color _getStateColor(CaptureUiState state, ThemeData theme) {
+    switch (state) {
+      case CaptureUiState.capturing:
+        return theme.colorScheme.primary;
+      case CaptureUiState.permissionGranted:
+        return theme.colorScheme.primary;
+      case CaptureUiState.requestingPermission:
+        return theme.colorScheme.secondary;
+      case CaptureUiState.permissionDenied:
+      case CaptureUiState.failed:
+        return theme.colorScheme.error;
+      case CaptureUiState.stopped:
+        return theme.colorScheme.onSurfaceVariant;
+      case CaptureUiState.idle:
+      default:
+        return theme.colorScheme.onSurfaceVariant;
+    }
   }
 }
 
@@ -251,6 +401,57 @@ class _InfoRow extends StatelessWidget {
             Text(
               value,
               style: Theme.of(context).textTheme.bodyLarge,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CaptureInfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool isMultiLine;
+  final Color? valueColor;
+
+  const _CaptureInfoRow({
+    required this.label,
+    required this.value,
+    this.isMultiLine = false,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: isMultiLine ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              '$label:',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          if (isMultiLine)
+            Expanded(
+              child: Text(
+                value,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: valueColor,
+                ),
+                textAlign: TextAlign.start,
+              ),
+            )
+          else
+            Text(
+              value,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: valueColor,
+              ),
             ),
         ],
       ),

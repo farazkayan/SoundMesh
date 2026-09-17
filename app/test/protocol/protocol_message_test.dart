@@ -7,7 +7,7 @@ void main() {
       test('HELLO message serializes and deserializes correctly', () {
         const participantId = '550e8400-e29b-41d4-a716-446655440000';
         final hello = ProtocolMessage.hello(
-          protocolVersion: CURRENT_PROTOCOL_VERSION,
+          protocolVersion: currentProtocolVersion,
           participantId: participantId,
           generation: 0,
           timestamp: 1234567890,
@@ -16,14 +16,14 @@ void main() {
         final jsonString = hello.toJsonString();
         final parsed = ProtocolMessage.fromJsonString(jsonString);
 
-        expect(parsed.protocolVersion, equals(CURRENT_PROTOCOL_VERSION));
+        expect(parsed.protocolVersion, equals(currentProtocolVersion));
         expect(parsed.messageType, equals('HELLO'));
         expect(parsed.senderId, equals(participantId));
         expect(parsed.generation, equals(0));
         expect(parsed.timestamp, equals(1234567890));
         expect(parsed.payload?['participantId'], equals(participantId));
         expect(parsed.messageId, isNotNull);
-        expect(_isValidUuidV4(parsed.messageId!), isTrue);
+        expect(_isValidUuidV4(parsed.messageId), isTrue);
       });
 
       test('WELCOME message serializes and deserializes correctly', () {
@@ -32,7 +32,7 @@ void main() {
         const hostId = '880e8400-e29b-41d4-a716-446655440000';
 
         final welcome = ProtocolMessage.welcome(
-          protocolVersion: CURRENT_PROTOCOL_VERSION,
+          protocolVersion: currentProtocolVersion,
           sessionId: sessionId,
           roomId: roomId,
           hostParticipantId: hostId,
@@ -43,7 +43,7 @@ void main() {
         final jsonString = welcome.toJsonString();
         final parsed = ProtocolMessage.fromJsonString(jsonString);
 
-        expect(parsed.protocolVersion, equals(CURRENT_PROTOCOL_VERSION));
+        expect(parsed.protocolVersion, equals(currentProtocolVersion));
         expect(parsed.messageType, equals('WELCOME'));
         expect(parsed.sessionId, equals(sessionId));
         expect(parsed.senderId, equals(hostId));
@@ -52,7 +52,7 @@ void main() {
         expect(parsed.payload?['roomId'], equals(roomId));
         expect(parsed.payload?['hostParticipantId'], equals(hostId));
         expect(parsed.messageId, isNotNull);
-        expect(_isValidUuidV4(parsed.messageId!), isTrue);
+        expect(_isValidUuidV4(parsed.messageId), isTrue);
       });
 
       test('VERSION_REJECTED message serializes and deserializes correctly', () {
@@ -90,7 +90,7 @@ void main() {
         final jsonString = ping.toJsonString();
         final parsed = ProtocolMessage.fromJsonString(jsonString);
 
-        expect(parsed.protocolVersion, equals(CURRENT_PROTOCOL_VERSION));
+        expect(parsed.protocolVersion, equals(currentProtocolVersion));
         expect(parsed.messageType, equals('PING'));
         expect(parsed.sessionId, equals(sessionId));
         expect(parsed.senderId, equals(senderId));
@@ -115,7 +115,7 @@ void main() {
         final jsonString = pong.toJsonString();
         final parsed = ProtocolMessage.fromJsonString(jsonString);
 
-        expect(parsed.protocolVersion, equals(CURRENT_PROTOCOL_VERSION));
+        expect(parsed.protocolVersion, equals(currentProtocolVersion));
         expect(parsed.messageType, equals('PONG'));
         expect(parsed.sessionId, equals(sessionId));
         expect(parsed.senderId, equals(senderId));
@@ -138,7 +138,7 @@ void main() {
         final jsonString = error.toJsonString();
         final parsed = ProtocolMessage.fromJsonString(jsonString);
 
-        expect(parsed.protocolVersion, equals(CURRENT_PROTOCOL_VERSION));
+        expect(parsed.protocolVersion, equals(currentProtocolVersion));
         expect(parsed.messageType, equals('ERROR'));
         expect(parsed.sessionId, equals(sessionId));
         expect(parsed.senderId, equals(senderId));
@@ -162,7 +162,7 @@ void main() {
         final jsonString = closed.toJsonString();
         final parsed = ProtocolMessage.fromJsonString(jsonString);
 
-        expect(parsed.protocolVersion, equals(CURRENT_PROTOCOL_VERSION));
+        expect(parsed.protocolVersion, equals(currentProtocolVersion));
         expect(parsed.messageType, equals('ROOM_CLOSED'));
         expect(parsed.sessionId, equals(sessionId));
         expect(parsed.senderId, equals(senderId));
@@ -250,6 +250,15 @@ void main() {
         expect(_isValidUuidV4('550e8400-e29b-51d4-a716-446655440000'), isFalse); // version 5
         expect(_isValidUuidV4('550e8400-e29b-41d4-7716-446655440000'), isFalse); // variant not 8/9/a/b
       });
+
+      test('generated UUID passes v4 validation', () {
+        expect(_isValidUuidV4(generateUuidV4()), isTrue);
+      });
+
+      test('generated UUIDs are unique across consecutive calls', () {
+        final ids = {for (var i = 0; i < 100; i++) generateUuidV4()};
+        expect(ids.length, 100);
+      });
     });
 
     group('Message type wire values', () {
@@ -279,7 +288,7 @@ void main() {
       test('creates copy with modified fields', () {
         const participantId = '550e8400-e29b-41d4-a716-446655440000';
         final hello = ProtocolMessage.hello(
-          protocolVersion: CURRENT_PROTOCOL_VERSION,
+          protocolVersion: currentProtocolVersion,
           participantId: participantId,
           generation: 0,
         );

@@ -165,11 +165,18 @@ void main() {
 
       expect(find.text('Monotonic Timing'), findsOneWidget);
       expect(find.text('Increasing (monotonic)'), findsOneWidget);
+      expect(find.textContaining('1001000000 ns', skipOffstage: false), findsOneWidget);
 
+      // Scroll the button into view before tapping: an off-screen tap misses
+      // silently, leaving the follow-up assertions vacuous.
+      await tester.ensureVisible(find.text('Read Again'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Read Again'));
       await tester.pumpAndSettle();
 
       expect(find.text('Increasing (monotonic)'), findsOneWidget);
+      // The fake increments per call; this proves the second read happened.
+      expect(find.textContaining('1002000000 ns', skipOffstage: false), findsOneWidget);
     });
 
     testWidgets('shows error when timing repository throws',

@@ -213,6 +213,321 @@ class DeviceInfo {
   }
 }
 
+class CaptureState {
+  CaptureState({
+    required this.state,
+  });
+
+  String state;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      state,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static CaptureState decode(Object result) {
+    result as List<Object?>;
+    return CaptureState(
+      state: result[0]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! CaptureState || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(state, other.state);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'CaptureState(state: $state)';
+  }
+}
+
+class CaptureMetadata {
+  CaptureMetadata({
+    required this.sessionId,
+    required this.generation,
+    required this.sampleRate,
+    required this.channelCount,
+    required this.startedAtNanos,
+  });
+
+  String sessionId;
+
+  int generation;
+
+  int sampleRate;
+
+  int channelCount;
+
+  int startedAtNanos;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      sessionId,
+      generation,
+      sampleRate,
+      channelCount,
+      startedAtNanos,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static CaptureMetadata decode(Object result) {
+    result as List<Object?>;
+    return CaptureMetadata(
+      sessionId: result[0]! as String,
+      generation: result[1]! as int,
+      sampleRate: result[2]! as int,
+      channelCount: result[3]! as int,
+      startedAtNanos: result[4]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! CaptureMetadata || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(sessionId, other.sessionId) && _deepEquals(generation, other.generation) && _deepEquals(sampleRate, other.sampleRate) && _deepEquals(channelCount, other.channelCount) && _deepEquals(startedAtNanos, other.startedAtNanos);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'CaptureMetadata(sessionId: $sessionId, generation: $generation, sampleRate: $sampleRate, channelCount: $channelCount, startedAtNanos: $startedAtNanos)';
+  }
+}
+
+class CaptureError {
+  CaptureError({
+    required this.code,
+    required this.message,
+  });
+
+  String code;
+
+  String message;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      code,
+      message,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static CaptureError decode(Object result) {
+    result as List<Object?>;
+    return CaptureError(
+      code: result[0]! as String,
+      message: result[1]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! CaptureError || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(code, other.code) && _deepEquals(message, other.message);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'CaptureError(code: $code, message: $message)';
+  }
+}
+
+class CapturePermissionResult {
+  CapturePermissionResult({
+    required this.result,
+    this.error,
+  });
+
+  String result;
+
+  CaptureError? error;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      result,
+      error,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static CapturePermissionResult decode(Object result) {
+    result as List<Object?>;
+    return CapturePermissionResult(
+      result: result[0]! as String,
+      error: result[1] as CaptureError?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! CapturePermissionResult || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(result, other.result) && _deepEquals(error, other.error);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'CapturePermissionResult(result: $result, error: $error)';
+  }
+}
+
+class CaptureResult {
+  CaptureResult({
+    required this.success,
+    this.metadata,
+    this.error,
+  });
+
+  bool success;
+
+  CaptureMetadata? metadata;
+
+  CaptureError? error;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      success,
+      metadata,
+      error,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static CaptureResult decode(Object result) {
+    result as List<Object?>;
+    return CaptureResult(
+      success: result[0]! as bool,
+      metadata: result[1] as CaptureMetadata?,
+      error: result[2] as CaptureError?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! CaptureResult || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(success, other.success) && _deepEquals(metadata, other.metadata) && _deepEquals(error, other.error);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'CaptureResult(success: $success, metadata: $metadata, error: $error)';
+  }
+}
+
+class CaptureStateResult {
+  CaptureStateResult({
+    required this.state,
+    this.metadata,
+  });
+
+  CaptureState state;
+
+  CaptureMetadata? metadata;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      state,
+      metadata,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static CaptureStateResult decode(Object result) {
+    result as List<Object?>;
+    return CaptureStateResult(
+      state: result[0]! as CaptureState,
+      metadata: result[1] as CaptureMetadata?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! CaptureStateResult || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(state, other.state) && _deepEquals(metadata, other.metadata);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'CaptureStateResult(state: $state, metadata: $metadata)';
+  }
+}
+
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -227,6 +542,24 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is DeviceInfo) {
       buffer.putUint8(130);
       writeValue(buffer, value.encode());
+    }    else if (value is CaptureState) {
+      buffer.putUint8(131);
+      writeValue(buffer, value.encode());
+    }    else if (value is CaptureMetadata) {
+      buffer.putUint8(132);
+      writeValue(buffer, value.encode());
+    }    else if (value is CaptureError) {
+      buffer.putUint8(133);
+      writeValue(buffer, value.encode());
+    }    else if (value is CapturePermissionResult) {
+      buffer.putUint8(134);
+      writeValue(buffer, value.encode());
+    }    else if (value is CaptureResult) {
+      buffer.putUint8(135);
+      writeValue(buffer, value.encode());
+    }    else if (value is CaptureStateResult) {
+      buffer.putUint8(136);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -239,6 +572,18 @@ class _PigeonCodec extends StandardMessageCodec {
         return ConnectionState.decode(readValue(buffer)!);
       case 130:
         return DeviceInfo.decode(readValue(buffer)!);
+      case 131:
+        return CaptureState.decode(readValue(buffer)!);
+      case 132:
+        return CaptureMetadata.decode(readValue(buffer)!);
+      case 133:
+        return CaptureError.decode(readValue(buffer)!);
+      case 134:
+        return CapturePermissionResult.decode(readValue(buffer)!);
+      case 135:
+        return CaptureResult.decode(readValue(buffer)!);
+      case 136:
+        return CaptureStateResult.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -315,6 +660,44 @@ class NetworkHostPlatform {
     return pigeonVar_replyValue! as bool;
   }
 
+  Future<bool> sendChatMessage(String text) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.NetworkHostPlatform.sendChatMessage$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[text]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as bool;
+  }
+
+  Future<bool> sendProtocolMessage(String message) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.NetworkHostPlatform.sendProtocolMessage$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[message]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as bool;
+  }
+
   Future<void> disconnect() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.NetworkHostPlatform.disconnect$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -350,6 +733,43 @@ class NetworkHostPlatform {
     )
     ;
     return pigeonVar_replyValue! as String;
+  }
+
+  Future<void> setHeartbeatConfig(int intervalMs, int timeoutMs) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.NetworkHostPlatform.setHeartbeatConfig$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[intervalMs, timeoutMs]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<bool> reconnectToHost(String ipAddress, int port) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.NetworkHostPlatform.reconnectToHost$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[ipAddress, port]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as bool;
   }
 }
 
@@ -419,6 +839,95 @@ class TimingPlatform {
   }
 }
 
+class AudioCapturePlatform {
+  /// Constructor for [AudioCapturePlatform]. The [binaryMessenger] named argument is
+  /// available for dependency injection. If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  AudioCapturePlatform({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  Future<CapturePermissionResult> requestCapturePermission() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.AudioCapturePlatform.requestCapturePermission$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as CapturePermissionResult;
+  }
+
+  Future<CaptureResult> startCapture() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.AudioCapturePlatform.startCapture$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as CaptureResult;
+  }
+
+  Future<void> stopCapture() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.AudioCapturePlatform.stopCapture$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<CaptureStateResult> getCaptureState() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.AudioCapturePlatform.getCaptureState$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as CaptureStateResult;
+  }
+}
+
 abstract class NetworkFlutterApi {
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
 
@@ -485,6 +994,62 @@ abstract class NetworkFlutterApi {
           final String arg_errorMessage = args[1]! as String;
           try {
             api.onConnectionError(arg_errorCode, arg_errorMessage);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+  }
+}
+
+abstract class AudioCaptureFlutterApi {
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  void onCaptureStateChanged(String state, CaptureMetadata? metadata);
+
+  void onCaptureError(String errorCode, String errorMessage);
+
+  static void setUp(AudioCaptureFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.AudioCaptureFlutterApi.onCaptureStateChanged$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_state = args[0]! as String;
+          final CaptureMetadata? arg_metadata = args[1] as CaptureMetadata?;
+          try {
+            api.onCaptureStateChanged(arg_state, arg_metadata);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.AudioCaptureFlutterApi.onCaptureError$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_errorCode = args[0]! as String;
+          final String arg_errorMessage = args[1]! as String;
+          try {
+            api.onCaptureError(arg_errorCode, arg_errorMessage);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

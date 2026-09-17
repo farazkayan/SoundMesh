@@ -69,6 +69,34 @@ class FrameDecoderTest {
         assertEquals(listOf("PING"), messages)
     }
 
+    @Test
+    fun skipsOversizedPayloadAndReadsNextFrame() {
+        val decoder = FrameDecoder()
+        // 0x00010001 = 65537 > MAX_PAYLOAD_BYTES (65536)
+        val oversizedHeader = byteArrayOf(0, 1, 0, 1)
+        val validFrame = frame("PING")
+
+        val messages = decoder.accept(oversizedHeader + ByteArray(65537) + validFrame)
+
+        assertEquals(listOf("PING"), messages)
+    }
+
+    @Test
+    fun skipsOversizedPayloadAcrossSeparateReads() {
+        val decoder = FrameDecoder()
+        val oversizedHeader = byteArrayOf(0, 1, 0, 1)
+        val oversizedPayload = ByteArray(65537)
+        val validFrame = frame("PING")
+
+        val messages = mutableListOf<String>()
+        messages += decoder.accept(oversizedHeader)
+        messages += decoder.accept(oversizedPayload.copyOfRange(0, 4096))
+        messages += decoder.accept(oversizedPayload.copyOfRange(4096, oversizedPayload.size))
+        messages += decoder.accept(validFrame)
+
+        assertEquals(listOf("PING"), messages)
+    }
+
     private fun frame(payload: String): ByteArray {
         val payloadBytes = payload.toByteArray(Charsets.UTF_8)
         return ByteArray(FRAME_LENGTH_BYTES + payloadBytes.size).apply {

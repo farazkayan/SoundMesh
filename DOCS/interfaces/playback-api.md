@@ -1,2948 +1,1618 @@
-\# SoundMesh Playback API Contract
+# SoundMesh Synchronized Audio Output API Contract
 
+**File:** `DOCS/interfaces/playback-api.md`
 
+**Status:** EXPERIMENTAL
 
-\*\*File:\*\* `DOCS/interfaces/playback-api.md`
+**Owner:** Faraz
 
-\*\*Status:\*\* EXPERIMENTAL
+**Primary Consumers:** Core API, Audio API, Synchronization System, Device API, Room API, UI/Application Layer, Integration Tests
 
-\*\*Owner:\*\* Faraz
+---
 
-\*\*Primary Consumers:\*\* Core API, Audio API, Synchronization System, Device API, Room API, UI/Application Layer, Integration Tests
+# 1. Purpose
 
+The Playback API defines the authoritative interface through which SoundMesh turns synchronized live-audio frames into actual device audio output.
 
+SoundMesh does **not** own the media being played.
 
-\---
+The external media application remains the source of truth for:
 
+* media content
+* play/pause
+* seeking
+* playback position
+* playback speed
+* track selection
+* subtitles
+* media metadata
+* media controls
 
+SoundMesh instead owns the synchronized output path:
 
-\# 1. Purpose
+```text
+External Media App
+        ↓
+Android AudioPlaybackCapture
+        ↓
+Captured Audio Frames
+        ↓
+Audio Transport
+        ↓
+Participant Jitter Buffer
+        ↓
+Playback API
+        ↓
+Scheduled Native Audio Output
+        ↓
+Device Speakers
+```
 
+The Playback API answers:
 
+> **“Given synchronized audio data and timing instructions, how does SoundMesh safely schedule and execute the audio output?”**
 
-The Playback API defines the authoritative interface for controlling playback of prepared audio within a SoundMesh session.
+It does not determine how external media is played.
 
+It does not determine synchronization.
 
+It executes synchronization decisions against the live captured-audio timeline.
 
-It establishes the boundary between:
+---
 
-
-
-\* prepared audio
-
-\* synchronized timing
-
-\* playback execution
-
-\* device playback state
-
-\* room-level playback state
-
-\* UI controls
-
-
-
-The Playback API is responsible for answering:
-
-
-
-> \*\*“What should be playing, what is its playback state, and how should playback execution be controlled?”\*\*
-
-
-
-It does not independently determine synchronization.
-
-
-
-The core principle is:
-
-
-
-> \*\*Playback executes against a shared timeline supplied by the synchronization system. It must never replace synchronized scheduling with immediate local playback.\*\*
-
-
-
-\---
-
-
-
-\# 2. Scope
-
-
+# 2. Scope
 
 The Playback API owns:
 
+* native audio output
+* audio output scheduling
+* output buffering
+* scheduled frame execution
+* output lifecycle
+* output readiness
+* actual output state
+* output timing observation
+* cancellation of stale scheduled output
+* output underrun reporting
+* audio-route awareness
+* output-related errors
 
+The Playback API does **not** own:
 
-\* playback state
-
-\* playback commands
-
-\* playback position
-
-\* playback generation
-
-\* scheduling requests
-
-\* pause/resume behavior
-
-\* seek behavior
-
-\* stop behavior
-
-\* playback readiness
-
-\* playback lifecycle
-
-\* playback-related errors
-
-\* reporting actual playback state
-
-
-
-The Playback API does \*\*not\*\* own:
-
-
-
-\* audio decoding
-
-\* audio distribution
-
-\* room membership
-
-\* network transport
-
-\* clock synchronization algorithms
-
-\* latency estimation
-
-\* drift estimation
-
-\* synchronization correction algorithms
-
-\* QR joining
-
-\* UI rendering
-
-
+* external media playback
+* media controls
+* media libraries
+* audio file selection
+* audio asset identity
+* audio file distribution
+* audio decoding policy
+* room membership
+* network transport
+* clock synchronization
+* latency estimation
+* drift estimation
+* drift correction algorithms
+* QR joining
+* UI rendering
 
 Those responsibilities belong to their respective contracts.
 
+---
 
-
-\---
-
-
-
-\# 3. Authority
-
-
+# 3. Authority
 
 The Playback API follows the SoundMesh authority hierarchy:
 
-
-
-1\. Approved architectural decisions
-
-2\. Interface contracts
-
-3\. Core architecture specification
-
-4\. Audio / Networking / Synchronization specifications
-
-5\. Approved integration tests
-
-6\. Existing implementation
-
-7\. AI assumptions
-
-
+1. Approved architectural decisions
+2. Interface contracts
+3. Core architecture specification
+4. Audio / Networking / Synchronization specifications
+5. Approved integration tests
+6. Existing implementation
+7. AI assumptions
 
 If implementation and documentation disagree, AI agents must not silently choose one.
 
+---
 
+# 4. Core Mental Model
 
-\---
+SoundMesh is not a synchronized media player.
 
-
-
-\# 4. Playback Mental Model
-
-
-
-SoundMesh playback is fundamentally different from ordinary single-device playback.
-
-
-
-A normal application might perform:
-
-
+The old model:
 
 ```text
-
-&#x20;id="p1"
-
-User presses Play
-
-&#x20;       ↓
-
-audio.play()
-
-&#x20;       ↓
-
-Audio starts immediately
-
+Select Audio
+      ↓
+Prepare Audio
+      ↓
+Play Audio
+      ↓
+Pause / Seek / Stop
 ```
 
+is obsolete.
 
-
-SoundMesh must instead use:
-
-
+The authoritative model is:
 
 ```text
-
-&#x20;id="p2"
-
-User presses Play
-
-&#x20;       ↓
-
-Core requests playback
-
-&#x20;       ↓
-
-Playback checks readiness
-
-&#x20;       ↓
-
-Sync determines shared target time
-
-&#x20;       ↓
-
-Playback schedules local execution
-
-&#x20;       ↓
-
-Each device reaches the target timeline
-
-&#x20;       ↓
-
-Playback begins
-
+External Media App
+      ↓
+Live Audio Capture
+      ↓
+Audio Frames
+      ↓
+Network
+      ↓
+Jitter Buffer
+      ↓
+Synchronization Decision
+      ↓
+Playback Schedule
+      ↓
+Native Audio Output
 ```
 
+The external media application controls the media.
 
+SoundMesh controls the synchronized reproduction of captured audio.
 
-This distinction is mandatory.
+---
 
+# 5. Playback Output Model
 
-
-\---
-
-
-
-\# 5. Scheduled Playback
-
-
-
-Playback MUST support scheduled execution.
-
-
-
-A command equivalent to:
-
-
+For a participant:
 
 ```text
-
-play()
-
+Captured Audio Frame
+        ↓
+Validate Generation
+        ↓
+Place Into Jitter Buffer
+        ↓
+Determine Target Output Time
+        ↓
+Schedule Native Audio
+        ↓
+Device Output
 ```
 
-
-
-must not necessarily mean:
-
-
+Playback MUST NOT simply execute:
 
 ```text
-
-start immediately
-
+receive frame
+     ↓
+play immediately
 ```
 
+because immediate execution would make network arrival time part of the audio timeline.
 
-
-Instead, playback should use a target timeline.
-
-
-
-Conceptually:
-
-
+Instead:
 
 ```text
-
-T\_target = T\_now + M
-
+receive frame
+     ↓
+buffer
+     ↓
+timestamp
+     ↓
+schedule against shared timeline
+     ↓
+output at target time
 ```
 
+---
 
+# 6. Host and Participant Output
 
-where:
+The host and participants may have different audio paths.
 
-
-
-\* `T\_now` = current local monotonic time
-
-\* `M` = preparation/scheduling margin
-
-\* `T\_target` = future playback target
-
-
-
-The exact scheduling algorithm is owned by Synchronization.
-
-
-
-The Playback API consumes the scheduling decision.
-
-
-
-\---
-
-
-
-\# 6. Playback State Model
-
-
-
-The conceptual playback states are:
-
-
+Host:
 
 ```text
+External Media App
+        ↓
+Host Audio Output
+```
 
+Participant:
+
+```text
+External Media App
+        ↓
+Audio Capture
+        ↓
+Network
+        ↓
+Jitter Buffer
+        ↓
+Scheduled Output
+```
+
+Therefore SoundMesh MUST NOT assume:
+
+```text
+host output latency == participant output latency
+```
+
+Host-to-participant latency is an engineering variable that must be measured.
+
+If the implementation requires compensating for host direct-output latency, that behavior must be explicitly defined by the synchronization/timing system.
+
+The Playback API must not invent that compensation independently.
+
+---
+
+# 7. Playback Output States
+
+The conceptual output states are:
+
+```text
 IDLE
-
-PREPARING
-
+INITIALIZING
 READY
-
+BUFFERING
 SCHEDULED
-
 PLAYING
-
-PAUSED
-
-SEEKING
-
+UNDERRUN
+INTERRUPTED
 STOPPING
-
 STOPPED
-
 ERROR
-
 ```
 
+These states are currently **EXPERIMENTAL**.
 
+Exact transitions must be defined before they become a stable public contract.
 
-These states are:
+An implementation must not invent externally visible states without updating this document.
 
+---
 
-
-\*\*EXPERIMENTAL\*\*
-
-
-
-Exact legal transitions remain subject to further implementation decisions.
-
-
-
-An implementation must not invent additional externally visible states without updating this contract.
-
-
-
-\---
-
-
-
-\# 7. Playback Lifecycle
-
-
+# 8. Output Lifecycle
 
 Conceptual lifecycle:
 
-
-
 ```text
-
-&#x20;id="p3"
-
 IDLE
-
-&#x20; ↓
-
-AUDIO\_READY
-
-&#x20; ↓
-
+  ↓
+INITIALIZING
+  ↓
 READY
-
-&#x20; ↓
-
+  ↓
+BUFFERING
+  ↓
 SCHEDULED
-
-&#x20; ↓
-
+  ↓
 PLAYING
-
-&#x20; ↓
-
-PAUSED
-
-&#x20; ↓
-
-PLAYING
-
-&#x20; ↓
-
+  ↓
 STOPPING
-
-&#x20; ↓
-
+  ↓
 STOPPED
-
 ```
 
-
-
-Alternative failure paths:
-
-
+Possible failure paths:
 
 ```text
-
-&#x20;id="p4"
-
-PREPARING → ERROR
-
+INITIALIZING → ERROR
+BUFFERING → ERROR
 SCHEDULED → ERROR
-
-PLAYING → ERROR
-
+PLAYING → UNDERRUN
+PLAYING → INTERRUPTED
 ```
 
+Recovery behavior remains implementation-dependent until explicitly defined.
 
+---
 
-Exact state transitions are:
+# 9. Audio Frame Input
 
+Playback consumes live audio frames rather than prepared media resources.
 
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 8. Playback Resource
-
-
-
-Playback must reference an Audio API resource.
-
-
-
-Conceptual:
-
-
+Conceptually:
 
 ```text
+AudioFrame
 
-PlaybackResource
-
-├── audioId
-
-├── generation
-
-└── duration
-
+├── sessionGeneration
+├── sequenceNumber
+├── captureTimestamp
+├── sampleFormat
+├── sampleRate
+├── channels
+└── payload
 ```
 
+The authoritative frame contract belongs to the Audio/Networking specifications.
 
+Playback must not redefine frame identity.
 
-Exact schema:
+Playback must reject or safely ignore frames belonging to stale generations.
 
+---
 
+# 10. No Audio Resource Ownership
 
-\*\*UNDECIDED\*\*
-
-
-
-Playback must not independently redefine audio identity.
-
-
-
-\---
-
-
-
-\# 9. Playback Generation
-
-
-
-Every playback lifecycle that can invalidate previous timing or state should be associated with a generation.
-
-
-
-Conceptual:
-
-
+The Playback API MUST NOT expose concepts such as:
 
 ```text
-
-&#x20;id="p5"
-
-Generation 1
-
-&#x20;   ↓
-
-Song A
-
-
-
-Generation 2
-
-&#x20;   ↓
-
-Song B
-
+AudioResource
+audioId
+audioFile
+mediaAsset
+preparePlayback(audioId)
+load(audioId)
 ```
 
+These belong to the obsolete file-distribution/media-player architecture.
 
+SoundMesh does not need to know whether captured audio originated from:
 
-A generation may change because of:
+* YouTube
+* VLC
+* Spotify
+* a browser
+* a video player
+* a game
+* another eligible Android application
 
+Playback receives audio frames.
 
+The original media identity is outside the Playback API.
 
-\* new audio
+---
 
-\* seek
+# 11. `getPlaybackState()`
 
-\* restart
+The API should expose authoritative output state.
 
-\* synchronization recovery
+Conceptually:
 
-\* major playback lifecycle change
-
-
-
-Exact generation semantics remain:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-The purpose is to prevent stale asynchronous operations from modifying newer playback state.
-
-
-
-\---
-
-
-
-\# 10. `getPlaybackState()`
-
-
-
-Returns the current playback state.
-
-
-
-Conceptual result:
-
-
-
-```json id="p6"
-
+```json
 {
-
-&#x20; "state": "PLAYING",
-
-&#x20; "audioId": "example-audio",
-
-&#x20; "generation": 3,
-
-&#x20; "positionMs": 12450
-
+  "state": "PLAYING",
+  "generation": 12,
+  "bufferedFrames": 18,
+  "bufferedDurationMs": 120,
+  "outputTimestamp": 482913420
 }
-
 ```
-
-
 
 This is illustrative only.
 
+Exact fields and types remain:
 
+**UNDECIDED**
 
-Exact fields and types:
+The state must represent actual known native output state.
 
+The API must not fabricate state based solely on expected commands.
 
+---
 
-\*\*UNDECIDED\*\*
-
-
-
-The result must represent actual known state.
-
-
-
-\---
-
-
-
-\# 11. `preparePlayback()`
-
-
-
-Prepares playback without starting it.
-
-
-
-Conceptual:
-
-
-
-```text id="p7"
-
-preparePlayback(audioId)
-
-```
-
-
-
-Preparation may require:
-
-
-
-\* audio resource availability
-
-\* audio validation
-
-\* local audio preparation
-
-\* playback engine readiness
-
-\* synchronization readiness
-
-\* required device readiness
-
-
-
-Exact prerequisites:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-The operation must not start playback as a side effect.
-
-
-
-\---
-
-
-
-\# 12. `play()`
-
-
-
-Requests synchronized playback.
-
-
-
-Conceptual:
-
-
-
-```text id="p8"
-
-play()
-
-```
-
-
-
-The command should result in a scheduled playback operation rather than an immediate local start.
-
-
-
-Conceptual flow:
-
-
-
-```text
-
-play()
-
-&#x20; ↓
-
-Validate state
-
-&#x20; ↓
-
-Check audio readiness
-
-&#x20; ↓
-
-Check device readiness
-
-&#x20; ↓
-
-Obtain synchronization timing
-
-&#x20; ↓
-
-Create scheduled playback
-
-&#x20; ↓
-
-Wait for target time
-
-&#x20; ↓
-
-Start playback
-
-```
-
-
-
-The exact API request shape is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 13. Play Preconditions
-
-
-
-Playback must not begin unless required preconditions are satisfied.
-
-
-
-Potential prerequisites:
-
-
-
-```text id="p9"
-
-Audio is available
-
-Audio is prepared
-
-Playback engine is ready
-
-Required device is available
-
-Synchronization is sufficiently calibrated
-
-Target timeline is valid
-
-Current generation is valid
-
-```
-
-
-
-The exact readiness policy is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-If a required condition cannot be established, playback should fail safely rather than pretending the condition is satisfied.
-
-
-
-\---
-
-
-
-\# 14. `pause()`
-
-
-
-Requests a synchronized pause.
-
-
-
-Conceptual:
-
-
-
-```text id="p10"
-
-pause()
-
-```
-
-
-
-Pause behavior must account for the fact that multiple devices are playing against a shared timeline.
-
-
-
-A device must not simply pause independently and assume the group remains synchronized.
-
-
-
-The exact pause protocol is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Synchronization may need to coordinate a future pause point.
-
-
-
-\---
-
-
-
-\# 15. `resume()`
-
-
-
-Requests synchronized continuation of playback.
-
-
-
-Conceptual:
-
-
-
-```text id="p11"
-
-resume()
-
-```
-
-
-
-Resume must not simply call the platform's immediate `resume()` method if doing so would create cross-device timing divergence.
-
-
+# 12. `initializeOutput()`
 
 Conceptually:
 
-
-
 ```text
-
-Resume request
-
-&#x20;     ↓
-
-Determine shared timeline
-
-&#x20;     ↓
-
-Schedule future continuation
-
-&#x20;     ↓
-
-Resume playback
-
+initializeOutput(format)
 ```
 
+Initializes the native audio output path.
 
+Potential responsibilities:
 
-Exact behavior:
+* validate supported audio format
+* initialize native output engine
+* configure sample rate
+* configure channel count
+* configure sample format
+* prepare output buffers
+* establish output timing facilities
+* detect current audio route
 
+Initialization MUST NOT imply that audio should immediately play.
 
+Exact request and response schemas remain:
 
-\*\*UNDECIDED\*\*
+**UNDECIDED**
 
+---
 
-
-\---
-
-
-
-\# 16. `seek()`
-
-
-
-Requests movement to a new playback position.
-
-
-
-Conceptual:
-
-
-
-```text id="p12"
-
-seek(positionMs)
-
-```
-
-
-
-Seeking is a synchronization event.
-
-
-
-All participating devices must eventually converge on the same intended playback position.
-
-
-
-A local seek must not silently create a new timeline while other devices remain on the previous one.
-
-
-
-A seek should therefore create or use an appropriate playback generation.
-
-
-
-Exact semantics:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 17. Seek Preconditions
-
-
-
-A seek request must validate:
-
-
-
-```text
-
-position >= 0
-
-position <= audio duration
-
-```
-
-
-
-unless the implementation explicitly supports another behavior.
-
-
-
-Invalid seek requests must be rejected.
-
-
-
-The exact position type and precision are:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 18. `stop()`
-
-
-
-Stops playback.
-
-
-
-Conceptual:
-
-
-
-```text
-
-stop()
-
-```
-
-
-
-Stopping must terminate the active playback generation according to the defined lifecycle.
-
-
-
-Potential resulting state:
-
-
-
-```text
-
-STOPPED
-
-```
-
-
-
-Exact state transition:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Stopping must not leave an old scheduled playback task capable of starting later.
-
-
-
-\---
-
-
-
-\# 19. Scheduled Playback Cancellation
-
-
-
-If playback has been scheduled but not yet started, cancellation must be possible.
-
-
-
-Example:
-
-
-
-```text
-
-&#x20;id="p13"
-
-Schedule playback
-
-&#x20;      ↓
-
-User presses Stop
-
-&#x20;      ↓
-
-Scheduled operation cancelled
-
-&#x20;      ↓
-
-Audio does NOT start later
-
-```
-
-
-
-This is mandatory for correctness.
-
-
-
-Stale scheduled operations must be invalidated using the appropriate generation/lifecycle mechanism.
-
-
-
-\---
-
-
-
-\# 20. Playback Position
-
-
-
-Playback position represents the actual or authoritative playback position.
-
-
-
-Conceptual:
-
-
-
-```text
-
-positionMs
-
-```
-
-
-
-The exact precision is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-The system must distinguish between:
-
-
-
-```text
-
-Requested Position
-
-```
-
-
-
-and:
-
-
-
-```text
-
-Actual Playback Position
-
-```
-
-
-
-They are not necessarily identical.
-
-
-
-\---
-
-
-
-\# 21. Actual Playback Position
-
-
-
-Actual playback position should ultimately be derived from the native playback engine where available.
-
-
-
-The Playback API must not simply calculate:
-
-
-
-```text
-
-position = elapsedTimeSincePlay
-
-```
-
-
-
-and assume it is exact.
-
-
-
-Actual playback may differ because of:
-
-
-
-\* scheduling latency
-
-\* buffering
-
-\* audio engine behavior
-
-\* clock differences
-
-\* interruptions
-
-\* device-specific timing
-
-
-
-Native timing information should be used where required.
-
-
-
-\---
-
-
-
-\# 22. Playback Drift
-
-
-
-Playback drift is the divergence between intended playback position and actual playback behavior.
-
-
+# 13. `enqueueFrame()`
 
 Conceptually:
 
-
-
 ```text
-
-Expected Position
-
-&#x20;      │
-
-&#x20;      ▼
-
-Actual Position
-
-&#x20;      │
-
-&#x20;      ▼
-
-Playback Error
-
+enqueueFrame(audioFrame)
 ```
 
+Adds a validated live audio frame to the playback buffer.
 
+The operation must:
 
-The Playback API reports observable playback state.
+1. validate session generation
+2. validate frame ordering
+3. handle duplicates
+4. detect gaps
+5. enforce buffer limits
+6. place valid frames into the jitter buffer
+7. expose relevant statistics
 
+Playback must not block indefinitely waiting for a frame.
 
+---
 
-The Synchronization System owns drift estimation and correction decisions.
+# 14. `scheduleFrame()`
 
-
-
-Playback must not independently invent drift correction algorithms.
-
-
-
-\---
-
-
-
-\# 23. Playback and Synchronization Boundary
-
-
-
-This distinction is critical.
-
-
-
-\### Synchronization answers:
-
-
+Conceptually:
 
 ```text
-
-When should this device play?
-
-How far is this device from the shared timeline?
-
-How much drift exists?
-
-How should timing be corrected?
-
+scheduleFrame(frame, targetTime)
 ```
 
+Schedules audio for future native output.
 
+The target time is supplied by the synchronization system.
 
-\### Playback answers:
+Playback executes the instruction.
 
+Playback MUST NOT independently calculate a new group synchronization target.
 
+Conceptually:
 
 ```text
-
-Can I schedule playback?
-
-Did playback start?
-
-What is the actual playback position?
-
-Is playback paused?
-
-Did playback stop?
-
+Sync
+ ↓
+targetTime
+ ↓
+Playback
+ ↓
+native scheduled output
 ```
 
+---
 
+# 15. Scheduling Contract
 
-Neither system should silently become the other.
-
-
-
-\---
-
-
-
-\# 24. Playback Scheduling Contract
-
-
-
-The Synchronization System may provide a scheduling instruction.
-
-
-
-Conceptual:
-
-
+A synchronization instruction may conceptually contain:
 
 ```text
-
 PlaybackSchedule
 
-├── generation
-
+├── sessionGeneration
+├── sequenceNumber
 ├── targetTime
-
 ├── targetPosition
-
 └── timingConfidence
-
 ```
-
-
 
 Exact schema:
 
+**UNDECIDED**
 
+The Playback API must treat the supplied target as authoritative for that scheduling operation.
 
-\*\*UNDECIDED\*\*
+---
 
+# 16. Future Scheduling
 
-
-Playback executes this instruction using the appropriate native timing mechanism.
-
-
-
-\---
-
-
-
-\# 25. Scheduling Margin
-
-
-
-Playback may require a future scheduling margin.
-
-
+Audio should normally be scheduled for a future monotonic time rather than played immediately.
 
 Conceptually:
 
-
-
 ```text
-
-T\_target = T\_now + M
-
+T_target = T_now + M
 ```
 
+where:
 
+* `T_now` = current monotonic time
+* `M` = scheduling/buffering margin
+* `T_target` = target output time
 
-The margin must be large enough for participating devices to prepare.
+The exact margin is owned by the timing/synchronization system and must be determined experimentally.
 
+Playback must not hard-code arbitrary synchronization margins as system-level truth.
 
+---
 
-However, it should not introduce unnecessary startup latency.
+# 17. Monotonic Time
 
+Timing-critical output scheduling MUST use monotonic time.
 
+Wall-clock time must not be used for synchronized audio execution.
 
-The exact margin:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-It must be determined through measurement and real-device testing rather than arbitrary assumptions.
-
-
-
-\---
-
-
-
-\# 26. Monotonic Time
-
-
-
-Timing-critical scheduling must use a monotonic time source.
-
-
-
-Wall-clock time must not be used for playback synchronization.
-
-
-
-Examples of suitable platform concepts include:
-
-
+On Android, an appropriate platform timing source may include:
 
 ```text
-
-Android:
-
 SystemClock.elapsedRealtime()
-
-
-
-iOS:
-
-AVAudioTime / monotonic timing facilities
-
 ```
 
+or a more appropriate native audio clock where required.
 
+Exact clock selection belongs to the platform/timing implementation.
 
-Exact implementation belongs to the platform-specific timing layer.
+---
 
+# 18. Actual Output Timing
 
+Playback should expose actual native output timing where the platform allows it.
 
-\---
-
-
-
-\# 27. Playback Readiness
-
-
-
-Playback readiness is different from:
-
-
+The implementation must distinguish between:
 
 ```text
-
-Audio readiness
-
-Device readiness
-
-Sync readiness
-
-Room readiness
-
+Requested Target Time
 ```
 
+and:
 
+```text
+Actual Output Time
+```
+
+They are not necessarily identical.
+
+Differences may result from:
+
+* native audio scheduling
+* hardware buffering
+* audio-route latency
+* device-specific behavior
+* underruns
+* operating-system behavior
+* output engine behavior
+
+The Playback API reports observable facts.
+
+Synchronization interprets those facts.
+
+---
+
+# 19. Output Position
+
+SoundMesh should not expose a media-player-style position such as:
+
+```text
+positionMs = 12450
+```
+
+unless that position has a clearly defined relationship to the captured-audio timeline.
+
+The relevant concepts are instead:
+
+```text
+captureTimestamp
+targetOutputTime
+actualOutputTimestamp
+sequenceNumber
+```
+
+If a timeline-relative output position is required, its semantics must be explicitly defined.
+
+The Playback API must not pretend that it knows the external application's media position.
+
+---
+
+# 20. Jitter Buffer
+
+Playback consumes audio through a bounded jitter buffer.
+
+The buffer must support:
+
+* packet/frame reordering
+* temporary network jitter
+* late frame detection
+* duplicate detection
+* missing-frame detection
+* bounded memory
+* underrun detection
+* stale-generation rejection
+
+The exact buffer implementation is experimental.
+
+Playback must not allow an unbounded stream of audio data to accumulate.
+
+---
+
+# 21. Buffering
+
+The output system may enter:
+
+```text
+BUFFERING
+```
+
+when insufficient audio exists to safely begin or continue scheduled playback.
+
+Playback must not falsely report `PLAYING` when no usable audio is available.
+
+The exact buffering threshold is:
+
+**UNDECIDED**
+
+It must be determined through measurement.
+
+---
+
+# 22. Underruns
+
+An underrun occurs when scheduled output requires audio that is not available.
 
 Conceptually:
 
-
-
 ```text
-
-Audio READY
-
-&#x20;     +
-
-Device READY
-
-&#x20;     +
-
-Sync READY
-
-&#x20;     +
-
-Playback READY
-
-&#x20;     =
-
-Eligible for playback
-
+Expected Frame
+      ↓
+Not Available
+      ↓
+OUTPUT UNDERRUN
 ```
 
+Underruns must be observable.
 
-
-The exact readiness composition is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-The system must not claim that the entire room is ready when only one subsystem is ready.
-
-
-
-\---
-
-
-
-\# 28. Room Playback State
-
-
-
-Room-level playback state may be represented by Core/Room.
-
-
-
-Potential states:
-
-
+Potential information:
 
 ```text
-
-STOPPED
-
-PREPARING
-
-READY
-
-PLAYING
-
-PAUSED
-
-STOPPING
-
-ERROR
-
+generation
+expectedSequence
+actualAvailableSequence
+bufferDepth
+timestamp
 ```
 
+Exact event schema remains:
 
+**UNDECIDED**
 
-The exact room state remains governed by the Room API.
+Playback must not silently convert repeated underruns into successful synchronized playback.
 
+---
 
+# 23. Frame Loss and Gaps
 
-Playback must not independently redefine the room's lifecycle.
+Missing frames may occur because of network loss.
 
+Playback must distinguish between:
 
+```text
+late
+missing
+duplicate
+out-of-order
+stale
+```
 
-\---
+The exact concealment/recovery policy belongs to the audio/output design.
 
+Playback must not invent arbitrary audio data without an explicit approved policy.
 
+---
 
-\# 29. Device Playback State
+# 24. Scheduled Output Cancellation
 
-
-
-Each participating device may have local playback state.
-
-
+If an output operation has been scheduled but the session ends or the generation changes, the pending operation must be cancelled or invalidated.
 
 Example:
 
-
-
 ```text
-
-Device A → PLAYING
-
-Device B → PLAYING
-
-Device C → PREPARING
-
+Generation 10
+Audio scheduled
+      ↓
+Session changes
+      ↓
+Generation 11
+      ↓
+Old schedule becomes stale
+      ↓
+Old audio MUST NOT start
 ```
 
+This is mandatory for correctness.
 
+---
 
-The system must detect when the room is not uniformly ready or playing.
+# 25. Generation Protection
 
-
-
-The exact aggregation policy is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 30. Playback Events
-
-
-
-Potential events include:
-
-
-
-```text id="p14"
-
-PLAYBACK\_READY
-
-PLAYBACK\_SCHEDULED
-
-PLAYBACK\_STARTED
-
-PLAYBACK\_PAUSED
-
-PLAYBACK\_RESUMED
-
-PLAYBACK\_SEEKED
-
-PLAYBACK\_STOPPED
-
-PLAYBACK\_COMPLETED
-
-PLAYBACK\_FAILED
-
-PLAYBACK\_POSITION\_CHANGED
-
-PLAYBACK\_ROUTE\_CHANGED
-
-```
-
-
-
-The event architecture is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Event payloads must be contract-defined before implementation.
-
-
-
-\---
-
-
-
-\# 31. Playback Completion
-
-
-
-When audio reaches its end, playback should report completion.
-
-
-
-Potential event:
-
-
-
-```text
-
-PLAYBACK\_COMPLETED
-
-```
-
-
-
-Completion behavior for the room is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Possible future policies include:
-
-
-
-\* stop
-
-\* pause
-
-\* replay
-
-\* wait
-
-\* return to ready state
-
-
-
-AI agents must not select a policy without an explicit decision.
-
-
-
-\---
-
-
-
-\# 32. Audio Completion vs Room Completion
-
-
-
-A device completing playback does not automatically mean that the entire room has completed playback.
-
-
-
-For example:
-
-
-
-```text
-
-Device A → completed
-
-Device B → playing
-
-Device C → playing
-
-```
-
-
-
-The system must not immediately declare:
-
-
-
-```text
-
-Room → completed
-
-```
-
-
-
-without an authoritative aggregation rule.
-
-
-
-\---
-
-
-
-\# 33. Interruption Handling
-
-
-
-Playback may be interrupted by:
-
-
-
-\* phone calls
-
-\* system audio interruptions
-
-\* application suspension
-
-\* audio route changes
-
-\* Bluetooth changes
-
-\* operating-system behavior
-
-
-
-The Playback API must expose the interruption when observable.
-
-
-
-Recovery behavior is:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Potential recovery may involve:
-
-
-
-```text
-
-pause
-
-resynchronize
-
-resume
-
-```
-
-
-
-but this must be explicitly defined before implementation.
-
-
-
-\---
-
-
-
-\# 34. Audio Route Changes
-
-
-
-If a device switches from:
-
-
-
-```text
-
-Built-in Speaker
-
-```
-
-
-
-to:
-
-
-
-```text
-
-Bluetooth
-
-```
-
-
-
-the playback system may experience a new latency profile.
-
-
-
-The Audio API reports the route.
-
-
-
-The Playback/Sync systems determine whether recalibration is required.
-
-
-
-No subsystem may assume that a route change has zero timing impact.
-
-
-
-\---
-
-
-
-\# 35. Failure Handling
-
-
-
-Playback failures must be explicit.
-
-
-
-Potential errors:
-
-
-
-```text id="p15"
-
-PLAYBACK\_NOT\_READY
-
-AUDIO\_NOT\_READY
-
-DEVICE\_NOT\_READY
-
-SCHEDULE\_FAILED
-
-PLAYBACK\_ENGINE\_FAILED
-
-INVALID\_POSITION
-
-INVALID\_GENERATION
-
-PLAYBACK\_INTERRUPTED
-
-AUDIO\_OUTPUT\_UNAVAILABLE
-
-PLAYBACK\_CANCELLED
-
-INTERNAL\_ERROR
-
-```
-
-
-
-These are candidate errors.
-
-
-
-Final taxonomy:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Errors should contain enough structured information for Core/UI to present an appropriate state without parsing arbitrary strings.
-
-
-
-\---
-
-
-
-\# 36. Stale Command Protection
-
-
-
-Commands must not accidentally affect a newer playback generation.
-
-
-
-Example:
-
-
-
-```text
-
-Generation 4
-
-Song A scheduled
-
-
-
-Generation 5
-
-Song B selected
-
-
-
-Old Song A schedule fires
-
-```
-
-
-
-The system must reject the stale operation.
-
-
+Every timing-sensitive output operation must be associated with a session generation.
 
 Conceptually:
 
-
-
 ```text
-
 if command.generation != activeGeneration:
-
-&#x20;   reject / ignore
-
+    reject / ignore
 ```
 
+Generation semantics are coordinated with Core/Room/Networking/Synchronization.
 
+Playback must never allow stale audio from a previous session generation to leak into the current session.
 
-Exact mechanism is:
+---
 
+# 26. Session Lifecycle
 
+Playback output should be scoped to the active SoundMesh audio session.
 
-\*\*UNDECIDED\*\*
-
-
-
-\---
-
-
-
-\# 37. Concurrent Commands
-
-
-
-The user or system may issue commands quickly:
-
-
+Conceptually:
 
 ```text
-
-Play
-
-Pause
-
-Resume
-
-Seek
-
-Stop
-
+Session Created
+      ↓
+Output Initialized
+      ↓
+Frames Received
+      ↓
+Output Buffered
+      ↓
+Scheduled
+      ↓
+Playing
+      ↓
+Session Ends
+      ↓
+Output Stopped
 ```
 
+Ending an audio session must invalidate pending output work.
 
+---
 
-The implementation must define ordering behavior.
+# 27. No Media Controls
 
+The Playback API MUST NOT expose:
 
+```text
+play()
+pause()
+resume()
+seek()
+stop()
+next()
+previous()
+```
+
+as controls for the external media application.
+
+Those controls belong to the external media application.
+
+SoundMesh should not attempt to reproduce or control the external application's playback state.
+
+The SoundMesh equivalent is session/output lifecycle:
+
+```text
+initializeOutput()
+enqueueFrame()
+scheduleFrame()
+startOutputSession()
+stopOutputSession()
+flushOutput()
+getPlaybackState()
+```
+
+Exact API names remain experimental.
+
+---
+
+# 28. External Media Playback
+
+The external media application remains authoritative.
 
 For example:
 
-
-
 ```text
-
-Play
-
-↓
-
-Seek
-
-↓
-
-Stop
-
+User opens YouTube
+       ↓
+User presses Play in YouTube
+       ↓
+YouTube produces audio
+       ↓
+Android capture API captures eligible audio
+       ↓
+SoundMesh distributes captured frames
+       ↓
+Participants reproduce the audio
 ```
 
+SoundMesh does not need to know that the user pressed Play.
 
+It only observes captured audio becoming available.
 
-must not result in an old Play command starting after Stop.
+---
 
+# 29. Capture and Playback Boundary
 
+Capture and Playback are separate responsibilities.
 
-The exact concurrency model:
-
-
-
-\*\*UNDECIDED\*\*
-
-
-
-Generation and cancellation mechanisms should be used to prevent stale asynchronous operations.
-
-
-
-\---
-
-
-
-\# 38. Idempotency
-
-
-
-Some playback operations may need idempotent behavior.
-
-
-
-Potential examples:
-
-
+Capture:
 
 ```text
-
-stop()
-
-stop()
-
+External App
+     ↓
+AudioPlaybackCapture
+     ↓
+PCM/audio frames
 ```
 
+Playback:
 
+```text
+Audio frames
+     ↓
+Buffer
+     ↓
+Schedule
+     ↓
+Native output
+```
+
+Playback must not directly control or configure the external media application.
+
+---
+
+# 30. Synchronization Boundary
+
+Synchronization answers:
+
+```text
+When should this audio be output?
+
+What is the shared timeline?
+
+How far is this device from the target?
+
+How should timing be corrected?
+```
+
+Playback answers:
+
+```text
+Can I output this audio?
+
+Can I schedule it?
+
+Did the native output start?
+
+What audio is buffered?
+
+Did an underrun occur?
+
+What was the observed output timing?
+
+Did output fail?
+```
+
+Playback must not independently implement:
+
+* clock synchronization
+* offset estimation
+* drift estimation
+* drift correction
+* group synchronization algorithms
+
+---
+
+# 31. Drift Handling
+
+Playback may provide timing observations needed by Synchronization.
+
+For example:
+
+```text
+actualOutputTimestamp
+expectedOutputTimestamp
+```
+
+Synchronization may use those observations to determine drift.
+
+Playback must not independently modify playback speed or timing to correct drift unless an explicit synchronization contract instructs it to do so.
+
+---
+
+# 32. Audio Route Changes
+
+The output route may change:
+
+```text
+Built-in Speaker
+      ↓
+Bluetooth
+```
 
 or:
 
-
-
 ```text
-
-pause()
-
-pause()
-
+Bluetooth
+      ↓
+Built-in Speaker
 ```
 
+A route change may introduce a different output latency.
 
+Playback must report observable route changes.
 
-The exact idempotency policy is:
+Synchronization may determine whether recalibration is required.
 
+Playback must not assume route latency is unchanged.
 
+---
 
-\*\*UNDECIDED\*\*
+# 33. Interruptions
 
+Output may be interrupted by:
 
+* phone calls
+* system audio events
+* application lifecycle changes
+* audio-focus changes
+* Bluetooth changes
+* operating-system behavior
 
-AI agents must not assume idempotency unless documented.
+The Playback API should expose observable interruptions.
 
+Recovery behavior remains:
 
+**UNDECIDED**
 
-\---
-
-
-
-\# 39. Native Playback Boundary
-
-
-
-Timing-critical playback should be implemented using native platform audio facilities where required.
-
-
-
-\### Android
-
-
-
-Potential technologies:
-
-
+Possible recovery:
 
 ```text
-
-Oboe
-
-AAudio
-
-AudioTrack
-
+interrupted
+    ↓
+reinitialize / refill buffer
+    ↓
+resynchronize
+    ↓
+resume output
 ```
 
+The exact behavior belongs to the recovery/synchronization contracts.
 
+---
 
-\### iOS
+# 34. Background Operation
 
+SoundMesh is expected to remain active while the user switches to an external media application.
 
+Therefore the native audio/capture architecture must support the required Android lifecycle.
 
-Potential technologies:
+Playback must not assume that the Flutter UI remains foregrounded.
 
+The exact foreground-service and lifecycle implementation belongs to the Android platform layer.
 
+---
 
-```text
+# 35. Flutter Boundary
 
-AVAudioEngine
-
-AVAudioPlayerNode
-
-AVAudioTime
-
-AVAudioSession
-
-```
-
-
-
-These are implementation options.
-
-
-
-They are not themselves part of the public Playback API.
-
-
-
-\---
-
-
-
-\# 40. Flutter Boundary
-
-
-
-Flutter should interact with playback through the defined abstraction.
-
-
+Flutter should interact with the Playback API through a defined abstraction.
 
 Conceptually:
 
-
-
 ```text
-
-Flutter UI
-
-&#x20;    │
-
-&#x20;    ▼
-
-Core API
-
-&#x20;    │
-
-&#x20;    ▼
-
-Playback API
-
-&#x20;    │
-
-&#x20;    ▼
-
-Platform Abstraction
-
-&#x20;    │
-
-&#x20;┌───┴───────────┐
-
-&#x20;▼               ▼
-
-Android         iOS
-
-Native          Native
-
-Playback        Playback
-
+Flutter
+   ↓
+Core/Application
+   ↓
+Playback Abstraction
+   ↓
+Native Android Audio Output
 ```
 
+High-frequency audio frames and timing-sensitive operations should remain outside ordinary Flutter UI state management.
 
+Flutter must not:
 
-High-frequency timing-sensitive communication should remain out of ordinary Flutter UI state management where possible.
+* manipulate audio buffers
+* schedule individual audio frames
+* calculate synchronization offsets
+* implement jitter buffering
+* directly control native audio timing
 
+---
 
+# 36. Native Output
 
-\---
+Timing-critical audio output should be implemented using appropriate Android native audio facilities.
 
-
-
-\# 41. UI Consumption
-
-
-
-The UI may display:
-
-
-
-```text
-
-Play / Pause
-
-Current position
-
-Duration
-
-Playback state
-
-Preparation state
-
-Error state
-
-Device playback state
-
-```
-
-
-
-The UI must not directly:
-
-
-
-\* call native audio APIs
-
-\* manipulate playback buffers
-
-\* calculate synchronization offsets
-
-\* schedule independent playback
-
-\* fabricate playback state
-
-
-
-The UI is a consumer of authoritative playback state.
-
-
-
-\---
-
-
-
-\# 42. Contract Testing
-
-
-
-The Playback API must have contract tests covering at minimum:
-
-
-
-\### Preparation
-
-
+Potential technologies include:
 
 ```text
-
-Playback cannot begin before required preparation
-
-Preparation does not automatically start playback
-
+AudioTrack
+AAudio
+Oboe
 ```
 
+These are implementation options, not public API requirements.
 
+The final technology must be selected based on:
 
-\### Scheduling
+* scheduling precision
+* latency
+* stability
+* device compatibility
+* measured performance
+* implementation complexity
 
+AI agents must not select a technology solely from assumption.
 
+---
+
+# 37. Output Errors
+
+Potential structured errors include:
 
 ```text
-
-Play creates scheduled execution
-
-Scheduled playback can be cancelled
-
-Cancelled playback cannot start later
-
+OUTPUT_NOT_READY
+OUTPUT_INITIALIZATION_FAILED
+OUTPUT_UNAVAILABLE
+OUTPUT_FORMAT_UNSUPPORTED
+OUTPUT_ROUTE_UNAVAILABLE
+OUTPUT_INTERRUPTED
+OUTPUT_UNDERRUN
+INVALID_GENERATION
+STALE_FRAME
+INVALID_FRAME
+SCHEDULE_FAILED
+SCHEDULE_CANCELLED
+BUFFER_OVERFLOW
+INTERNAL_ERROR
 ```
 
+This taxonomy is currently:
 
+**UNDECIDED**
 
-\### State
+Errors should contain structured information sufficient for Core/UI/Diagnostics.
 
+UI code must not parse arbitrary error strings to determine behavior.
 
+---
+
+# 38. Playback Events
+
+Potential events include:
 
 ```text
-
-State transitions follow the contract
-
-Actual state is reported truthfully
-
+OUTPUT_READY
+OUTPUT_BUFFERING
+OUTPUT_SCHEDULED
+OUTPUT_STARTED
+OUTPUT_UNDERRUN
+OUTPUT_INTERRUPTED
+OUTPUT_STOPPED
+OUTPUT_FAILED
+OUTPUT_ROUTE_CHANGED
+OUTPUT_FRAME_DROPPED
+OUTPUT_GENERATION_CHANGED
 ```
 
+The final event architecture is:
 
+**UNDECIDED**
 
-\### Position
+Event payloads must be contract-defined before implementation.
 
+---
 
+# 39. Stale Frame Protection
+
+A frame from an old session must never be played in a newer session.
+
+Example:
 
 ```text
+Generation 20
+Frames A/B/C
 
-Position remains within valid bounds
+Session resets
 
-Actual position is not confused with requested position
+Generation 21
+Frames D/E/F
 
+Old Frame B arrives
+      ↓
+Reject
 ```
 
+This protection is mandatory.
 
+---
 
-\### Generation
+# 40. Concurrent Operations
 
-
+Operations may occur rapidly:
 
 ```text
-
-Stale commands cannot affect newer generations
-
+initialize
+schedule
+flush
+stop
+restart
 ```
 
+The implementation must prevent stale asynchronous work from affecting the active session.
 
+Generation and cancellation mechanisms should be used.
 
-\### Seek
+Exact concurrency semantics remain:
 
+**UNDECIDED**
 
+AI agents must not invent a concurrency model when implementation decisions are required.
+
+---
+
+# 41. Flush Behavior
+
+The output layer may need an operation conceptually equivalent to:
 
 ```text
-
-Invalid seek positions are rejected
-
-Seek invalidates or updates timing appropriately
-
+flushOutput()
 ```
 
+to discard buffered audio that is no longer valid.
 
+Potential causes:
 
-\### Stop
+* session generation change
+* synchronization reset
+* route change
+* unrecoverable underrun
+* recovery
+* session termination
 
+Exact semantics remain:
 
+**UNDECIDED**
+
+A flush must not accidentally discard audio belonging to a newer generation.
+
+---
+
+# 42. Output Readiness
+
+Output readiness is distinct from:
 
 ```text
-
-Stop prevents pending playback
-
-Stop produces the correct state
-
+Capture readiness
+Network readiness
+Buffer readiness
+Synchronization readiness
+Room readiness
 ```
 
-
-
-\### Synchronization
-
-
+Conceptually:
 
 ```text
-
-Playback consumes Sync timing
-
-Playback does not independently invent synchronization
-
+Output READY
+       +
+Audio Available
+       +
+Buffer Sufficient
+       +
+Sync Schedule Valid
+       =
+Eligible for synchronized output
 ```
 
+The exact readiness composition belongs to the Core/Synchronization contracts.
 
+Playback must not claim that the entire room is ready based only on local output readiness.
 
-\---
+---
 
+# 43. Physical Timing Validation
 
+Playback correctness must ultimately be validated on physical devices.
 
-\# 43. Integration Testing
+System-level synchronization targets are:
 
+```text
+Target:
+≤ 20 ms group spread
 
+Preferred:
+≤ 10 ms
+```
 
-Playback must eventually be tested with real devices.
+These are engineering targets, not guarantees.
 
+Playback must not report synchronized success merely because frames were scheduled.
 
+Actual synchronization evidence must come from physical timing measurements.
+
+---
+
+# 44. Contract Testing
+
+Contract tests must cover at minimum:
+
+### Initialization
+
+```text
+Output initializes correctly
+Initialization does not automatically start playback
+Unsupported formats are rejected
+```
+
+### Scheduling
+
+```text
+Audio can be scheduled for future output
+Scheduled output executes at the requested timing
+Scheduled output can be cancelled
+Cancelled output cannot start later
+```
+
+### Buffering
+
+```text
+Frames enter the bounded buffer
+Out-of-order frames are handled
+Duplicate frames are handled
+Missing frames are detectable
+Buffer limits are enforced
+```
+
+### Generation
+
+```text
+Stale frames are rejected
+Stale schedules cannot execute
+Generation changes invalidate old output
+```
+
+### State
+
+```text
+Actual native state is reported
+Underruns are observable
+Interruptions are observable
+Route changes are observable
+```
+
+### Output
+
+```text
+Audio reaches native output
+Output can stop safely
+Pending output is cancelled
+Flush invalidates obsolete buffered audio
+```
+
+### Synchronization
+
+```text
+Playback consumes synchronization timing
+Playback does not invent synchronization
+Playback exposes timing observations
+```
+
+---
+
+# 45. Real-Device Integration Testing
+
+Playback must eventually be tested on physical Android devices.
 
 Minimum target:
 
-
-
 ```text
-
 2 physical phones
-
 ```
-
-
 
 Then:
 
-
-
 ```text
-
 3 phones
-
 5 phones
-
 10 phones
-
 ```
-
-
 
 where practical.
 
-
-
 Testing should include:
 
+* live external-app audio
+* synchronized output
+* late frame arrival
+* packet loss
+* packet reordering
+* jitter
+* underruns
+* session restart
+* generation changes
+* route changes
+* Bluetooth
+* interruptions
+* background operation
+* reconnection
+* late joining
+* long-duration sessions
+* repeated start/stop
+* synchronization recovery
 
+---
 
-\* synchronized start
-
-\* pause
-
-\* resume
-
-\* seek
-
-\* stop
-
-\* repeated play/stop
-
-\* long-duration playback
-
-\* route changes
-
-\* interruptions
-
-\* reconnect scenarios
-
-\* late preparation
-
-\* stale command protection
-
-\* generation changes
-
-
-
-\---
-
-
-
-\# 44. Timing Validation
-
-
-
-Playback correctness must ultimately be measured physically.
-
-
-
-The project target from the synchronization specification is:
-
-
-
-```text
-
-Target:
-
-≤ 20 ms group spread
-
-
-
-Preferred:
-
-≤ 10 ms
-
-```
-
-
-
-These are system-level targets, not guarantees.
-
-
-
-The Playback API must not report successful synchronization merely because a command was scheduled.
-
-
-
-Measured synchronization evidence must come from actual timing validation.
-
-
-
-\---
-
-
-
-\# 45. AI Implementation Rules
-
-
+# 46. AI Implementation Rules
 
 AI agents implementing Playback functionality MUST:
 
+1. Read this contract before modifying Playback code.
+2. Read `audio.md`.
+3. Read `synchronization.md`.
+4. Read `architecture.md`.
+5. Read `audio-api.md`.
+6. Read `sync-api.md`.
+7. Treat external media playback as outside SoundMesh ownership.
+8. Preserve scheduled native output.
+9. Never replace scheduled output with immediate frame playback.
+10. Preserve generation protection.
+11. Prevent stale audio from being played.
+12. Preserve bounded buffering.
+13. Report actual native output state.
+14. Never fabricate timing measurements.
+15. Never fabricate synchronization metrics.
+16. Never implement synchronization logic inside Playback.
+17. Add or update contract tests.
+18. Validate timing on physical Android devices where applicable.
+19. Document newly introduced behavior.
+20. Never reintroduce file-based media playback APIs.
 
+---
 
-1\. Read this contract before modifying Playback code.
-
-2\. Read `audio.md`.
-
-3\. Read `synchronization.md`.
-
-4\. Read `architecture.md`.
-
-5\. Read `audio-api.md`.
-
-6\. Read `sync-api.md`.
-
-7\. Preserve scheduled playback.
-
-8\. Never replace synchronized scheduling with immediate local playback.
-
-9\. Preserve playback generation semantics.
-
-10\. Prevent stale asynchronous commands.
-
-11\. Never fabricate playback position.
-
-12\. Never fabricate synchronization metrics.
-
-13\. Never independently implement synchronization logic inside Playback.
-
-14\. Add or update contract tests.
-
-15\. Validate timing behavior on real devices where applicable.
-
-16\. Document newly introduced behavior.
-
-
-
-\---
-
-
-
-\# 46. AI Stop Conditions
-
-
+# 47. AI Stop Conditions
 
 The agent MUST STOP and report a blocker when:
 
-
-
-1\. Scheduling semantics are required but undefined.
-
-2\. Playback readiness requirements are undefined.
-
-3\. Generation behavior is unclear.
-
-4\. Pause/resume synchronization behavior is unclear.
-
-5\. Seek semantics conflict with Sync behavior.
-
-6\. Playback state transitions conflict with Room state.
-
-7\. Actual playback position cannot be obtained reliably.
-
-8\. A requested feature requires changing synchronization behavior.
-
-9\. A requested feature requires changing Audio API semantics.
-
-10\. A requested feature requires changing Room semantics.
-
-11\. Existing implementation contradicts this contract.
-
-12\. A new public playback operation is required but unspecified.
-
-13\. The agent would need to invent timing behavior.
-
-14\. The agent would need to fabricate playback state.
-
-15\. The agent would need to bypass scheduled playback.
-
-
+1. Scheduling semantics are required but undefined.
+2. Output readiness requirements are undefined.
+3. Generation behavior is unclear.
+4. Frame lifecycle semantics are unclear.
+5. Buffering semantics are unclear.
+6. Route-change behavior affects synchronization but is undefined.
+7. Actual output timing cannot be observed where required.
+8. A requested feature requires controlling external media playback.
+9. A requested feature requires changing Synchronization behavior.
+10. A requested feature requires changing Audio API semantics.
+11. A requested feature requires changing Room semantics.
+12. Existing implementation contradicts this contract.
+13. A new public Playback operation is required but unspecified.
+14. The agent would need to invent timing behavior.
+15. The agent would need to fabricate output state.
+16. The agent would need to bypass scheduled output.
+17. The agent would need to reintroduce audio-file ownership.
 
 The agent must not resolve these conditions by guessing.
 
+---
 
-
-\---
-
-
-
-\# 47. Contract Change Procedure
-
-
+# 48. Contract Change Procedure
 
 Any cross-subsystem Playback API change must document:
 
-
-
 ```text
-
 Current Contract:
 
 <existing behavior>
-
-
 
 Proposed Change:
 
 <new behavior>
 
-
-
 Reason:
 
 <why>
-
-
 
 Affected Systems:
 
 <Core / Audio / Sync / Room / Device / Networking>
 
-
-
 Compatibility Impact:
 
 <breaking or non-breaking>
-
-
 
 Required Updates:
 
 <code / tests / docs>
 
-
-
 Decision:
 
 UNDECIDED
-
 ```
-
-
 
 Cross-subsystem changes require coordination before implementation.
 
+---
 
-
-\---
-
-
-
-\# 48. Dependency Map
-
-
+# 49. Dependency Map
 
 ```text
-
-&#x20;                        ┌──────────────┐
-
-&#x20;                        │   Core API   │
-
-&#x20;                        └──────┬───────┘
-
-&#x20;                               │
-
-&#x20;                               ▼
-
-&#x20;                      ┌────────────────┐
-
-&#x20;                      │  Playback API  │
-
-&#x20;                      └───────┬────────┘
-
-&#x20;                              │
-
-&#x20;               ┌──────────────┼──────────────┐
-
-&#x20;               ▼              ▼              ▼
-
-&#x20;          Audio API       Sync API       Device API
-
-&#x20;               │              │
-
-&#x20;               └──────┬───────┘
-
-&#x20;                      ▼
-
-&#x20;                Native Playback
-
-&#x20;                      │
-
-&#x20;                      ▼
-
-&#x20;               Physical Devices
-
+                         ┌──────────────┐
+                         │   Core API   │
+                         └──────┬───────┘
+                                │
+                                ▼
+                       ┌──────────────────┐
+                       │  Playback API    │
+                       └────────┬─────────┘
+                                │
+              ┌─────────────────┼─────────────────┐
+              ▼                 ▼                 ▼
+         Audio API          Sync API         Device API
+              │                 │
+              │                 │
+              └────────┬────────┘
+                       ▼
+              Native Audio Output
+                       │
+                       ▼
+              Physical Device
 ```
 
+Live audio enters from Audio/Networking.
 
+Timing instructions enter from Synchronization.
 
-Playback is the execution boundary.
+Playback turns those inputs into actual native audio output.
 
+---
 
-
-It coordinates with Audio and Sync but does not absorb their responsibilities.
-
-
-
-\---
-
-
-
-\# 49. Relationship to Other Contracts
-
-
+# 50. Relationship to Other Contracts
 
 This contract must remain consistent with:
 
-
-
 ```text
-
 DOCS/interfaces/README.md
-
 DOCS/interfaces/core-api.md
-
 DOCS/interfaces/room-api.md
-
 DOCS/interfaces/device-api.md
-
 DOCS/interfaces/audio-api.md
-
 DOCS/interfaces/sync-api.md
-
 DOCS/architecture.md
-
 DOCS/audio.md
-
 DOCS/synchronization.md
-
 DOCS/networking.md
-
 DOCS/testing.md
-
 DOCS/contract-testing.md
-
 DOCS/AI/rules.md
-
 DOCS/AI/task-protocol.md
-
 DOCS/AI/integration-protocol.md
-
 ```
 
+---
 
-
-\---
-
-
-
-\# 50. Current Open Questions
-
-
+# 51. Current Open Questions
 
 The following remain intentionally unresolved:
 
-
-
 ```text
-
-1\. Exact PlaybackState schema
-
-2\. Exact PlaybackResource schema
-
-3\. Exact generation semantics
-
-4\. Exact scheduling request schema
-
-5\. Scheduling margin
-
-6\. Playback readiness requirements
-
-7\. Pause synchronization behavior
-
-8\. Resume synchronization behavior
-
-9\. Seek synchronization behavior
-
-10\. Completion behavior
-
-11\. Room playback aggregation
-
-12\. Device playback aggregation
-
-13\. Interruption recovery
-
-14\. Audio route recovery
-
-15\. Exact position precision
-
-16\. Native playback abstraction
-
-17\. Flutter/native communication model
-
-18\. Concurrency semantics
-
-19\. Idempotency semantics
-
-20\. Exact error taxonomy
-
-21\. Playback event architecture
-
-22\. Background playback behavior
-
-23\. Bluetooth playback behavior
-
-24\. Recovery behavior after synchronization failure
-
+1. Exact PlaybackOutputState schema
+2. Exact AudioFrame input schema
+3. Exact generation semantics
+4. Exact scheduling request schema
+5. Scheduling margin
+6. Exact jitter-buffer implementation
+7. Buffer size and thresholds
+8. Underrun handling
+9. Missing-frame handling
+10. Frame-loss concealment policy
+11. Native Android audio implementation
+12. Exact output timing source
+13. Flutter/native communication model
+14. Concurrency semantics
+15. Cancellation semantics
+16. Flush semantics
+17. Audio-route recovery
+18. Bluetooth behavior
+19. Interruption recovery
+20. Background-service integration
+21. Exact error taxonomy
+22. Exact event architecture
+23. Host output latency compensation
+24. Recovery after synchronization failure
 ```
-
-
 
 These questions must remain explicit until resolved.
 
+---
 
+# 52. Definition of Done
 
-\---
-
-
-
-\# 51. Definition of Done
-
-
-
-Playback API implementation is complete only when:
-
-
+Playback/output implementation is complete only when:
 
 ```text
-
-□ Playback resource contract is defined
-
-□ Playback states are defined
-
-□ Playback generation is implemented
-
-□ Scheduled playback is implemented
-
+□ Output state contract is defined
+□ AudioFrame input contract is defined
+□ Generation protection is implemented
+□ Scheduled native output is implemented
 □ Playback cannot bypass synchronization
-
-□ Preparation is separate from playback
-
-□ Pause is implemented according to contract
-
-□ Resume is implemented according to contract
-
-□ Seek is implemented according to contract
-
-□ Stop cancels stale scheduled operations
-
-□ Actual playback state is observable
-
-□ Actual playback position is represented truthfully
-
-□ Stale commands are prevented
-
+□ Immediate frame playback is not used as the synchronization mechanism
+□ Jitter buffering is implemented
+□ Buffer bounds are enforced
+□ Underruns are observable
+□ Stale frames are rejected
+□ Stale schedules are prevented
+□ Output can be safely stopped
+□ Pending output can be cancelled
+□ Output can be flushed safely
+□ Actual native output state is observable
+□ Output timing is represented truthfully
 □ Structured errors are implemented
-
 □ Contract tests exist
-
-□ Integration tests exist
-
-□ Real-device playback has been validated
-
-□ Timing behavior has been measured
-
+□ Real-device integration tests exist
+□ External-app live audio has been validated
+□ Timing behavior has been physically measured
 □ Documentation matches implementation
-
 □ No undocumented public behavior exists
-
 □ No fake timing metrics exist
-
+□ No media-player ownership has been reintroduced
+□ No file-distribution architecture has been reintroduced
 □ Git diff has been reviewed
-
 ```
 
+---
 
-
-\---
-
-
-
-\# 52. Final Principle
-
-
+# 53. Final Principle
 
 The Playback API answers:
 
-
-
-> \*\*“What should play, what is its current playback state, and how should playback execution be controlled?”\*\*
-
-
+> **“How does SoundMesh turn live audio frames and synchronization instructions into actual synchronized device output?”**
 
 It does not answer:
 
+> **“What song is playing?”**
 
-
-> \*\*“How do we synchronize clocks?”\*\*
-
-
-
-That belongs to Sync.
-
-
+The external media application owns that.
 
 It does not answer:
 
+> **“When should the group play?”**
 
-
-> \*\*“How do we decode or prepare audio?”\*\*
-
-
-
-That belongs to Audio.
-
-
+Synchronization owns that.
 
 It does not answer:
 
+> **“How do devices communicate?”**
 
-
-> \*\*“How do devices communicate?”\*\*
-
-
-
-That belongs to Networking.
-
-
+Networking owns that.
 
 It does not answer:
 
+> **“How is external audio captured?”**
 
+Audio/Capture owns that.
 
-> \*\*“Who belongs to the room?”\*\*
+It does not answer:
 
+> **“Who belongs to the room?”**
 
+Room owns that.
 
-That belongs to Room.
+The fundamental boundary is:
 
+```text
+External Media App
+        ↓
+Capture provides live audio
+        ↓
+Networking carries live audio
+        ↓
+Sync provides timing
+        ↓
+Playback executes timing
+        ↓
+Device produces sound
+```
 
+**Audio provides the content.**
 
-\*\*Audio provides the content.
+**Networking carries the content.**
 
-Sync provides the timing.
+**Sync provides the timing.**
 
-Playback executes the timing.
+**Playback executes the timing.**
 
-Room provides the participants.
+**Room provides the participants.**
 
-Networking connects them.\*\*
+**The external media app owns media playback.**
 
-
-
-The Playback API is the execution boundary that turns a synchronized plan into actual sound.
-
-
-
+The Playback API is the final execution boundary between SoundMesh's synchronized live-audio system and physical device audio output.

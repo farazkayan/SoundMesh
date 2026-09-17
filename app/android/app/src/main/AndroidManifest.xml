@@ -1,4 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for local network sockets (host listening + participant
+         connection). The debug/profile manifests only grant INTERNET for the
+         Flutter tool; without it here, release builds fail all networking. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Required for MediaProjection / AudioPlaybackCapture:
+         RECORD_AUDIO is a runtime permission required to build the capture
+         AudioRecord; the foreground-service permissions are required to run
+         the mediaProjection-type foreground service during capture. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
         android:label="soundmesh"
         android:name="${applicationName}"
@@ -30,6 +41,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Audio Capture Foreground Service -->
+        <service
+            android:name=".capture.AudioCaptureService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

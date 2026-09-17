@@ -522,27 +522,21 @@ getRoomState()
 
 
 
-selectAudio()
-
-preparePlayback()
+startCapture()
 
 
 
-play()
+pauseCapture()
 
-pause()
+resumeCapture()
 
-resume()
-
-seek()
-
-stop()
+stopCapture()
 
 
 
 getDevices()
 
-getPlaybackState()
+getCaptureState()
 
 getSyncStatus()
 
@@ -1066,7 +1060,7 @@ UNDECIDED
 
 
 
-\# 14. selectAudio()
+\# 14. startCapture()
 
 
 
@@ -1074,7 +1068,11 @@ UNDECIDED
 
 
 
-Selects the audio that will be prepared for synchronized playback.
+Begins the capture-and-synchronization session. This single operation replaces the old `selectAudio()` \+ `preparePlayback()` \+ `play()` sequence.
+
+
+
+There is no in-app audio/source selection step. SoundMesh does not choose which app or file plays — the host has already started playback in whatever external app they are using (e.g. YouTube, Spotify, a video player) before calling `startCapture()`. Calling `startCapture()` triggers the platform-level audio capture permission flow (e.g. Android's MediaProjection consent dialog), then internally performs preparation \(audio readiness, distribution readiness, synchronization readiness\) before synchronized output begins across participating devices. Preparation is an internal implementation detail of this operation, not a separate public Core call.
 
 
 
@@ -1084,119 +1082,7 @@ Selects the audio that will be prepared for synchronized playback.
 
 ```text
 
-AudioSelectionRequest
-
-```
-
-
-
-The Audio API is authoritative for audio-specific fields.
-
-
-
-\### Output
-
-
-
-```text
-
-AudioSelectionResult
-
-```
-
-
-
-Exact fields:
-
-
-
-```text
-
-UNDECIDED
-
-```
-
-
-
-\### Requirements
-
-
-
-Selecting audio MUST NOT imply that playback has started.
-
-
-
-The expected workflow is:
-
-
-
-```text
-
-selectAudio()
-
-&#x20;     ↓
-
-preparePlayback()
-
-&#x20;     ↓
-
-play()
-
-```
-
-
-
-\---
-
-
-
-\# 15. preparePlayback()
-
-
-
-\## Purpose
-
-
-
-Prepares all required subsystems for synchronized playback.
-
-
-
-Preparation may involve:
-
-
-
-```text
-
-Audio
-
-&#x20; ↓
-
-Distribution
-
-&#x20; ↓
-
-Audio readiness
-
-&#x20; ↓
-
-Synchronization
-
-&#x20; ↓
-
-Playback readiness
-
-```
-
-
-
-\### Input
-
-
-
-```text
-
-PreparePlaybackRequest
+StartCaptureRequest
 
 ```
 
@@ -1220,7 +1106,7 @@ UNDECIDED
 
 ```text
 
-PreparePlaybackResult
+StartCaptureResult
 
 ```
 
@@ -1232,9 +1118,7 @@ Conceptual result:
 
 ```text
 
-ready
-
-audioReady
+capturing
 
 devicesReady
 
@@ -1256,129 +1140,31 @@ UNDECIDED
 
 
 
-\### Requirement
-
-
-
-`preparePlayback()` MUST NOT begin audible playback unless explicitly defined by the Playback contract.
-
-
-
-Preparation and playback MUST remain separate concepts.
-
-
-
-\---
-
-
-
-\# 16. play()
-
-
-
-\## Purpose
-
-
-
-Starts synchronized playback according to the Playback and Synchronization contracts.
-
-
-
-\### Input
-
-
-
-```text
-
-PlayRequest
-
-```
-
-
-
-Conceptual information:
-
-
-
-```text
-
-scheduledStartTime
-
-```
-
-
-
-The exact scheduling model is defined by the Playback and Sync contracts.
-
-
-
-\### Output
-
-
-
-```text
-
-PlayResult
-
-```
-
-
-
-Conceptual result:
-
-
-
-```text
-
-scheduled
-
-targetTime
-
-generation
-
-```
-
-
-
-Exact structure:
-
-
-
-```text
-
-UNDECIDED
-
-```
-
-
-
 \### Requirements
 
 
 
-Playback MUST use scheduled playback.
+`startCapture()` MUST request and respect the platform's audio-capture permission model. It MUST NOT assume capture succeeds — the platform may deny or restrict capture of a given source app \(see DOCS/decisions.md, Model B entry, for the ALLOW\_CAPTURE\_BY\_NONE restriction that some apps set\).
 
 
 
-Immediate local execution such as:
+The expected workflow is:
 
 
 
 ```text
 
-play()
+startCapture()
 
-→ play immediately
+&#x20;     ↓
+
+\(internal: audio readiness → distribution readiness → sync readiness\)
+
+&#x20;     ↓
+
+synchronized output across devices
 
 ```
-
-
-
-MUST NOT be assumed to produce synchronized playback.
-
-
-
-The Core API is responsible for initiating the coordinated workflow, while timing-critical scheduling belongs to the Playback/Sync implementation.
 
 
 
@@ -1386,7 +1172,70 @@ The Core API is responsible for initiating the coordinated workflow, while timin
 
 
 
-\# 17. pause()
+\# 15. \(reserved — see startCapture\(\) above\)
+
+
+
+This section number is intentionally left as a placeholder. The former `preparePlayback()` operation described here has been folded into `startCapture()` \(Section 14\) per the Model B architectural decision \(DOCS/decisions.md\). See Section 14 for the current specification.
+
+
+
+\---
+
+### Input (continued)
+
+```text
+StartCaptureRequest (continued)
+```
+
+Conceptual information:
+
+```text
+scheduledStartTime
+```
+
+The exact scheduling model is defined by the Playback and Sync contracts.
+
+### Output (continued)
+
+```text
+StartCaptureResult (continued)
+```
+
+Conceptual result:
+
+```text
+scheduled
+targetTime
+generation
+```
+
+Exact structure:
+
+```text
+UNDECIDED
+```
+
+### Requirements (continued)
+
+Capture output MUST use scheduled playback.
+
+Immediate local execution such as:
+
+```text
+startCapture()
+→ output immediately
+```
+
+MUST NOT be assumed to produce synchronized playback.
+
+The Core API is responsible for initiating the coordinated workflow, while timing-critical scheduling belongs to the Playback/Sync implementation.
+
+\---
+
+
+
+\# 17. pauseCapture()
 
 
 
@@ -1394,7 +1243,7 @@ The Core API is responsible for initiating the coordinated workflow, while timin
 
 
 
-Pauses coordinated playback.
+Pauses coordinated capture/sync output \(e.g. the host wants to briefly mute the synchronized group — such as during an ad, or to talk to the room — without ending the session\). This does NOT pause or otherwise control the external app's own playback, which SoundMesh has no ability to control.
 
 
 
@@ -1424,7 +1273,7 @@ UNDECIDED
 
 ```text
 
-PauseResult
+PauseCaptureResult
 
 ```
 
@@ -1458,7 +1307,7 @@ The exact synchronization behavior during pause is defined by the Playback and S
 
 
 
-\# 18. resume()
+\# 18. resumeCapture()
 
 
 
@@ -1466,7 +1315,7 @@ The exact synchronization behavior during pause is defined by the Playback and S
 
 
 
-Resumes coordinated playback.
+Resumes coordinated capture/sync output after `pauseCapture()`.
 
 
 
@@ -1476,7 +1325,7 @@ Resumes coordinated playback.
 
 ```text
 
-ResumeRequest
+ResumeCaptureRequest
 
 ```
 
@@ -1500,7 +1349,7 @@ UNDECIDED
 
 ```text
 
-ResumeResult
+ResumeCaptureResult
 
 ```
 
@@ -1518,7 +1367,7 @@ UNDECIDED
 
 
 
-Resume MUST NOT simply invoke independent immediate playback on every device.
+Resume MUST NOT simply invoke independent immediate output on every device.
 
 
 
@@ -1530,71 +1379,11 @@ It MUST use the synchronized playback model.
 
 
 
-\# 19. seek()
+\# 19. \(removed — seek\(\) does not apply to this architecture\)
 
 
 
-\## Purpose
-
-
-
-Changes the playback position for the synchronized group.
-
-
-
-\### Input
-
-
-
-```text
-
-SeekRequest
-
-
-
-positionMs
-
-```
-
-
-
-`positionMs` represents the desired playback position in milliseconds.
-
-
-
-\### Output
-
-
-
-```text
-
-SeekResult
-
-```
-
-
-
-Exact structure:
-
-
-
-```text
-
-UNDECIDED
-
-```
-
-
-
-\### Requirements
-
-
-
-Seeking MUST preserve synchronized playback behavior.
-
-
-
-The Core API MUST NOT implement device-level seeking independently.
+SoundMesh cannot seek within audio it does not own or control. The captured audio's timeline belongs entirely to the external app the host is using; SoundMesh has no ability to change that app's playback position. This operation has been removed per the Model B architectural decision \(DOCS/decisions.md\). This section number is intentionally left as a placeholder rather than renumbering all subsequent sections.
 
 
 
@@ -1602,7 +1391,7 @@ The Core API MUST NOT implement device-level seeking independently.
 
 
 
-\# 20. stop()
+\# 20. stopCapture()
 
 
 
@@ -1610,7 +1399,7 @@ The Core API MUST NOT implement device-level seeking independently.
 
 
 
-Stops coordinated playback.
+Stops coordinated capture/sync output and ends the capture session. The room itself MAY remain open \(participants stay connected\) even after capture stops — stopping capture is distinct from closing the room.
 
 
 
@@ -1628,7 +1417,7 @@ None.
 
 ```text
 
-StopResult
+StopCaptureResult
 
 ```
 
@@ -1650,7 +1439,7 @@ UNDECIDED
 
 
 
-Stopping playback MUST update the high-level Core state and relevant Playback/Sync state.
+Stopping capture MUST update the high-level Core state and relevant Playback/Sync state.
 
 
 
@@ -1710,7 +1499,7 @@ A device identity and a network address are different concepts.
 
 
 
-\# 22. getPlaybackState()
+\# 22. getCaptureState()
 
 
 
@@ -1718,7 +1507,7 @@ A device identity and a network address are different concepts.
 
 
 
-Returns high-level playback information.
+Returns high-level capture/output information for the current session \(renamed from `getPlaybackState()` — there is no independent "playback position" concept since SoundMesh does not control the source app's timeline; `positionMs` below refers to the capture/distribution buffer's position, not a seekable media position\).
 
 
 
@@ -1732,7 +1521,7 @@ Conceptual structure:
 
 ```text
 
-PlaybackState
+CaptureState
 
 
 
@@ -2042,19 +1831,13 @@ joinRoom()
 
 leaveRoom()
 
-selectAudio()
+startCapture()
 
-preparePlayback()
+pauseCapture()
 
-play()
+resumeCapture()
 
-pause()
-
-resume()
-
-seek()
-
-stop()
+stopCapture()
 
 resynchronize()
 
@@ -2110,7 +1893,7 @@ Examples:
 
 joinRoom()
 
-preparePlayback()
+startCapture()
 
 resynchronize()
 
@@ -2158,19 +1941,19 @@ joinRoom()
 
 
 
-play()
+startCapture()
 
-stop()
-
-
-
-seek()
-
-stop()
+stopCapture()
 
 
 
-preparePlayback()
+pauseCapture()
+
+stopCapture()
+
+
+
+startCapture()
 
 leaveRoom()
 
@@ -2508,11 +2291,11 @@ wait for participants
 
 &#x20;     ↓
 
-selectAudio()
+host starts playback in an external app \(YouTube, Spotify, etc.\)
 
 &#x20;     ↓
 
-preparePlayback()
+startCapture()
 
 &#x20;     ↓
 
@@ -2520,15 +2303,11 @@ verify readiness
 
 &#x20;     ↓
 
-play()
+monitor capture/synchronization
 
 &#x20;     ↓
 
-monitor playback/synchronization
-
-&#x20;     ↓
-
-pause / resume / seek / stop
+pauseCapture / resumeCapture / stopCapture
 
 ```
 
@@ -2722,35 +2501,29 @@ leaveRoom()
 
 
 
-\### Audio lifecycle
+\### Audio capture lifecycle
 
 
 
 ```text
 
-selectAudio()
-
-preparePlayback()
+startCapture()
 
 ```
 
 
 
-\### Playback lifecycle
+\### Capture/output lifecycle
 
 
 
 ```text
 
-play()
+pauseCapture()
 
-pause()
+resumeCapture()
 
-resume()
-
-seek()
-
-stop()
+stopCapture()
 
 ```
 
@@ -2766,7 +2539,7 @@ getState()
 
 getRoomState()
 
-getPlaybackState()
+getCaptureState()
 
 getSyncStatus()
 

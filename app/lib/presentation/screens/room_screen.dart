@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/soundmesh_theme.dart';
 import '../../application/providers/create_room_flow_provider.dart';
 import '../../application/providers/join_room_flow_provider.dart';
+import '../../application/providers/room_lifecycle_provider.dart';
 import '../../application/repositories/network_repository.dart';
 import '../../application/protocol.dart';
+import '../../application/room/room_lifecycle.dart';
 
 enum MessageSource { self, remote }
 
@@ -24,36 +26,54 @@ class MessageLogEntry {
 
 class RoomScreenState {
   final NetworkConnectionState connectionState;
+  final RoomLifecycleState roomLifecycleState;
+  final RoomRole roomRole;
   final List<MessageLogEntry> messageLog;
   final String? errorMessage;
+  final String? closedReason;
 
   const RoomScreenState({
     this.connectionState = NetworkConnectionState.disconnected,
+    this.roomLifecycleState = RoomLifecycleState.created,
+    this.roomRole = RoomRole.host,
     this.messageLog = const [],
     this.errorMessage,
+    this.closedReason,
   });
+
+  static const _unset = Object();
 
   RoomScreenState copyWith({
     NetworkConnectionState? connectionState,
+    RoomLifecycleState? roomLifecycleState,
+    RoomRole? roomRole,
     List<MessageLogEntry>? messageLog,
-    String? errorMessage,
+    Object? errorMessage = _unset,
+    Object? closedReason = _unset,
   }) {
     return RoomScreenState(
       connectionState: connectionState ?? this.connectionState,
+      roomLifecycleState: roomLifecycleState ?? this.roomLifecycleState,
+      roomRole: roomRole ?? this.roomRole,
       messageLog: messageLog ?? this.messageLog,
-      errorMessage: errorMessage,
+      // Unrelated events (chat messages, connection changes) must not wipe an
+      // active error/closed banner; clearing is explicit via null.
+      errorMessage: errorMessage == _unset ? this.errorMessage : errorMessage as String?,
+      closedReason: closedReason == _unset ? this.closedReason : closedReason as String?,
     );
   }
 }
 
 class RoomScreenNotifier extends StateNotifier<RoomScreenState> {
   final NetworkRepository _networkRepository;
+  final RoomLifecycleNotifier _roomLifecycleNotifier;
   StreamSubscription? _stateSubscription;
   StreamSubscription? _messageSubscription;
   StreamSubscription? _protocolMessageSubscription;
+  StreamSubscription? _roomLifecycleSubscription;
   Timer? _errorClearTimer;
 
-  RoomScreenNotifier(this._networkRepository) : super(const RoomScreenState()) {
+  RoomScreenNotifier(this._networkRepository, this._roomLifecycleNotifier) : super(const RoomScreenState()) {
     _stateSubscription = _networkRepository.connectionStateStream.listen((connState) {
       state = state.copyWith(connectionState: connState);
     });
@@ -72,7 +92,7 @@ class RoomScreenNotifier extends StateNotifier<RoomScreenState> {
     _protocolMessageSubscription = _networkRepository.protocolMessageStream.listen((protocolMessage) {
       final messageType = ProtocolMessageTypeX.fromWireValue(protocolMessage.messageType);
       if (messageType == ProtocolMessageType.versionRejected) {
-        _setError('Protocol version mismatch: host v${protocolMessage.payload?['hostVersion'] ?? '?'} vs this device v${CURRENT_PROTOCOL_VERSION}');
+        _setError('Protocol version mismatch: host v${protocolMessage.payload?['hostVersion'] ?? '?'} vs this device v$currentProtocolVersion');
       } else if (messageType == ProtocolMessageType.error) {
         final errorCode = protocolMessage.payload?['errorCode'] as String?;
         final errorMessage = protocolMessage.payload?['errorMessage'] as String?;
@@ -80,6 +100,14 @@ class RoomScreenNotifier extends StateNotifier<RoomScreenState> {
           _setError('Protocol error: $errorMessage');
         }
       }
+    });
+
+    _roomLifecycleSubscription = _roomLifecycleNotifier.stream.listen((lifecycleData) {
+      state = state.copyWith(
+        roomLifecycleState: lifecycleData.lifecycleState,
+        roomRole: lifecycleData.role,
+        closedReason: lifecycleData.closedReason,
+      );
     });
   }
 
@@ -101,7 +129,7 @@ class RoomScreenNotifier extends StateNotifier<RoomScreenState> {
   Future<void> sendMessage(String message) async {
     if (message.trim().isEmpty) return;
 
-    final success = await _networkRepository.sendMessage(message);
+    final success = await _networkRepository.sendChatMessage(message);
     if (success) {
       final entry = MessageLogEntry(
         message: message,
@@ -118,11 +146,20 @@ class RoomScreenNotifier extends StateNotifier<RoomScreenState> {
     _networkRepository.disconnect();
   }
 
+  Future<void> closeRoom() async {
+    await _roomLifecycleNotifier.closeRoom();
+  }
+
+  Future<void> leaveRoom() async {
+    await _roomLifecycleNotifier.leaveRoom();
+  }
+
   @override
   void dispose() {
     _stateSubscription?.cancel();
     _messageSubscription?.cancel();
     _protocolMessageSubscription?.cancel();
+    _roomLifecycleSubscription?.cancel();
     _errorClearTimer?.cancel();
     super.dispose();
   }
@@ -131,7 +168,8 @@ class RoomScreenNotifier extends StateNotifier<RoomScreenState> {
 final roomScreenProvider =
     StateNotifierProvider<RoomScreenNotifier, RoomScreenState>((ref) {
   final networkRepo = ref.watch(networkRepositoryProvider);
-  return RoomScreenNotifier(networkRepo);
+  final roomLifecycleNotifier = ref.watch(roomLifecycleProvider.notifier);
+  return RoomScreenNotifier(networkRepo, roomLifecycleNotifier);
 });
 
 class RoomScreen extends ConsumerStatefulWidget {
@@ -156,14 +194,13 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
   Widget build(BuildContext context) {
     final screenState = ref.watch(roomScreenProvider);
     final createState = ref.watch(createRoomFlowProvider);
-    final joinState = ref.watch(joinRoomFlowProvider);
-    final isHost = createState.status == CreateRoomFlowStatus.ready;
-    final isParticipant = joinState.status == JoinRoomFlowStatus.ready;
-    final isReady = isHost || isParticipant;
-    final isHandshaking = createState.status == CreateRoomFlowStatus.handshaking ||
-                          joinState.status == JoinRoomFlowStatus.handshaking;
-    final isListening = createState.status == CreateRoomFlowStatus.listening;
-    final showHostAddress = isHost || isHandshaking || isListening;
+    final lifecycleState = ref.watch(roomLifecycleProvider);
+    final isHost = lifecycleState.role == RoomRole.host;
+    final isReady = lifecycleState.lifecycleState == RoomLifecycleState.ready;
+    final isHandshaking = lifecycleState.lifecycleState == RoomLifecycleState.joining;
+    final isListening = lifecycleState.lifecycleState == RoomLifecycleState.discoverable;
+    final isClosed = lifecycleState.lifecycleState == RoomLifecycleState.closed;
+    final showHostAddress = isHost && (isListening || isHandshaking || isReady);
 
     ref.listen<RoomScreenState>(roomScreenProvider, (previous, next) {
       if (next.messageLog.length > (previous?.messageLog.length ?? 0)) {
@@ -184,26 +221,29 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       appBar: AppBar(
         backgroundColor: SoundMeshColors.surface,
         title: Text(
-          _getTitle(createState, joinState),
+          _getTitle(lifecycleState),
           style: const TextStyle(
             color: SoundMeshColors.primaryText,
             fontSize: 18,
             fontWeight: FontWeight.w600,
           ),
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          color: SoundMeshColors.primaryText,
-          onPressed: () {
-            ref.read(roomScreenProvider.notifier).disconnect();
-            ref.read(createRoomFlowProvider.notifier).reset();
-            ref.read(joinRoomFlowProvider.notifier).reset();
-            Navigator.pop(context);
-          },
-        ),
-actions: [
-            _buildConnectionIndicator(screenState.connectionState, isHandshaking, isListening),
-          ],
+        leading: isClosed
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+                color: SoundMeshColors.primaryText,
+                onPressed: () {
+                  ref.read(roomScreenProvider.notifier).disconnect();
+                  ref.read(createRoomFlowProvider.notifier).reset();
+                  ref.read(joinRoomFlowProvider.notifier).reset();
+                  Navigator.pop(context);
+                },
+              ),
+        actions: [
+          if (!isClosed) _buildRoomActionButton(lifecycleState, isHost),
+          _buildConnectionIndicator(screenState.connectionState, isHandshaking, isListening),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -211,24 +251,123 @@ actions: [
             if (showHostAddress) _buildHostAddressInfo(createState),
             if (isHandshaking) _buildHandshakingIndicator(),
             if (isListening) _buildListeningIndicator(),
+            if (isClosed) _buildClosedBanner(screenState.closedReason ?? 'Room closed'),
             if (screenState.errorMessage != null) _buildErrorBanner(screenState.errorMessage!),
             _buildMessageLog(screenState.messageLog, isReady),
-            _buildMessageInput(screenState, isReady),
+            _buildMessageInput(screenState, isReady && !isClosed),
           ],
         ),
       ),
     );
   }
 
-  String _getTitle(CreateRoomFlowState createState, JoinRoomFlowState joinState) {
-    if (createState.status == CreateRoomFlowStatus.ready) return 'Host';
-    if (joinState.status == JoinRoomFlowStatus.ready) return 'Participant';
-    if (createState.status == CreateRoomFlowStatus.handshaking) return 'Host (Handshaking)';
-    if (joinState.status == JoinRoomFlowStatus.handshaking) return 'Participant (Handshaking)';
-    if (createState.status == CreateRoomFlowStatus.listening) return 'Host (Waiting)';
-    if (createState.status == CreateRoomFlowStatus.hosting) return 'Host (Starting)';
-    if (joinState.status == JoinRoomFlowStatus.connecting) return 'Participant (Connecting)';
-    return 'Room';
+  String _getTitle(RoomLifecycleStateData lifecycleState) {
+    switch (lifecycleState.lifecycleState) {
+      case RoomLifecycleState.created:
+        return lifecycleState.role == RoomRole.host ? 'Creating Room...' : 'Joining Room...';
+      case RoomLifecycleState.discoverable:
+        return 'Host (Waiting)';
+      case RoomLifecycleState.joining:
+        return 'Participant (Joining...)';
+      case RoomLifecycleState.ready:
+        return lifecycleState.role == RoomRole.host ? 'Host' : 'Participant';
+      case RoomLifecycleState.closed:
+        return 'Room Closed';
+    }
+  }
+
+  Widget _buildRoomActionButton(RoomLifecycleStateData lifecycleState, bool isHost) {
+    if (isHost) {
+      return IconButton(
+        tooltip: 'End Room',
+        onPressed: () => _showEndRoomDialog(),
+        icon: const Icon(Icons.stop_rounded, color: SoundMeshColors.error, size: 24),
+      );
+    } else {
+      return IconButton(
+        tooltip: 'Leave Room',
+        onPressed: () => _showLeaveRoomDialog(),
+        icon: const Icon(Icons.exit_to_app_rounded, color: SoundMeshColors.warning, size: 24),
+      );
+    }
+  }
+
+  void _showEndRoomDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: SoundMeshColors.surface,
+        title: const Text('End Room', style: TextStyle(color: SoundMeshColors.primaryText)),
+        content: const Text('This will end the room for all participants.', style: TextStyle(color: SoundMeshColors.secondaryText)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: SoundMeshColors.mutedText)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: SoundMeshColors.error),
+            onPressed: () {
+              Navigator.pop(context);
+              ref.read(roomScreenProvider.notifier).closeRoom();
+            },
+            child: const Text('End Room', style: TextStyle(color: SoundMeshColors.primaryText)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLeaveRoomDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: SoundMeshColors.surface,
+        title: const Text('Leave Room', style: TextStyle(color: SoundMeshColors.primaryText)),
+        content: const Text('You will leave this room. The host can continue with other participants.', style: TextStyle(color: SoundMeshColors.secondaryText)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: SoundMeshColors.mutedText)),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ref.read(roomScreenProvider.notifier).leaveRoom();
+              ref.read(joinRoomFlowProvider.notifier).reset();
+            },
+            child: const Text('Leave Room', style: TextStyle(color: SoundMeshColors.primaryText)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClosedBanner(String reason) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: SoundMeshColors.error.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SoundMeshColors.error.withValues(alpha: 0.3), width: 1),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded, color: SoundMeshColors.error, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              reason,
+              style: TextStyle(
+                color: SoundMeshColors.error,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildHostAddressInfo(CreateRoomFlowState flowState) {
@@ -413,24 +552,35 @@ actions: [
         case NetworkConnectionState.ready:
           color = SoundMeshColors.success;
           label = 'Ready';
+          break;
         case NetworkConnectionState.connected:
           color = SoundMeshColors.success;
           label = 'Connected';
+          break;
         case NetworkConnectionState.connecting:
           color = SoundMeshColors.warning;
           label = 'Connecting';
+          break;
         case NetworkConnectionState.handshaking:
           color = SoundMeshColors.accent;
           label = 'Handshaking';
+          break;
         case NetworkConnectionState.listening:
           color = SoundMeshColors.warning;
           label = 'Waiting';
+          break;
         case NetworkConnectionState.failed:
           color = SoundMeshColors.error;
           label = 'Failed';
+          break;
+        case NetworkConnectionState.reconnecting:
+          color = SoundMeshColors.warning;
+          label = 'Reconnecting';
+          break;
         case NetworkConnectionState.disconnected:
           color = SoundMeshColors.mutedText;
           label = 'Disconnected';
+          break;
       }
     }
 
@@ -537,10 +687,8 @@ actions: [
               children: [
                 Text(
                   entry.message,
-                  style: TextStyle(
-                    color: isSelf
-                        ? SoundMeshColors.primaryText
-                        : SoundMeshColors.primaryText,
+                  style: const TextStyle(
+                    color: SoundMeshColors.primaryText,
                     fontSize: 14,
                   ),
                 ),
@@ -566,9 +714,7 @@ actions: [
     return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:${time.second.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildMessageInput(RoomScreenState screenState, bool isReady) {
-    final canSend = isReady && screenState.connectionState == NetworkConnectionState.ready;
-
+  Widget _buildMessageInput(RoomScreenState screenState, bool canSend) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(

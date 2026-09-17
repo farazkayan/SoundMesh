@@ -1,7022 +1,3837 @@
-\# SoundMesh — UI/UX Specification
+# SoundMesh — UI/UX Specification
 
+**Document Status:** REQUIRED
+**Document Type:** Product/UI/UX Source of Truth
+**Applies To:** SoundMesh mobile application
+**Primary Platform:** Android
+**Future Platform:** iOS may be considered separately; it is not an MVP requirement
+**Design Direction:** Dark-first, premium, minimal, audio-focused, technically sophisticated without exposing technical complexity
 
+---
 
-\*\*Document Status:\*\* REQUIRED
-
-\*\*Document Type:\*\* Product/UI/UX Source of Truth
-
-\*\*Applies To:\*\* SoundMesh mobile application
-
-\*\*Primary Platforms:\*\* iOS and Android
-
-\*\*Design Direction:\*\* Dark-first, premium, minimal, audio-focused, technically sophisticated without exposing technical complexity
-
-
-
-\---
-
-
-
-\# 1. Purpose
-
-
+# 1. Purpose
 
 This document defines the complete user-interface and user-experience system for SoundMesh.
 
-
-
 It establishes:
 
+* visual identity
+* color system
+* contrast requirements
+* typography
+* spacing
+* sizing
+* layout
+* navigation
+* information hierarchy
+* components
+* room states
+* capture states
+* synchronization feedback
+* connection feedback
+* recovery behavior
+* accessibility
+* responsive behavior
+* diagnostics
+* onboarding
+* interaction rules
+* design tokens
+* UI acceptance criteria
 
-
-\* visual identity
-
-\* color system
-
-\* color science and contrast requirements
-
-\* typography
-
-\* spacing
-
-\* sizing
-
-\* layout
-
-\* navigation
-
-\* information hierarchy
-
-\* components
-
-\* states
-
-\* animations
-
-\* transitions
-
-\* accessibility
-
-\* responsive behavior
-
-\* room visualization
-
-\* playback UI
-
-\* synchronization feedback
-
-\* error handling
-
-\* onboarding
-
-\* diagnostics
-
-\* interaction rules
-
-\* design tokens
-
-\* UI acceptance criteria
-
-
-
-This document is intended to prevent individual developers or AI coding agents from making arbitrary visual decisions.
-
-
+This document exists to prevent individual developers or AI coding agents from making arbitrary visual decisions.
 
 If an implementation decision conflicts with this document, this document is the UI/UX authority unless a newer documented decision explicitly supersedes it.
 
+---
 
+# 2. Product Model
 
-\---
+SoundMesh is a **live audio synchronization layer**.
 
+It is not:
 
+* a music player
+* a media library
+* a file-sharing application
+* a streaming-content service
+* a replacement for YouTube, Spotify, VLC, or another media player
 
-\# 2. Core UX Principle
+The external media application remains responsible for actual media playback.
 
+The SoundMesh experience is:
 
+```text
+Create / Join
+      ↓
+Connect devices
+      ↓
+Prepare audio capture
+      ↓
+Grant capture permission
+      ↓
+Start SoundMesh session
+      ↓
+Open external media app
+      ↓
+External app plays audio
+      ↓
+SoundMesh captures host audio
+      ↓
+SoundMesh synchronizes participating devices
+      ↓
+Everyone hears the same live audio
+```
+
+The user should not need to understand the underlying capture, networking, buffering, clock synchronization, or drift-correction systems.
+
+---
+
+# 3. Core UX Principle
 
 SoundMesh performs technically complex operations involving:
 
+* device discovery
+* local networking
+* Android audio capture
+* MediaProjection permission
+* live audio transport
+* buffering
+* timing measurement
+* clock synchronization
+* latency estimation
+* scheduled audio output
+* drift detection
+* recovery
 
-
-\* local networking
-
-\* device discovery
-
-\* audio transfer
-
-\* buffering
-
-\* clock synchronization
-
-\* latency measurement
-
-\* scheduled playback
-
-\* drift detection
-
-\* playback correction
-
-\* connection recovery
-
-
-
-The user should not need to understand any of those systems.
-
-
+The user should not need to understand these systems.
 
 The fundamental UX principle is:
 
-
-
-> \*\*Hide technical complexity behind simple, trustworthy interactions.\*\*
-
-
+> **Hide technical complexity behind simple, trustworthy interactions.**
 
 The intended mental model is:
 
-
-
 ```text
-
 Create
-
-&#x20; ↓
-
+   ↓
 Join
-
-&#x20; ↓
-
-Choose audio
-
-&#x20; ↓
-
-Everyone gets ready
-
-&#x20; ↓
-
+   ↓
+Connect
+   ↓
+Get ready
+   ↓
+Open your media app
+   ↓
 Play
-
+   ↓
+Everyone hears it together
 ```
-
-
 
 Not:
 
-
-
 ```text
-
-Create
-
-&#x20; ↓
-
-Configure network
-
-&#x20; ↓
-
-Configure latency
-
-&#x20; ↓
-
-Synchronize clocks
-
-&#x20; ↓
-
+Configure transport
+   ↓
 Configure buffers
-
-&#x20; ↓
-
-Start playback
-
+   ↓
+Configure clock offset
+   ↓
+Configure capture
+   ↓
+Configure latency
+   ↓
+Configure audio frames
 ```
 
+Engineering complexity belongs underneath the interface.
 
+---
 
-The engineering complexity should exist underneath the interface, not inside it.
-
-
-
-\---
-
-
-
-\# 3. Product Personality
-
-
+# 4. Product Personality
 
 SoundMesh should feel:
 
-
-
-\* premium
-
-\* calm
-
-\* modern
-
-\* technically capable
-
-\* trustworthy
-
-\* fast
-
-\* effortless
-
-\* focused
-
-\* intentional
-
-
+* premium
+* calm
+* modern
+* technically capable
+* trustworthy
+* fast
+* effortless
+* focused
+* intentional
 
 SoundMesh should NOT feel:
 
-
-
-\* childish
-
-\* excessively futuristic
-
-\* gamer-oriented
-
-\* RGB-heavy
-
-\* cyberpunk
-
-\* cluttered
-
-\* corporate
-
-\* overly playful
-
-\* like a generic music streaming application
-
-\* like an AI-generated template
-
-
+* childish
+* excessively futuristic
+* gamer-oriented
+* RGB-heavy
+* cyberpunk
+* cluttered
+* corporate
+* overly playful
+* like a generic music streaming application
+* like an AI-generated template
 
 The interface should communicate:
 
+> **“This is serious technology that is extremely easy to use.”**
 
+---
 
-> “This is a serious piece of technology that is extremely easy to use.”
+# 5. Visual Identity
 
-
-
-\---
-
-
-
-\# 4. Visual Identity
-
-
-
-The primary visual metaphor is a \*\*mesh of connected devices\*\*.
-
-
-
-Each phone participating in a room can be represented as a node.
-
-
+The primary visual metaphor is a **mesh of connected devices**.
 
 Conceptually:
 
-
-
 ```text
-
-&#x20;            ●
-
-&#x20;          /   \\
-
-&#x20;        ●───────●
-
-&#x20;         \\     /
-
-&#x20;          \\   /
-
-&#x20;            ●
-
+       ●
+     /   \
+   ●───────●
+    \     /
+      ●
 ```
 
+The production UI should use a refined interpretation of this concept.
 
+The mesh represents:
 
-The production UI must use a refined interpretation of this concept.
+* connected phones
+* shared audio
+* synchronization
+* coordinated activity
 
+It should not resemble a technical network diagram during normal use.
 
-
-The mesh should never resemble a technical network diagram unless the user enters diagnostics.
-
-
-
-Normal users should perceive it as:
-
-
+Normal users should perceive:
 
 > “My phones are connected.”
 
+Advanced users may perceive:
 
+> “These devices are synchronized.”
 
-Advanced users may perceive it as:
+The mesh is a brand element and interaction element, not merely decoration.
 
+---
 
-
-> “These devices are communicating and synchronizing.”
-
-
-
-The mesh is a brand element, not merely decoration.
-
-
-
-\---
-
-
-
-\# 5. Color Philosophy
-
-
+# 6. Color Philosophy
 
 SoundMesh uses a dark neutral foundation with a single strong blue accent.
 
-
-
 The color system is intentionally restrained.
 
+Visual richness should come primarily from:
 
+* luminance
+* hierarchy
+* typography
+* spacing
+* subtle surfaces
+* controlled accent usage
 
-The UI should derive visual richness primarily from:
+The UI must not rely on large gradients or excessive saturated colors.
 
+---
 
+# 7. Primary Color Palette
 
-\* luminance
-
-\* hierarchy
-
-\* depth
-
-\* typography
-
-\* spacing
-
-\* subtle surfaces
-
-\* controlled accent usage
-
-
-
-It must not rely on large gradients or excessive saturated colors.
-
-
-
-\---
-
-
-
-\# 6. Primary Color Palette
-
-
-
-\## 6.1 Background
-
-
-
-\### `Background / Primary`
-
-
+## 7.1 Background
 
 ```text
-
-\#0B0D10
-
+#0B0D10
 ```
-
-
-
-RGB:
-
-
-
-```text
-
-11, 13, 16
-
-```
-
-
 
 Purpose:
 
+* application background
+* full-screen surfaces
+* major empty areas
 
+Pure `#000000` should not be the default background.
 
-\* application background
+---
 
-\* full-screen surfaces
-
-\* major empty areas
-
-
-
-This is intentionally not pure black.
-
-
-
-Pure `#000000` should not be the default application background because the slightly lifted neutral background provides better perceived depth and reduces the harshness of pure-black/white contrast.
-
-
-
-\---
-
-
-
-\## 6.2 Secondary Background
-
-
+## 7.2 Secondary Background
 
 ```text
-
-\#12161B
-
+#12161B
 ```
-
-
 
 Purpose:
 
+* secondary sections
+* grouped content
+* large contained regions
 
+---
 
-\* secondary sections
-
-\* navigation areas
-
-\* large contained regions
-
-\* grouped content
-
-
-
-\---
-
-
-
-\## 6.3 Surface
-
-
+## 7.3 Surface
 
 ```text
-
-\#181D23
-
+#181D23
 ```
-
-
 
 Purpose:
 
+* cards
+* list containers
+* input fields
+* controls
 
+---
 
-\* cards
-
-\* list containers
-
-\* input fields
-
-\* elevated controls
-
-
-
-\---
-
-
-
-\## 6.4 Elevated Surface
-
-
+## 7.4 Elevated Surface
 
 ```text
-
-\#20262D
-
+#20262D
 ```
-
-
 
 Purpose:
 
+* dialogs
+* menus
+* active cards
+* strongly elevated controls
 
+---
 
-\* modal surfaces
-
-\* active cards
-
-\* menus
-
-\* dialogs
-
-\* strongly elevated controls
-
-
-
-\---
-
-
-
-\## 6.5 Primary Text
-
-
+## 7.5 Primary Text
 
 ```text
-
-\#F5F7FA
-
+#F5F7FA
 ```
-
-
 
 Purpose:
 
+* titles
+* important values
+* primary labels
+* primary buttons
 
+---
 
-\* titles
-
-\* primary labels
-
-\* important values
-
-\* primary buttons
-
-
-
-This is intentionally slightly softer than pure white.
-
-
-
-\---
-
-
-
-\## 6.6 Secondary Text
-
-
+## 7.6 Secondary Text
 
 ```text
-
-\#A7AFB9
-
+#A7AFB9
 ```
-
-
 
 Purpose:
 
+* descriptions
+* supporting labels
+* metadata
+* secondary information
 
+---
 
-\* descriptions
-
-\* supporting labels
-
-\* metadata
-
-\* secondary navigation text
-
-
-
-\---
-
-
-
-\## 6.7 Muted Text
-
-
+## 7.7 Muted Text
 
 ```text
-
-\#6F7883
-
+#6F7883
 ```
-
-
 
 Purpose:
 
+* tertiary information
+* inactive metadata
+* placeholders
 
+Muted text must never be used for information required to operate the application.
 
-\* tertiary information
+---
 
-\* inactive metadata
+# 8. Primary Accent
 
-\* placeholders where appropriate
-
-
-
-Muted text must never be used for information that is required to understand or operate the application.
-
-
-
-\---
-
-
-
-\# 7. Primary Accent
-
-
-
-\## SoundMesh Blue
-
-
+## SoundMesh Blue
 
 ```text
-
-\#5B8CFF
-
+#5B8CFF
 ```
-
-
-
-RGB:
-
-
-
-```text
-
-91, 140, 255
-
-```
-
-
-
-This is the primary brand/action color.
-
-
-
-Use it for:
-
-
-
-\* primary buttons
-
-\* active controls
-
-\* selected states
-
-\* progress indicators
-
-\* important interactive elements
-
-\* mesh activity
-
-\* synchronization activity
-
-\* links
-
-\* focus indicators where appropriate
-
-
-
-Blue should be used deliberately.
-
-
-
-It must NOT cover large portions of every screen simply because it is the brand color.
-
-
-
-\---
-
-
-
-\# 8. Accent Variants
-
-
-
-\## Accent Light
-
-
-
-```text
-
-\#7DA5FF
-
-```
-
-
 
 Use for:
 
+* primary buttons
+* active controls
+* selected states
+* progress indicators
+* synchronization activity
+* important interactive elements
+* mesh activity
+* links
+* focus indicators where appropriate
 
+Blue must be used deliberately.
 
-\* pressed/hover-derived visual states where appropriate
+It must not dominate every screen.
 
-\* selected emphasis
+---
 
-\* light accent elements on dark surfaces
+# 9. Accent Variants
 
-\* visual hierarchy within the mesh
-
-
-
-\## Accent Dark
-
-
+## Accent Light
 
 ```text
-
-\#3D6FE0
-
+#7DA5FF
 ```
-
-
 
 Use for:
 
+* selected emphasis
+* light accent elements
+* mesh hierarchy
+* appropriate pressed/active-derived states
 
-
-\* pressed states
-
-\* deeper emphasis
-
-\* controlled contrast against bright accent states
-
-
-
-\---
-
-
-
-\# 9. Semantic Colors
-
-
-
-\## Success
-
-
+## Accent Dark
 
 ```text
-
-\#39D98A
-
+#3D6FE0
 ```
 
+Use for:
 
+* pressed states
+* deeper emphasis
+* controlled contrast
+
+---
+
+# 10. Semantic Colors
+
+## Success
+
+```text
+#39D98A
+```
 
 Meaning:
 
-
-
-\* connected
-
-\* synchronized
-
-\* ready
-
-\* successful
-
-\* healthy
-
-
+* connected
+* synchronized
+* ready
+* healthy
+* successful
 
 Success must never be represented by color alone.
 
-
-
 Example:
 
-
-
 ```text
-
 ● Synchronized
-
 ```
 
+---
 
-
-not:
-
-
+## Warning
 
 ```text
-
-●
-
+#FFB84D
 ```
-
-
-
-\---
-
-
-
-\## Warning
-
-
-
-```text
-
-\#FFB84D
-
-```
-
-
 
 Meaning:
 
+* calibrating
+* degraded
+* uncertain
+* recovering
+* attention required
 
+---
 
-\* calibrating
-
-\* degraded
-
-\* uncertain
-
-\* recovering
-
-\* attention required
-
-
-
-\---
-
-
-
-\## Error
-
-
+## Error
 
 ```text
-
-\#FF5C6C
-
+#FF5C6C
 ```
-
-
 
 Meaning:
 
+* disconnected
+* failed
+* unavailable
+* unrecoverable operation
 
+---
 
-\* disconnected
-
-\* failed
-
-\* unavailable
-
-\* unrecoverable operation
-
-
-
-\---
-
-
-
-\## Informational
-
-
+## Informational
 
 Use SoundMesh Blue.
 
+Do not introduce unnecessary semantic colors.
 
+---
 
-Do not introduce unnecessary additional semantic colors.
+# 11. Color Science and Contrast
 
-
-
-\---
-
-
-
-\# 10. Color Science Requirements
-
-
-
-Color selection must be based on perceptual hierarchy rather than arbitrary hex values.
-
-
-
-The application uses a dark UI, therefore luminance separation between surfaces is particularly important.
-
-
-
-Surfaces should generally differ through relatively small luminance steps.
-
-
-
-The hierarchy should be:
-
-
+The UI hierarchy should generally be:
 
 ```text
-
 Background
-
-&#x20;  ↓
-
+    ↓
 Secondary Background
-
-&#x20;  ↓
-
+    ↓
 Surface
-
-&#x20;  ↓
-
+    ↓
 Elevated Surface
-
 ```
 
+Hierarchy should preferably be communicated through:
 
+1. luminance
+2. spacing
+3. typography
+4. shape
+5. subtle borders
+6. shadow/elevation
 
-The UI must not rely on borders everywhere to communicate hierarchy.
+The UI must not depend on borders everywhere.
 
-
-
-Where possible, hierarchy should be communicated through:
-
-
-
-1\. luminance
-
-2\. spacing
-
-3\. typography
-
-4\. shape
-
-5\. subtle borders
-
-6\. shadow/elevation
-
-
-
-in that order.
-
-
-
-\---
-
-
-
-\# 11. Contrast
-
-
-
-All user-facing text and important controls must meet appropriate accessibility contrast requirements.
-
-
-
-Do not assume that a color is accessible simply because it visually appears bright enough.
-
-
-
-Contrast must be evaluated using the actual foreground/background pairing.
-
-
+All user-facing text and important controls must meet applicable accessibility contrast requirements.
 
 Important pairings include:
 
+* primary text/background
+* secondary text/background
+* text/surface
+* accent/dark surface
+* button text/accent
+* status text/status surface
+* focused controls
 
+If a treatment fails contrast requirements, adjust luminance before adding decorative effects.
 
-\* primary text on background
+---
 
-\* secondary text on background
-
-\* primary text on surfaces
-
-\* accent text on dark surfaces
-
-\* button text on accent backgrounds
-
-\* status text on status surfaces
-
-\* disabled-state text
-
-\* focused controls
-
-
-
-Normal text should target WCAG AA contrast at minimum.
-
-
-
-Large text and UI components must also be checked according to applicable WCAG criteria.
-
-
-
-If a proposed visual treatment fails contrast requirements, adjust luminance before adding visual effects.
-
-
-
-\---
-
-
-
-\# 12. Accent Usage Ratio
-
-
+# 12. Accent Usage Ratio
 
 The primary blue should function as a visual signal.
 
+A screen should remain primarily:
 
+* dark neutral
+* off-white
+* subtle surface colors
 
-It should not become the background of every component.
-
-
-
-A screen should generally remain visually dominated by:
-
-
-
-\* dark neutrals
-
-\* white/off-white text
-
-\* subtle surfaces
-
-
-
-with blue used to direct attention.
-
-
-
-Preferred visual hierarchy:
-
-
-
-```text
-
-████████████████████
-
-Dark neutral foundation
-
-
-
-&#x20;     WHITE
-
-&#x20;     Primary content
-
-
-
-&#x20;         BLUE
-
-&#x20;     Main action
-
-```
-
-
+with blue directing attention.
 
 Avoid:
 
-
-
 ```text
-
-████████████████████
-
 BLUE EVERYTHING
-
 ```
 
+---
 
-
-\---
-
-
-
-\# 13. No Decorative Color Noise
-
-
+# 13. No Decorative Color Noise
 
 Do not introduce:
 
+* random purple
+* cyan gradients
+* pink highlights
+* rainbow effects
+* neon green
+* decorative red
+* arbitrary gradients
 
+unless explicitly documented later.
 
-\* random purple
+Semantic colors communicate state rather than decoration.
 
-\* cyan gradients
+---
 
-\* pink highlights
+# 14. Gradients
 
-\* rainbow effects
-
-\* neon green
-
-\* decorative red
-
-\* arbitrary gradients
-
-
-
-unless a future documented design decision explicitly introduces them.
-
-
-
-Semantic colors should communicate state, not decorate the interface.
-
-
-
-\---
-
-
-
-\# 14. Gradients
-
-
-
-Gradients are OPTIONAL and should be rare.
-
-
+Gradients are optional and rare.
 
 The MVP should primarily use flat colors.
 
+Any future gradient must:
 
+* preserve readability
+* preserve contrast
+* support hierarchy
+* remain subtle
+* not become the primary visual identity
 
-If gradients are introduced later, they must:
+The mesh may use extremely subtle luminance transitions where useful.
 
+---
 
-
-\* support hierarchy
-
-\* preserve readability
-
-\* not reduce contrast
-
-\* not overpower content
-
-\* not become the primary visual identity
-
-
-
-The mesh visualization may use extremely subtle luminance transitions if necessary.
-
-
-
-\---
-
-
-
-\# 15. Typography Philosophy
-
-
+# 15. Typography Philosophy
 
 Typography is a major part of SoundMesh's premium appearance.
 
-
-
-The application should not rely on oversized text everywhere.
-
-
-
 Premium typography comes from:
 
+* appropriate font selection
+* restrained weights
+* optical hierarchy
+* line height
+* whitespace
+* consistent scale
 
+The interface should feel engineered rather than decorative.
 
-\* excellent font selection
+---
 
-\* appropriate weight
+# 16. Font Strategy
 
-\* optical hierarchy
+Use platform-native system fonts.
 
-\* restrained tracking
-
-\* line height
-
-\* consistent scale
-
-\* whitespace
-
-
-
-Typography should feel engineered rather than decorative.
-
-
-
-\---
-
-
-
-\# 16. Font Strategy
-
-
-
-Use the platform-native system font by default.
-
-
-
-\## iOS
-
-
+## Android
 
 Preferred:
 
-
-
-\*\*SF Pro / system UI font\*\*
-
-
-
-\## Android
-
-
-
-Preferred:
-
-
-
-\*\*Roboto / system UI font\*\*
-
-
-
-If a custom cross-platform font is introduced, it must provide:
-
-
-
-\* excellent Latin character quality
-
-\* broad Unicode support
-
-\* multiple weights
-
-\* strong readability at small sizes
-
-\* consistent numerals
-
-\* good rendering on both platforms
-
-
+**Roboto / Android system UI font**
 
 The MVP should not add a custom font merely for branding.
 
+A correctly rendered platform font is preferable to a poor custom font.
 
+---
 
-A platform-native font rendered correctly is preferable to a poor custom font.
+# 17. Typography Scale
 
-
-
-\---
-
-
-
-\# 17. Typography Scale
-
-
-
-The following logical scale should be used.
-
-
-
-\## Display
-
-
+## Display
 
 ```text
-
 32 px
-
 Weight: 700
-
 Line height: 38–40 px
-
 ```
-
-
 
 Use sparingly.
 
+---
 
-
-Examples:
-
-
-
-\* major empty-state headline
-
-\* important onboarding statement
-
-
-
-\---
-
-
-
-\## Large Title
-
-
+## Large Title
 
 ```text
-
 28 px
-
 Weight: 700
-
 Line height: 34 px
-
 ```
-
-
 
 Use for:
 
+* screen titles
+* major session states
 
+---
 
-\* screen titles
-
-\* major room states
-
-
-
-\---
-
-
-
-\## Title
-
-
+## Title
 
 ```text
-
 22 px
-
-Weight: 650–700
-
+Weight: 600–700
 Line height: 28 px
-
 ```
-
-
 
 Use for:
 
+* major sections
+* dialogs
+* important room information
 
+---
 
-\* major sections
-
-\* playback title
-
-\* dialogs
-
-
-
-\---
-
-
-
-\## Heading
-
-
+## Heading
 
 ```text
-
 18 px
-
 Weight: 600
-
 Line height: 24 px
-
 ```
-
-
 
 Use for:
 
+* card headings
+* device names
+* grouped sections
 
+---
 
-\* card headings
-
-\* device names
-
-\* grouped sections
-
-
-
-\---
-
-
-
-\## Body
-
-
+## Body
 
 ```text
-
 16 px
-
 Weight: 400
-
 Line height: 22–24 px
-
 ```
-
-
 
 Primary body text.
 
+---
 
-
-\---
-
-
-
-\## Body Emphasis
-
-
+## Body Emphasis
 
 ```text
-
 16 px
-
 Weight: 500–600
-
 ```
-
-
 
 Use for:
 
+* important labels
+* selected values
+* device states
 
+---
 
-\* important labels
-
-\* selected values
-
-\* device status
-
-
-
-\---
-
-
-
-\## Caption
-
-
+## Caption
 
 ```text
-
 14 px
-
 Weight: 400–500
-
 Line height: 18–20 px
-
 ```
-
-
 
 Use for:
 
+* supporting information
+* metadata
+* explanations
 
+---
 
-\* supporting information
-
-\* metadata
-
-\* descriptions
-
-
-
-\---
-
-
-
-\## Small Metadata
-
-
+## Small Metadata
 
 ```text
-
 12 px
-
 Weight: 500
-
 Line height: 16 px
-
 ```
-
-
 
 Use sparingly.
 
-
-
 Never use this size for critical instructions.
 
+---
 
+# 18. Typography Weight Rules
 
-\---
-
-
-
-\# 18. Typography Weight Rules
-
-
-
-Preferred weights:
-
-
+Preferred:
 
 ```text
-
 400 — regular
-
 500 — medium
-
 600 — semibold
-
 700 — bold
-
 ```
 
-
-
-Avoid excessive use of 700.
-
-
-
-A premium interface should not make every element bold.
-
-
+Avoid making everything bold.
 
 Hierarchy should come from a combination of:
 
+* size
+* weight
+* luminance
+* spacing
 
+---
 
-\* size
+# 19. Letter Spacing
 
-\* weight
+Avoid manually increasing tracking for normal text.
 
-\* luminance
+Large titles may use slightly negative tracking where appropriate.
 
-\* spacing
-
-
-
-\---
-
-
-
-\# 19. Letter Spacing
-
-
-
-Avoid manually increasing letter spacing for normal text.
-
-
-
-Large titles may use slightly negative tracking if the platform font renders well.
-
-
-
-Small uppercase labels may use modest positive tracking.
-
-
+Small uppercase diagnostic labels may use modest positive tracking.
 
 Never use extreme tracking as a substitute for hierarchy.
 
+---
 
+# 20. Numerals
 
-\---
+SoundMesh diagnostics may display:
 
+* milliseconds
+* percentages
+* device counts
+* buffer levels
+* packet loss
+* data rates
+* drift measurements
 
-
-\# 20. Numerals
-
-
-
-Numbers matter heavily in SoundMesh because diagnostics may display:
-
-
-
-\* milliseconds
-
-\* percentages
-
-\* device counts
-
-\* playback time
-
-\* network latency
-
-
-
-Use fonts/platform settings that provide clear numerals.
-
-
-
-Diagnostic numerical displays should preferably use tabular/monospaced numerals if available so values do not visually shift when changing.
-
-
+Diagnostic values should preferably use tabular or monospaced numerals where available.
 
 Example:
 
-
-
 ```text
-
-&#x20; 7.2 ms
-
-&#x20;18.4 ms
-
+  7.2 ms
+ 18.4 ms
 102.1 ms
-
 ```
-
-
 
 should remain visually aligned.
 
+---
 
-
-\---
-
-
-
-\# 21. Spacing System
-
-
+# 21. Spacing System
 
 Use an 8-point base spacing system.
 
-
-
-Primary spacing values:
-
-
+Primary values:
 
 ```text
-
 4
-
 8
-
 12
-
 16
-
 20
-
 24
-
 32
-
 40
-
 48
-
 64
-
 ```
 
+Do not invent arbitrary values unless required for platform-native rendering or optical correction.
 
+---
 
-Use 4 px increments only for small optical adjustments.
-
-
-
-Do not invent arbitrary values such as:
-
-
-
-```text
-
-17 px
-
-23 px
-
-31 px
-
-```
-
-
-
-unless required for platform-native rendering or optical correction.
-
-
-
-\---
-
-
-
-\# 22. Screen Margins
-
-
+# 22. Screen Margins
 
 Default mobile horizontal content margin:
 
-
-
 ```text
-
 16–20 px
-
 ```
 
-
-
-Preferred default:
-
-
+Preferred:
 
 ```text
-
 20 px
-
 ```
 
+Larger displays should increase usable content width rather than creating excessive margins.
 
+---
 
-Large-screen layouts may increase the maximum content width rather than continuously increasing margins.
+# 23. Touch Targets
 
-
-
-\---
-
-
-
-\# 23. Touch Targets
-
-
-
-Interactive controls should provide sufficiently large touch targets.
-
-
-
-Target:
-
-
+Important interactive controls should target:
 
 ```text
-
 ≥ 44 × 44 px
-
 ```
-
-
-
-for important interactive controls.
-
-
 
 Small icons may visually occupy less space, but their interactive hit area should remain sufficiently large.
 
+---
 
+# 24. Corner Radius
 
-\---
-
-
-
-\# 24. Corner Radius
-
-
-
-Use restrained rounded corners.
-
-
-
-Recommended scale:
-
-
+Recommended:
 
 ```text
-
-8 px   — small controls
-
-12 px  — inputs/cards
-
-16 px  — major cards
-
-20 px  — prominent sheets
-
-24 px  — special hero surfaces
-
+8 px  — small controls
+12 px — inputs/cards
+16 px — major cards
+20 px — prominent sheets
+24 px — special hero surfaces
 ```
 
+Do not use pill shapes for everything.
 
+Pills may be used for:
 
-Do not use extreme pill shapes for every component.
+* compact status indicators
+* tags
+* specific controls
 
+---
 
-
-Pills should be reserved for:
-
-
-
-\* compact status indicators
-
-\* tags
-
-\* segmented controls
-
-\* specific action buttons
-
-
-
-\---
-
-
-
-\# 25. Borders
-
-
+# 25. Borders
 
 Borders should be subtle.
 
+Use them for:
 
-
-Preferred border color is a low-contrast neutral derived from the surface/background relationship.
-
-
-
-Borders are for:
-
-
-
-\* defining ambiguous boundaries
-
-\* inputs
-
-\* selected cards
-
-\* separators where needed
-
-
+* ambiguous boundaries
+* inputs
+* selected cards
+* necessary separators
 
 Do not outline every card.
 
+---
 
+# 26. Elevation
 
-\---
+SoundMesh uses subtle depth.
 
-
-
-\# 26. Elevation
-
-
-
-SoundMesh should use subtle depth.
-
-
-
-Avoid traditional heavy shadows.
-
-
-
-Preferred depth model:
-
-
+Preferred model:
 
 ```text
-
 Background
-
-↓
-
+    ↓
 Surface
-
-↓
-
+    ↓
 Elevated Surface
-
 ```
 
+Luminance separation is preferred over heavy shadows.
 
+---
 
-Use luminance and subtle shadows together where appropriate.
+# 27. Iconography
 
-
-
-The application should still look coherent if shadows are removed.
-
-
-
-\---
-
-
-
-\# 27. Iconography
-
-
-
-Use a single coherent icon family.
-
-
+Use a coherent icon family.
 
 Icons should be:
 
+* simple
+* geometric
+* recognizable
+* consistent
+* platform appropriate
 
+Do not mix unrelated icon families.
 
-\* simple
+Production UI should primarily use vector/system icons.
 
-\* geometric
+---
 
-\* consistent in stroke weight
-
-\* recognizable
-
-\* platform appropriate
-
-
-
-Do not mix:
-
-
-
-\* outlined icons
-
-\* filled icons
-
-\* 3D icons
-
-\* emoji
-
-\* unrelated icon families
-
-
-
-for the same visual hierarchy.
-
-
-
-Emoji may be used only where explicitly intentional.
-
-
-
-The production UI should primarily use vector/system icons.
-
-
-
-\---
-
-
-
-\# 28. Navigation Philosophy
-
-
+# 28. Navigation Philosophy
 
 SoundMesh is task-oriented.
 
-
-
-The MVP should not use a large five-tab navigation system simply because many mobile applications do.
-
-
+The MVP does not require permanent multi-tab navigation.
 
 Primary flow:
 
-
-
 ```text
-
 Home
-
 ├── Create Room
-
 │   └── Room
-
 │
-
 └── Join Room
-
-&#x20;   └── Room
-
+    └── Scan QR
+        └── Room
 ```
-
-
 
 Within a room:
 
-
-
 ```text
-
 Room
-
-├── Playback
-
+├── Session
 ├── Devices
-
+├── Sync Status
 ├── Diagnostics
-
 └── Room Settings
-
 ```
 
+The external media application is intentionally outside the SoundMesh navigation hierarchy.
 
+---
 
-Navigation should preserve context.
-
-
-
-\---
-
-
-
-\# 29. Home Screen
-
-
+# 29. Home Screen
 
 The home screen should immediately communicate the product.
 
-
-
-Preferred structure:
-
-
+Preferred:
 
 ```text
-
 SoundMesh
 
-
-
 Make your phones
-
 one speaker.
 
+[ Create Room ]
 
-
-\[ Create Room ]
-
-
-
-&#x20;     Join Room
-
-
-
-Recent Rooms
-
+    Join Room
 ```
 
+Optional supporting text:
 
+```text
+Connect nearby phones
+and hear audio together.
+```
 
-The user should understand the app within seconds.
+The user should understand the product within seconds.
 
+---
 
+# 30. Home Screen Primary Action
 
-\---
+**Create Room** is the primary action.
 
+It receives:
 
+* strongest contrast
+* largest action surface
+* primary blue treatment
 
-\# 30. Home Screen Primary Action
+---
 
+# 31. Home Screen Secondary Action
 
+**Join Room** is secondary.
 
-\*\*Create Room\*\* is the primary action.
+It should remain obvious but less dominant.
 
+Possible treatments:
 
+* text button
+* outlined button
+* secondary surface
 
-It should receive:
+Create and Join should not appear visually identical.
 
+---
 
-
-\* strongest contrast
-
-\* largest action surface
-
-\* primary blue treatment
-
-
-
-\---
-
-
-
-\# 31. Home Screen Secondary Action
-
-
-
-\*\*Join Room\*\* is secondary.
-
-
-
-It should remain visually obvious but less dominant.
-
-
-
-Preferred treatment:
-
-
-
-\* text button
-
-\* outlined button
-
-\* secondary surface
-
-
-
-Do not make Create Room and Join Room visually identical.
-
-
-
-\---
-
-
-
-\# 32. Create Room Flow
-
-
+# 32. Create Room Flow
 
 Flow:
 
-
-
 ```text
-
 Home
-
-&#x20;↓
-
+ ↓
 Create Room
-
-&#x20;↓
-
-Room creation
-
-&#x20;↓
-
+ ↓
+Room created
+ ↓
 Room screen
-
 ```
 
+Avoid unnecessary configuration before room creation.
 
+Room creation should feel immediate.
 
-The room should be created quickly.
+---
 
+# 33. Room Naming
 
+Room naming is optional.
 
-Avoid unnecessary configuration before creation.
-
-
-
-\---
-
-
-
-\# 33. Room Naming
-
-
-
-Optional room naming can exist.
-
-
-
-Default names may be generated.
-
-
-
-Example:
-
-
+Possible default:
 
 ```text
-
 Faraz's Room
-
 ```
-
-
 
 or:
 
-
-
 ```text
-
 SoundMesh Room
-
 ```
 
+The user should not be forced to name a room.
 
+---
 
-The user should not be forced to name the room before starting.
-
-
-
-\---
-
-
-
-\# 34. QR Joining
-
-
+# 34. QR Joining
 
 QR joining is the preferred MVP onboarding mechanism.
 
+The host displays temporary room-join information.
 
+The participant scans it.
 
-The host can display:
+Users should not need to understand:
 
+* IP addresses
+* ports
+* network protocols
+* authentication tokens
 
+---
 
-```text
+# 35. QR Screen
 
-Show QR Code
-
-```
-
-
-
-A participant scans it.
-
-
-
-The participant should not need to manually understand:
-
-
-
-\* IP addresses
-
-\* ports
-
-\* network protocols
-
-\* tokens
-
-\* host addresses
-
-
-
-\---
-
-
-
-\# 35. QR Screen
-
-
-
-The QR screen should include:
-
-
+Preferred:
 
 ```text
-
 Join this room
 
-
-
-\[ QR CODE ]
-
-
-
-Room name
+      [ QR CODE ]
 
 Faraz's Room
 
-
-
-Waiting for devices...
-
+Waiting for devices…
 ```
 
+The QR code must have:
 
+* sufficient contrast
+* sufficient quiet space
+* reliable sizing
 
-The QR itself should have sufficient contrast and quiet space.
+Do not decorate it in a way that compromises scanning.
 
+---
 
-
-Do not decorate the QR code in a way that compromises scanning reliability.
-
-
-
-\---
-
-
-
-\# 36. Join Screen
-
-
+# 36. Join Screen
 
 Preferred:
 
-
-
 ```text
-
 Join a Room
 
-
-
-\[ Scan QR Code ]
-
-
+[ Scan QR Code ]
 
 ──────── OR ────────
 
-
-
 Enter Room Code
 
+[ __________ ]
 
-
-\[ \_\_\_\_\_\_\_\_\_ ]
-
-
-
-\[ Join ]
-
+[ Join ]
 ```
-
-
 
 QR scanning is primary.
 
-
-
 Manual joining is a fallback.
 
+---
 
+# 37. Camera Permission
 
-\---
+Request camera access only when the user chooses:
 
+**Scan QR Code**
 
+Do not request camera permission during initial launch.
 
-\# 37. Camera Permission
-
-
-
-Permission requests must be contextual.
-
-
-
-Do not request camera access immediately on app launch.
-
-
-
-Request it when the user explicitly chooses:
-
-
-
-\*\*Scan QR Code\*\*
-
-
-
-The permission explanation should clearly communicate why the camera is needed.
-
-
-
-\---
-
-
-
-\# 38. Room Screen
-
-
-
-The room screen is the central SoundMesh experience.
-
-
-
-It must communicate:
-
-
-
-1\. room identity
-
-2\. connected device count
-
-3\. current audio
-
-4\. synchronization state
-
-5\. primary playback action
-
-6\. device health
-
-
-
-For the host fallback path, the room screen may show the current host IP:port with a copy action so the host can share it manually.
-QR joining remains preferred, and the address is connection information rather than device identity.
-
-
-\---
-
-
-
-\# 39. Room Visualization
-
-
-
-The room visualization should show connected devices as nodes.
-
-
-
-Example:
-
-
-
-```text
-
-&#x20;          ●
-
-&#x20;       ╱     ╲
-
-&#x20;     ●         ●
-
-&#x20;       ╲     ╱
-
-&#x20;          ●
-
-```
-
-
-
-Each node may contain a minimal device representation.
-
-
-
-Do not turn the visualization into a complicated graph.
-
-
-
-\---
-
-
-
-\# 40. Mesh Animation
-
-
-
-When devices connect:
-
-
-
-\* node appears
-
-\* connection line forms
-
-\* status changes
-
-
-
-When synchronization occurs:
-
-
-
-\* subtle coordinated pulse
-
-\* connection lines may briefly animate
-
-
-
-When playing:
-
-
-
-\* subtle low-frequency visual activity
-
-
-
-Animation must never distract from playback controls.
-
-
-
-\---
-
-
-
-\# 41. Device Count
-
-
-
-Use plain language.
-
-
-
-Preferred:
-
-
-
-> \*\*5 devices connected\*\*
-
-
-
-Not:
-
-
-
-> `NODES: 5`
-
-
-
-unless inside diagnostics.
-
-
-
-\---
-
-
-
-\# 42. Device Status
-
-
-
-Preferred states:
-
-
-
-```text
-
-Connecting…
-
-Calibrating…
-
-Ready
-
-Synchronized
-
-Degraded
-
-Disconnected
-
-Recovering…
-
-```
-
-
-
-Do not expose raw internal state-machine names to normal users.
-
-
-
-\---
-
-
-
-\# 43. Device List
-
-
-
-Example:
-
-
-
-```text
-
-Devices
-
-
-
-● Faraz's Phone
-
-&#x20; Synchronized
-
-
-
-● Mahin's Phone
-
-&#x20; Synchronized
-
-
-
-● Galaxy A52
-
-&#x20; Calibrating…
-
-
-
-● Pixel
-
-&#x20; Connection lost
-
-```
-
-
-
-Each device should be individually identifiable.
-
-
-
-\---
-
-
-
-\# 44. Device Status Semantics
-
-
-
-\### Synchronized
-
-
-
-The device is within the application's acceptable synchronization threshold.
-
-
-
-\### Calibrating
-
-
-
-The system is actively measuring or preparing timing.
-
-
-
-\### Degraded
-
-
-
-The device is connected but synchronization confidence or quality has fallen.
-
-
-
-\### Disconnected
-
-
-
-The active connection is unavailable.
-
-
-
-\### Recovering
-
-
-
-The application is attempting to restore synchronization.
-
-
-
-\---
-
-
-
-\# 45. Audio Selection
-
-
-
-The audio picker should be deliberately simple.
-
-
-
-Preferred:
-
-
-
-```text
-
-Choose Audio
-
-
-
-\[ + Add Audio ]
-
-
-
-Recently Used
-
-
-
-song.mp3
-
-recording.m4a
-
-track.wav
-
-```
-
-
-
-Do not attempt to recreate Spotify.
-
-
-
-SoundMesh is a synchronized playback system, not a music-streaming service.
-
-
-
-\---
-
-
-
-\# 46. Audio Transfer UX
-
-
-
-When an audio file is being distributed:
-
-
-
-```text
-
-Preparing audio…
-
-
-
-Sending to 4 devices
-
-
-
-████████████░░░
-
-
-
-3 of 5 ready
-
-```
-
-
-
-The UI should communicate progress without exposing implementation details.
-
-
-
-Avoid:
-
-
-
-> TCP transfer chunk 184/512
-
-
-
-\---
-
-
-
-\# 47. Audio Preparation
-
-
-
-The user-facing state should be:
-
-
-
-> \*\*Preparing everyone…\*\*
-
-
-
-rather than:
-
-
-
-> Decoding PCM buffers.
-
-
-
-\---
-
-
-
-\# 48. Synchronization UX
-
-
-
-Synchronization should be visible but understandable.
-
-
-
-Preferred:
-
-
-
-```text
-
-Getting everyone in sync…
-
-
-
-● ● ● ● ●
-
-
-
-Calibrating 5 devices
-
-```
-
-
-
-Then:
-
-
-
-```text
-
-✓ Everyone is ready
-
-```
-
-
-
-The user should feel that SoundMesh is actively making the system reliable.
-
-
-
-\---
-
-
-
-\# 49. Synchronization Confidence
-
-
-
-Normal users should see:
-
-
-
-```text
-
-● Synchronized
-
-```
-
-
-
-Advanced diagnostics may show:
-
-
-
-```text
-
-Sync offset: +7.2 ms
-
-RTT: 18.4 ms
-
-Confidence: High
-
-```
-
-
-
-Technical information must not clutter the primary experience.
-
-
-
-\---
-
-
-
-\# 50. Preparation Barrier
-
-
-
-Playback should not begin until required participants have reached the appropriate readiness state.
-
-
-
-The interface should make this explicit:
-
-
-
-```text
-
-3 of 5 devices ready
-
-```
-
-
-
-If the room requires all devices:
-
-
-
-```text
-
-Waiting for 2 devices…
-
-```
-
-
-
-If SoundMesh supports degraded playback later, the user must be informed before proceeding.
-
-
-
-\---
-
-
-
-\# 51. Primary Play Action
-
-
-
-The play action should be visually dominant once the room is ready.
-
-
-
-Preferred:
-
-
-
-```text
-
-&#x20;       ▶
-
-```
-
-
-
-or a large labeled action:
-
-
-
-```text
-
-\[ Play Together ]
-
-```
-
-
-
-The first implementation should favor clarity over cleverness.
-
-
-
-\---
-
-
-
-\# 52. Playback Screen
-
-
-
-Preferred structure:
-
-
-
-```text
-
-Now Playing
-
-
-
-&#x20;       Artwork / Audio Icon
-
-
-
-Track Name
-
-Artist / Source
-
-
-
-━━━━━━━━━━━━━━━
-
-1:32             3:47
-
-
-
-● 5 devices synchronized
-
-
-
-&#x20;       ⏮   ▶   ⏭
-
-```
-
-
-
-Controls should remain minimal.
-
-
-
-\---
-
-
-
-\# 53. Playback Progress
-
-
-
-Progress must be:
-
-
-
-\* visually clear
-
-\* easy to interact with
-
-\* sufficiently large
-
-\* accessible
-
-
-
-The displayed time should update smoothly.
-
-
-
-Do not update visible text at unnecessarily high frequencies.
-
-
-
-\---
-
-
-
-\# 54. Playback Controls
-
-
-
-MVP controls:
-
-
-
-\* play
-
-\* pause
-
-\* seek
-
-\* stop/end room
-
-\* volume
-
-
-
-Potential later controls:
-
-
-
-\* previous
-
-\* next
-
-\* queue
-
-
-
-Do not implement features simply because standard music apps contain them.
-
-
-
-\---
-
-
-
-\# 55. Volume
-
-
-
-Master volume should be the primary volume control.
-
-
-
-Per-device volume is an advanced capability.
-
-
-
-The normal experience should not force users to manage five separate volume sliders.
-
-
-
-\---
-
-
-
-\# 56. Device Volume
-
-
-
-If implemented:
-
-
-
-```text
-
-Device Volumes
-
-
-
-Faraz        ━━━━━━━●
-
-Mahin        ━━━━━━●━
-
-Phone 3      ━━━━━━━●
-
-Phone 4      ━━━━━●━━
-
-```
-
-
-
-It should live behind a secondary control.
-
-
-
-\---
-
-
-
-\# 57. Pause
-
-
-
-When the host pauses:
-
-
-
-1\. playback pauses according to the synchronization system
-
-2\. room state becomes paused
-
-3\. UI reflects paused state
-
-4\. participants remain connected
-
-
-
-The UI should not imply that the devices independently paused at unrelated times.
-
-
-
-\---
-
-
-
-\# 58. Resume
-
-
-
-Resume should use scheduled synchronization rather than an immediate “play now” action.
-
-
-
-User experience:
-
-
-
-> \*\*Resuming…\*\*
-
-
-
-followed by:
-
-
-
-> \*\*Playing\*\*
-
-
-
-if preparation is required.
-
-
-
-\---
-
-
-
-\# 59. Seek
-
-
-
-Seeking is a coordinated operation.
-
-
-
-The UI should:
-
-
-
-1\. temporarily indicate seeking
-
-2\. coordinate the new playback position
-
-3\. resynchronize if necessary
-
-4\. resume coordinated playback
-
-
-
-Avoid showing an apparent normal playback state while devices are actually resynchronizing.
-
-
-
-\---
-
-
-
-\# 60. Stop / End Room
-
-
-
-Stopping playback and ending the room are different actions.
-
-
-
-Preferred:
-
-
-
-```text
-
-Stop Playback
-
-```
-
-
-
-does not necessarily destroy the room.
-
-
-
-```text
-
-End Room
-
-```
-
-
-
-closes the active session.
-
-
-
-\---
-
-
-
-\# 61. Connection Loss
-
-
-
-If a participant disconnects:
-
-
-
-Normal UI:
-
-
-
-```text
-
-1 device disconnected
-
-
-
-Playback continues.
-
-```
-
-
-
-if the system can safely continue.
-
-
-
-Otherwise:
-
-
-
-```text
-
-A device lost connection.
-
-
-
-Reconnecting…
-
-```
-
-
-
-Do not immediately expose technical errors.
-
-
-
-\---
-
-
-
-\# 62. Host Failure
-
-
-
-MVP behavior may be controlled recovery rather than seamless host migration.
-
-
-
-If host failure occurs:
-
-
-
-```text
-
-Room connection lost.
-
-
-
-The host device is unavailable.
-
-
-
-\[ Return Home ]
-
-```
-
-
-
-If future host migration exists, this document must be updated.
-
-
-
-\---
-
-
-
-\# 63. Error Philosophy
-
-
-
-Errors must answer:
-
-
-
-1\. What happened?
-
-2\. Does it matter?
-
-3\. What can the user do?
-
-
-
-Example:
-
-
-
-> \*\*Couldn't connect to this device.\*\*
-
-> Make sure both phones are on the same network.
-
-
-
-```text
-
-\[ Try Again ]
-
-```
-
-
-
-Avoid:
-
-
-
-> `NETWORK\_HANDSHAKE\_TIMEOUT\_1042`
-
-
-
-in the normal UI.
-
-
-
-\---
-
-
-
-\# 64. Technical Error Details
-
-
-
-Advanced users may access diagnostics.
-
-
-
-Example:
-
-
-
-```text
-
-Connection failed
-
-
-
-Code:
-
-NET\_HANDSHAKE\_TIMEOUT
-
-
-
-Retry count:
-
-3
-
-
-
-RTT:
-
-—
-
-
-
-Transport:
-
-TCP
-
-```
-
-
-
-This is useful for development and debugging without polluting normal UX.
-
-
-
-\---
-
-
-
-\# 65. Diagnostics
-
-
-
-Diagnostics should be accessible but not central.
-
-
-
-Potential diagnostic information:
-
-
-
-\* device ID
-
-\* connection state
-
-\* RTT
-
-\* clock offset
-
-\* estimated sync error
-
-\* calibration confidence
-
-\* packet/connection statistics
-
-\* audio buffer status
-
-\* playback position
-
-\* drift rate
-
-\* recovery events
-
-
-
-\---
-
-
-
-\# 66. Diagnostic Visual Hierarchy
-
-
-
-Diagnostics should prioritize:
-
-
-
-```text
-
-Health
-
-&#x20;↓
-
-Synchronization
-
-&#x20;↓
-
-Networking
-
-&#x20;↓
-
-Audio
-
-&#x20;↓
-
-Raw technical data
-
-```
-
-
-
-The user should not need to interpret raw logs.
-
-
-
-\---
-
-
-
-\# 67. Status Indicators
-
-
-
-Status indicators must use:
-
-
-
-\* icon/shape
-
-\* text
-
-\* color
-
-
-
-not color alone.
-
-
-
-Example:
-
-
-
-```text
-
-● Synchronized
-
-```
-
-
-
-rather than:
-
-
-
-```text
-
-●
-
-```
-
-
-
-\---
-
-
-
-\# 68. Accessibility
-
-
-
-Accessibility is REQUIRED.
-
-
-
-The application must consider:
-
-
-
-\* contrast
-
-\* dynamic text sizing
-
-\* screen readers
-
-\* touch targets
-
-\* reduced motion
-
-\* non-color status communication
-
-\* accessible labels
-
-\* focus behavior
-
-\* readable error messages
-
-
-
-\---
-
-
-
-\# 69. Dynamic Text
-
-
-
-Layouts must tolerate increased system font sizes.
-
-
-
-Text must not:
-
-
-
-\* overlap
-
-\* disappear
-
-\* clip important information
-
-\* become unreadable
-
-\* force controls off-screen without a usable alternative
-
-
-
-\---
-
-
-
-\# 70. Screen Reader Semantics
-
-
-
-Important controls require descriptive labels.
-
-
-
-Examples:
-
-
-
-```text
-
-Create Room
-
-Join Room
-
-Scan QR Code
-
-Show Room QR Code
-
-Play
-
-Pause
-
-Seek
-
-Volume
-
-Device status
-
-Open Diagnostics
-
-End Room
-
-```
-
-
-
-A mesh visualization should have an accessible summary.
-
-
-
-Example:
-
-
-
-> “Five devices connected. Four synchronized. One calibrating.”
-
-
-
-\---
-
-
-
-\# 71. Reduced Motion
-
-
-
-When reduced-motion preferences are enabled:
-
-
-
-\* disable unnecessary mesh animation
-
-\* reduce transition movement
-
-\* remove decorative pulsing
-
-\* preserve state communication through static visuals
-
-
-
-Functionality must remain identical.
-
-
-
-\---
-
-
-
-\# 72. Animation Philosophy
-
-
-
-Animations communicate state.
-
-
-
-They do not exist merely because animation is possible.
-
-
-
-Every animation should answer:
-
-
-
-> “What changed?”
-
-
-
-If an animation communicates nothing, remove it.
-
-
-
-\---
-
-
-
-\# 73. Animation Duration
-
-
-
-Suggested ranges:
-
-
-
-```text
-
-Micro interaction: 100–150 ms
-
-Normal transition: 150–250 ms
-
-Major transition: 250–350 ms
-
-```
-
-
-
-Avoid unnecessarily slow UI.
-
-
-
-SoundMesh should feel responsive.
-
-
-
-\---
-
-
-
-\# 74. Easing
-
-
-
-Use platform-appropriate easing curves.
-
-
-
-Avoid:
-
-
-
-\* excessive bounce
-
-\* elastic effects
-
-\* dramatic overshoot
-
-
-
-SoundMesh is not intended to feel like an arcade interface.
-
-
-
-\---
-
-
-
-\# 75. Mesh Animation Timing
-
-
-
-Mesh animations should be:
-
-
-
-\* slow
-
-\* subtle
-
-\* coordinated
-
-\* low amplitude
-
-
-
-The mesh should never visually imply that audio is synchronized more precisely than the actual system can guarantee.
-
-
-
-\---
-
-
-
-\# 76. Loading States
-
-
-
-Never show an empty screen while waiting for asynchronous work.
-
-
-
-Use meaningful states.
-
-
-
-Examples:
-
-
-
-```text
-
-Connecting…
-
-```
-
-
-
-```text
-
-Preparing audio…
-
-```
-
-
-
-```text
-
-Calibrating devices…
-
-```
-
-
-
-```text
-
-Reconnecting…
-
-```
-
-
-
-\---
-
-
-
-\# 77. Skeleton Loading
-
-
-
-Skeleton loading is optional.
-
-
-
-It should only be used where content structure is known.
-
-
-
-For short operations, a simple progress indicator with clear text is preferable.
-
-
-
-\---
-
-
-
-\# 78. Empty States
-
-
-
-Empty states should be useful.
-
-
-
-Example:
-
-
-
-```text
-
-No rooms yet
-
-
-
-Create a room to turn nearby phones
-
-into one synchronized speaker.
-
-
-
-\[ Create Room ]
-
-```
-
-
-
-Avoid empty states containing only:
-
-
-
-> Nothing here.
-
-
-
-\---
-
-
-
-\# 79. Permission UX
-
-
-
-Permissions should be requested only when necessary.
-
-
-
-Examples:
-
-
-
-Camera permission:
-
-
+Explanation:
 
 > SoundMesh uses your camera to scan a room QR code.
 
+---
 
+# 38. Room Screen
 
-Local network permission:
+The room screen is the central SoundMesh experience.
 
+It must communicate:
 
+1. room identity
+2. connected device count
+3. session state
+4. capture readiness
+5. synchronization state
+6. primary session action
+7. device health
 
-> SoundMesh needs access to your local network to connect nearby devices.
+The room screen must not pretend SoundMesh is playing a local media file.
 
+---
 
+# 39. Room Visualization
 
-The application should never request all permissions during initial launch.
-
-
-
-\---
-
-
-
-\# 80. Onboarding
-
-
-
-The MVP should avoid a long onboarding carousel.
-
-
-
-The product's value proposition is simple enough to communicate through the first screen.
-
-
-
-Preferred:
-
-
-
-```text
-
-SoundMesh
-
-
-
-Make your phones
-
-one speaker.
-
-
-
-\[ Create Room ]
-
-
-
-Join Room
-
-```
-
-
-
-Optional first-run explanation:
-
-
-
-> Connect nearby phones and play audio together.
-
-
-
-\---
-
-
-
-\# 81. First Successful Session
-
-
-
-The first successful session is the most important onboarding experience.
-
-
-
-Target flow:
-
-
-
-```text
-
-Open
-
-&#x20;↓
-
-Create Room
-
-&#x20;↓
-
-Friend scans QR
-
-&#x20;↓
-
-Audio selected
-
-&#x20;↓
-
-Preparing
-
-&#x20;↓
-
-Calibrating
-
-&#x20;↓
-
-Everyone ready
-
-&#x20;↓
-
-Play
-
-```
-
-
-
-The application should feel progressively more impressive as the technical system activates.
-
-
-
-\---
-
-
-
-\# 82. Feedback During Technical Operations
-
-
-
-Each technical operation should have visible user-facing feedback.
-
-
-
-Examples:
-
-
-
-```text
-
-Connecting…
-
-```
-
-
-
-```text
-
-Connected
-
-```
-
-
-
-```text
-
-Preparing audio…
-
-```
-
-
-
-```text
-
-Calibrating…
-
-```
-
-
-
-```text
-
-Ready
-
-```
-
-
-
-```text
-
-Playing
-
-```
-
-
-
-```text
-
-Recovering…
-
-```
-
-
-
-\---
-
-
-
-\# 83. State Truthfulness
-
-
-
-The UI must represent actual system state.
-
-
-
-Do not display:
-
-
-
-> Synchronized
-
-
-
-before synchronization has actually succeeded.
-
-
-
-Do not display:
-
-
-
-> Playing
-
-
-
-when the native audio engine has not started.
-
-
-
-Do not display:
-
-
-
-> Connected
-
-
-
-when the connection is only being attempted.
-
-
-
-UI state must derive from authoritative application/native state.
-
-
-
-\---
-
-
-
-\# 84. Optimistic UI
-
-
-
-Optimistic UI should be used cautiously.
-
-
-
-Actions that can affect synchronization must not falsely imply success.
-
-
-
-For example:
-
-
-
-Pressing Play may immediately change the button appearance, but the room status should not claim successful synchronized playback until the playback system confirms the appropriate state.
-
-
-
-\---
-
-
-
-\# 85. Responsive Design
-
-
-
-The UI must adapt to different:
-
-
-
-\* screen sizes
-
-\* aspect ratios
-
-\* safe areas
-
-\* font sizes
-
-\* orientation states
-
-
-
-Do not hardcode layouts around a single phone.
-
-
-
-\---
-
-
-
-\# 86. Safe Areas
-
-
-
-Content must respect:
-
-
-
-\* status bar
-
-\* camera cutouts
-
-\* navigation areas
-
-\* gesture areas
-
-\* rounded display corners
-
-
-
-The application must use platform-safe-area mechanisms.
-
-
-
-\---
-
-
-
-\# 87. Landscape
-
-
-
-Portrait is the primary orientation for the MVP.
-
-
-
-Landscape should be considered for:
-
-
-
-\* playback
-
-\* tablets
-
-\* future expanded layouts
-
-
-
-No core feature should become unusable if the platform permits orientation changes.
-
-
-
-\---
-
-
-
-\# 88. Large Screens
-
-
-
-If the application runs on larger screens:
-
-
-
-\* increase content width
-
-\* preserve comfortable reading width
-
-\* optionally use two-column layouts
-
-\* avoid stretching cards across the entire screen
-
-
-
-The interface should feel intentionally designed rather than like a stretched phone screen.
-
-
-
-\---
-
-
-
-\# 89. UI Component Architecture
-
-
-
-Reusable components should be created for:
-
-
-
-```text
-
-PrimaryButton
-
-SecondaryButton
-
-IconButton
-
-TextButton
-
-Card
-
-StatusBadge
-
-DeviceRow
-
-DeviceStatus
-
-ProgressBar
-
-VolumeControl
-
-PlaybackControls
-
-RoomMesh
-
-Dialog
-
-BottomSheet
-
-Toast/Snackbar
-
-ErrorState
-
-EmptyState
-
-LoadingState
-
-```
-
-
-
-Components should derive visual values from centralized design tokens.
-
-
-
-\---
-
-
-
-\# 90. Design Tokens
-
-
-
-Colors, typography, spacing, radii and dimensions must be centralized.
-
-
-
-Conceptually:
-
-
-
-```text
-
-colors.background.primary
-
-colors.background.secondary
-
-colors.surface.default
-
-colors.surface.elevated
-
-
-
-colors.text.primary
-
-colors.text.secondary
-
-colors.text.muted
-
-
-
-colors.accent.primary
-
-colors.accent.light
-
-colors.accent.dark
-
-
-
-colors.status.success
-
-colors.status.warning
-
-colors.status.error
-
-```
-
-
-
-Do not scatter raw hex values throughout the application.
-
-
-
-\---
-
-
-
-\# 91. Tokenized Typography
-
-
-
-Typography should similarly be centralized:
-
-
-
-```text
-
-typography.display
-
-typography.largeTitle
-
-typography.title
-
-typography.heading
-
-typography.body
-
-typography.bodyEmphasis
-
-typography.caption
-
-typography.metadata
-
-```
-
-
-
-\---
-
-
-
-\# 92. Tokenized Spacing
-
-
-
-Use:
-
-
-
-```text
-
-spacing.xs
-
-spacing.sm
-
-spacing.md
-
-spacing.lg
-
-spacing.xl
-
-spacing.xxl
-
-```
-
-
-
-mapped to the documented spacing scale.
-
-
-
-\---
-
-
-
-\# 93. Platform Conventions
-
-
-
-SoundMesh should respect platform conventions where doing so does not conflict with the product identity.
-
-
-
-Examples:
-
-
-
-\* system permission dialogs
-
-\* navigation gestures
-
-\* accessibility behavior
-
-\* keyboard behavior
-
-\* native pickers
-
-\* native sharing
-
-\* camera permissions
-
-
-
-Do not recreate platform permission dialogs.
-
-
-
-\---
-
-
-
-\# 94. Flutter UI Boundary
-
-
-
-Flutter should own:
-
-
-
-\* visual UI
-
-\* navigation
-
-\* user interaction
-
-\* high-level room state presentation
-
-\* design system
-
-\* accessibility semantics where supported
-
-\* animations that do not require realtime audio timing
-
-
-
-Native code should own timing-critical operations.
-
-
-
-This follows the architecture defined in `architecture.md` and `audio.md`.
-
-
-
-\---
-
-
-
-\# 95. Realtime UI Constraint
-
-
-
-High-frequency synchronization or audio callbacks must not continuously drive Flutter widget rebuilds.
-
-
-
-Instead:
-
-
-
-```text
-
-Native realtime system
-
-&#x20;       ↓
-
-Aggregated state
-
-&#x20;       ↓
-
-Flutter
-
-&#x20;       ↓
-
-UI
-
-```
-
-
-
-The UI should display meaningful updates rather than every internal timing event.
-
-
-
-\---
-
-
-
-\# 96. Playback UI Update Frequency
-
-
-
-Playback progress should feel smooth without unnecessarily rebuilding the entire screen.
-
-
-
-Only the relevant playback components should update.
-
-
-
-Avoid rebuilding:
-
-
-
-\* device lists
-
-\* room visualization
-
-\* navigation
-
-\* static content
-
-
-
-for every playback-position update.
-
-
-
-\---
-
-
-
-\# 97. Mesh Performance
-
-
-
-The mesh visualization must remain lightweight.
-
-
-
-Avoid:
-
-
-
-\* excessive particle systems
-
-\* continuous expensive blur
-
-\* large GPU-heavy effects
-
-\* unnecessary redraws
-
-\* dozens of animated widgets per device
-
-
-
-The visualization should work comfortably on lower-end supported devices.
-
-
-
-\---
-
-
-
-\# 98. Battery Awareness
-
-
-
-Visual animation must not unnecessarily consume battery.
-
-
-
-When:
-
-
-
-\* the screen is inactive
-
-\* the room is stable
-
-\* the application is backgrounded where permitted
-
-
-
-decorative animations should reduce or stop.
-
-
-
-Synchronization and playback requirements take priority over visual effects.
-
-
-
-\---
-
-
-
-\# 99. Audio-First UX
-
-
-
-SoundMesh is fundamentally an audio application.
-
-
-
-Visual effects must never compromise:
-
-
-
-\* playback stability
-
-\* synchronization
-
-\* CPU budget
-
-\* battery
-
-\* responsiveness
-
-
-
-If an animation conflicts with realtime audio performance, the animation loses.
-
-
-
-\---
-
-
-
-\# 100. Error Recovery UX
-
-
-
-Recovery should be progressive.
-
-
-
-Preferred hierarchy:
-
-
-
-```text
-
-Detect
-
-&#x20;↓
-
-Attempt automatic recovery
-
-&#x20;↓
-
-Inform user if needed
-
-&#x20;↓
-
-Retry
-
-&#x20;↓
-
-Request intervention only if necessary
-
-```
-
-
-
-Do not interrupt the user for every transient network problem.
-
-
-
-\---
-
-
-
-\# 101. Notifications / Snackbars
-
-
-
-Use snackbars/toasts for:
-
-
-
-\* non-critical temporary information
-
-\* successful minor actions
-
-\* recoverable warnings
-
-
-
-Do not use them for critical state changes that the user needs to understand.
-
-
-
-Critical errors should be persistent enough to be noticed.
-
-
-
-\---
-
-
-
-\# 102. Dialogs
-
-
-
-Dialogs should be reserved for:
-
-
-
-\* destructive actions
-
-\* permission explanations where applicable
-
-\* important decisions
-
-\* critical errors
-
-
-
-Do not turn every action into a confirmation dialog.
-
-
-
-\---
-
-
-
-\# 103. Destructive Actions
-
-
-
-Ending a room may require confirmation if it would unexpectedly disconnect participants.
-
-
+The room visualization represents connected devices as nodes.
 
 Example:
 
-
-
-> \*\*End this room?\*\*
-
-> Playback will stop for all connected devices.
-
-
-
 ```text
-
-Cancel
-
-End Room
-
+       ●
+     /   \
+   ●       ●
+     \   /
+       ●
 ```
 
+Each node may contain a minimal device representation.
 
+Do not turn this into a complicated technical graph.
 
-\---
+---
 
+# 40. Mesh Animation
 
+When devices connect:
 
-\# 104. Room Lifecycle UX
+* node appears
+* connection line forms
+* status changes
 
+When synchronization occurs:
 
+* subtle coordinated pulse
+* connection lines may briefly animate
 
-Map technical room states into human-readable UI:
+During an active session:
 
+* subtle low-frequency visual activity
 
+Animation must never distract from important session state.
 
-```text
+---
 
-CREATED
+# 41. Device Count
 
-→ Creating room…
-
-
-
-DISCOVERABLE
-
-→ Waiting for devices…
-
-
-
-JOINING
-
-→ Connecting…
-
-
-
-CALIBRATING
-
-→ Getting everyone in sync…
-
-
-
-READY
-
-→ Everyone is ready
-
-
-
-PLAYING
-
-→ Playing
-
-
-
-PAUSED
-
-→ Paused
-
-
-
-RECOVERING
-
-→ Recovering connection…
-
-
-
-ENDING
-
-→ Ending room…
-
-
-
-CLOSED
-
-→ Room ended
-
-```
-
-
-
-Never expose internal enum names in production UI.
-
-
-
-\---
-
-
-
-\# 105. Sync Quality Presentation
-
-
-
-Normal:
-
-
-
-```text
-
-● Synchronized
-
-```
-
-
-
-Degraded:
-
-
-
-```text
-
-● Sync quality reduced
-
-```
-
-
-
-Recovering:
-
-
-
-```text
-
-↻ Resynchronizing…
-
-```
-
-
-
-Failed:
-
-
-
-```text
-
-Couldn't synchronize this device.
-
-```
-
-
-
-\---
-
-
-
-\# 106. No False Precision
-
-
-
-Normal UI should not display:
-
-
-
-```text
-
-Synchronization: 98.371%
-
-```
-
-
-
-unless that metric has a clearly defined meaning.
-
-
-
-SoundMesh should not manufacture precision simply to appear technical.
-
-
-
-Advanced diagnostics may display measured values with appropriate uncertainty.
-
-
-
-\---
-
-
-
-\# 107. Premium Feel Through Restraint
-
-
-
-The premium appearance must come primarily from:
-
-
-
-\* consistent spacing
-
-\* excellent typography
-
-\* controlled color
-
-\* visual hierarchy
-
-\* smooth transitions
-
-\* correct alignment
-
-\* intentional whitespace
-
-\* stable component behavior
-
-
-
-Not from:
-
-
-
-\* gradients everywhere
-
-\* glassmorphism everywhere
-
-\* huge shadows
-
-\* neon effects
-
-\* excessive animation
-
-
-
-\---
-
-
-
-\# 108. Glassmorphism
-
-
-
-Glassmorphism is NOT the default design language.
-
-
-
-Blurred translucent surfaces may be used selectively if platform performance and readability permit them.
-
-
-
-The base design must remain attractive without blur.
-
-
-
-\---
-
-
-
-\# 109. Shadows
-
-
-
-Shadows must be:
-
-
-
-\* subtle
-
-\* soft
-
-\* low opacity
-
-\* used primarily for separation
-
-
-
-Avoid large black shadows on dark backgrounds.
-
-
-
-Luminance separation is usually preferable.
-
-
-
-\---
-
-
-
-\# 110. Background Treatment
-
-
-
-The primary background should remain mostly flat.
-
-
-
-Optional extremely subtle tonal variation may be used around major areas.
-
-
-
-Do not create animated backgrounds.
-
-
-
-\---
-
-
-
-\# 111. Brand Mark
-
-
-
-The SoundMesh logo should be based conceptually on connected nodes/audio coordination.
-
-
-
-It should work in:
-
-
-
-\* app icon
-
-\* splash screen
-
-\* header
-
-\* QR room presentation
-
-\* GitHub/README branding
-
-
-
-The logo must remain recognizable without color.
-
-
-
-\---
-
-
-
-\# 112. App Icon
-
-
-
-The app icon should be:
-
-
-
-\* simple
-
-\* high contrast
-
-\* recognizable at small sizes
-
-\* based on the mesh concept
-
-\* consistent with SoundMesh Blue and the dark identity
-
-
-
-Avoid putting text inside the app icon.
-
-
-
-\---
-
-
-
-\# 113. Splash Screen
-
-
-
-Keep it minimal.
-
-
+Use plain language.
 
 Preferred:
 
+```text
+5 devices connected
+```
 
+Not:
 
 ```text
+NODES: 5
+```
 
+unless inside diagnostics.
+
+---
+
+# 42. Device Status
+
+Preferred user-facing states:
+
+```text
+Connecting…
+Getting ready…
+Calibrating…
+Ready
+Synchronized
+Degraded
+Disconnected
+Recovering…
+```
+
+Never expose internal enum names in normal UI.
+
+---
+
+# 43. Device List
+
+Example:
+
+```text
+Devices
+
+● Faraz's Phone
+  Synchronized
+
+● Mahin's Phone
+  Synchronized
+
+● Galaxy A52
+  Calibrating…
+
+● Pixel
+  Connection lost
+```
+
+Each device should be individually identifiable.
+
+---
+
+# 44. Device Status Semantics
+
+## Synchronized
+
+The device is currently within the acceptable synchronization threshold.
+
+## Calibrating
+
+SoundMesh is measuring timing and preparing synchronized output.
+
+## Getting Ready
+
+The device is connected and preparing its audio session.
+
+## Degraded
+
+The device remains connected but synchronization quality has fallen.
+
+## Disconnected
+
+The active connection is unavailable.
+
+## Recovering
+
+SoundMesh is attempting to restore the device.
+
+---
+
+# 45. Capture Preparation
+
+The host needs to prepare SoundMesh for live external-audio capture.
+
+The normal UX should describe the goal rather than implementation details.
+
+Preferred:
+
+```text
+Get audio ready
+
+SoundMesh needs permission
+to capture audio from your device.
+
+[ Allow Audio Capture ]
+```
+
+Do not expose:
+
+```text
+MediaProjection initialization
+AudioPlaybackCaptureConfiguration
+```
+
+in normal UI.
+
+---
+
+# 46. Audio Capture Permission
+
+Android capture permission must be requested contextually.
+
+Preferred explanation:
+
+> SoundMesh needs permission to capture audio playing on this phone so the other connected phones can hear it too.
+
+The user must explicitly approve the system permission.
+
+SoundMesh must never imply that permission was granted when it was denied.
+
+---
+
+# 47. Capture Permission States
+
+The UI must distinguish:
+
+```text
+Permission Required
+      ↓
+Requesting Permission
+      ↓
+Permission Granted
+      ↓
+Capture Ready
+```
+
+If denied:
+
+```text
+Audio capture permission wasn't granted.
+
+SoundMesh can't share audio
+from this phone without it.
+
+[ Try Again ]
+```
+
+---
+
+# 48. Capture Availability
+
+Some external applications may not permit their audio to be captured.
+
+Normal UI:
+
+```text
+Audio source unavailable
+
+This app doesn't allow SoundMesh
+to capture its audio.
+```
+
+Possible action:
+
+```text
+[ Try Another Source ]
+```
+
+Do not expose Android API terminology to normal users.
+
+---
+
+# 49. External Media Handoff
+
+Once SoundMesh is ready to capture, the user should be clearly told what to do next.
+
+Preferred:
+
+```text
+You're ready.
+
+Open any supported media app
+and play your audio.
+
+SoundMesh will share the sound
+with the connected phones.
+
+[ Open Media App ]
+```
+
+If Android cannot safely launch a specific external application, provide a generic instruction instead.
+
+SoundMesh does not need to know what media is being played.
+
+---
+
+# 50. External Media Ownership
+
+The external media application owns:
+
+* play
+* pause
+* seek
+* playback position
+* media selection
+* track selection
+* subtitles
+* video
+* playback speed
+* media library
+
+SoundMesh does not reproduce these controls as its own media-player controls.
+
+The UI must never imply otherwise.
+
+---
+
+# 51. Active Audio Session
+
+During an active session, SoundMesh should show that it is sharing live audio.
+
+Preferred:
+
+```text
+Live audio session
+
+● Sharing audio
+
+5 devices connected
+5 devices synchronized
+```
+
+Optional supporting information:
+
+```text
+Open your media app
+to play audio.
+```
+
+The UI should remain useful after the user switches away from SoundMesh.
+
+---
+
+# 52. Background Session UX
+
+SoundMesh is expected to remain active while the user uses another application.
+
+Where Android requires a foreground service and persistent notification, the UX should make this understandable.
+
+Notification example:
+
+```text
 SoundMesh
 
+Sharing audio with 5 devices
 ```
 
+The notification should communicate active status without exposing implementation details.
 
+---
 
-with the logo/mesh mark.
+# 53. Persistent Session Indicator
 
-
-
-Do not create a long animated splash sequence.
-
-
-
-The application should enter the usable interface as quickly as possible.
-
-
-
-\---
-
-
-
-\# 114. Interaction Priority
-
-
-
-When multiple actions are available, hierarchy should follow:
-
-
+While SoundMesh is actively capturing/sharing audio, the application should clearly indicate:
 
 ```text
-
-Primary task
-
-↓
-
-Secondary task
-
-↓
-
-Supporting information
-
-↓
-
-Advanced controls
-
-↓
-
-Diagnostics
-
+● Sharing audio
 ```
 
-
-
-Never allow settings or diagnostics to visually compete with the main playback action.
-
-
-
-\---
-
-
-
-\# 115. User Flow — MVP
-
-
-
-Complete intended MVP flow:
-
-
+Possible states:
 
 ```text
-
-Launch
-
-&#x20;↓
-
-Home
-
-&#x20;↓
-
-Create Room
-
-&#x20;↓
-
-Room Created
-
-&#x20;↓
-
-Show QR
-
-&#x20;↓
-
-Participant Scans
-
-&#x20;↓
-
-Connection
-
-&#x20;↓
-
-Device Identified
-
-&#x20;↓
-
-Audio Selected
-
-&#x20;↓
-
-Audio Prepared
-
-&#x20;↓
-
-Synchronization
-
-&#x20;↓
-
-Ready
-
-&#x20;↓
-
-Play
-
-&#x20;↓
-
-Playback Monitoring
-
-&#x20;↓
-
-Pause / Seek / Resume
-
-&#x20;↓
-
-Stop
-
-&#x20;↓
-
-End Room
-
+Preparing audio…
+Sharing audio
+Audio interrupted
+Reconnecting…
 ```
 
+The exact wording must correspond to actual native state.
 
+---
 
-\---
+# 54. Session State
 
-
-
-\# 116. Join Flow — MVP
-
-
+The primary user-facing session lifecycle is:
 
 ```text
-
-Home
-
-&#x20;↓
-
-Join Room
-
-&#x20;↓
-
-Scan QR
-
-&#x20;↓
-
-Request Camera Permission if necessary
-
-&#x20;↓
-
-QR Validated
-
-&#x20;↓
-
-Connect
-
-&#x20;↓
-
-Join Handshake
-
-&#x20;↓
-
-Device Name
-
-&#x20;↓
-
-Audio Preparation
-
-&#x20;↓
-
-Calibration
-
-&#x20;↓
-
-Ready
-
+Room Ready
+    ↓
+Capture Permission Required
+    ↓
+Preparing
+    ↓
+Capture Ready
+    ↓
+Waiting for External Audio
+    ↓
+Sharing Audio
+    ↓
+Degraded / Recovering
+    ↓
+Ended
 ```
 
+SoundMesh should not use a traditional media-player state model.
 
+---
 
-The user should never see IP addresses or protocol details during this flow.
+# 55. Waiting for External Audio
 
-
-
-\---
-
-
-
-\# 117. Design States Required for Every Major Component
-
-
-
-Every important component should consider:
-
-
+If capture is ready but no eligible external audio is currently being captured:
 
 ```text
+Ready to share
 
-Default
-
-Pressed
-
-Focused
-
-Disabled
-
-Loading
-
-Success
-
-Warning
-
-Error
-
-Selected
-
-Unavailable
-
+Open your media app
+and start playing audio.
 ```
 
-
-
-Not every component needs every state visually, but state behavior must be deliberately defined.
-
-
-
-\---
-
-
-
-\# 118. Button States
-
-
-
-Primary button:
-
-
+This is preferable to displaying:
 
 ```text
-
-Default → Accent
-
-Pressed → Accent Dark
-
-Disabled → Muted surface/text
-
-Loading → Accent + progress indicator
-
+Paused
 ```
 
+because SoundMesh did not pause the external media application.
 
+---
 
-Text and icon contrast must remain accessible.
+# 56. Active Session Primary Action
 
+The primary action during an active session is **session management**, not media playback.
 
-
-\---
-
-
-
-\# 119. Inputs
-
-
-
-Inputs should clearly distinguish:
-
-
+Possible actions:
 
 ```text
-
-Default
-
-Focused
-
-Filled
-
-Error
-
-Disabled
-
+[ End Session ]
 ```
-
-
-
-Focus should use the SoundMesh accent while preserving sufficient contrast.
-
-
-
-Error state should include textual explanation.
-
-
-
-\---
-
-
-
-\# 120. QR Scanner UX
-
-
-
-Scanner should:
-
-
-
-\* open quickly
-
-\* clearly show scan region
-
-\* provide camera permission handling
-
-\* indicate successful detection
-
-\* handle invalid QR codes gracefully
-
-
-
-Invalid QR:
-
-
-
-> \*\*That isn't a SoundMesh room code.\*\*
-
-
-
-Do not expose parsing errors.
-
-
-
-\---
-
-
-
-\# 121. Offline Philosophy
-
-
-
-The UI should never imply Internet dependency for normal local playback.
-
-
-
-If the device has no Internet but the local network works:
-
-
-
-> SoundMesh should continue to communicate locally.
-
-
-
-Internet availability should not be presented as a prerequisite unless a future feature requires it.
-
-
-
-\---
-
-
-
-\# 122. Network Problem UX
-
-
-
-If devices are not reachable:
-
-
-
-> \*\*Couldn't find the room.\*\*
-
-
-
-Supporting explanation:
-
-
-
-> Make sure the devices are connected to the same local network.
-
-
-
-The interface should guide the user toward the actual likely cause.
-
-
-
-\---
-
-
-
-\# 123. First-Time Network Permission
-
-
-
-If local-network permission is required, explain it in context.
-
-
-
-Do not display:
-
-
-
-> Enable NSLocalNetworkUsageDescription.
-
-
-
-Display:
-
-
-
-> SoundMesh needs local network access to connect nearby phones.
-
-
-
-\---
-
-
-
-\# 124. Device Naming
-
-
-
-Use human-readable names.
-
-
-
-Examples:
-
-
-
-```text
-
-Faraz's Phone
-
-Mahin's Phone
-
-Galaxy A52
-
-iPhone
-
-```
-
-
-
-Technical identifiers should remain hidden except in diagnostics.
-
-
-
-\---
-
-
-
-\# 125. Device Identity
-
-
-
-Device names are presentation identity.
-
-
-
-They are not authentication identity.
-
-
-
-The UI must not imply that a device name is a unique security credential.
-
-
-
-\---
-
-
-
-\# 126. Security UX
-
-
-
-The normal interface should not expose security implementation details.
-
-
-
-Room joining should feel effortless.
-
-
-
-If a join request requires host approval in a future version:
-
-
-
-```text
-
-Mahin wants to join
-
-
-
-\[ Allow ]
-
-\[ Deny ]
-
-```
-
-
-
-Security should be understandable without exposing protocol mechanics.
-
-
-
-\---
-
-
-
-\# 127. Room Privacy
-
-
-
-Do not show permanent room credentials in normal UI.
-
-
-
-QR codes should represent temporary join information according to the networking specification.
-
-
-
-\---
-
-
-
-\# 128. Loading Progress
-
-
-
-Progress indicators should reflect real progress when measurable.
-
-
-
-If progress cannot be accurately measured, use an indeterminate indicator.
-
-
-
-Never fake progress merely to make an operation appear faster.
-
-
-
-\---
-
-
-
-\# 129. Time Perception
-
-
-
-The UI should provide feedback immediately after a user action.
-
-
-
-Even if the underlying operation takes several seconds, the interface should transition quickly into a meaningful state such as:
-
-
-
-> Preparing…
-
-
-
-This prevents the application from appearing frozen.
-
-
-
-\---
-
-
-
-\# 130. Microcopy Rules
-
-
-
-Use:
-
-
-
-\* short sentences
-
-\* human language
-
-\* active voice
-
-\* clear verbs
-
-\* minimal technical terminology
-
-
-
-Preferred:
-
-
-
-> Getting everyone in sync…
-
-
-
-Avoid:
-
-
-
-> Synchronization subsystem initialization in progress.
-
-
-
-Preferred:
-
-
-
-> Couldn't connect to this device.
-
-
-
-Avoid:
-
-
-
-> Connection establishment procedure failed.
-
-
-
-\---
-
-
-
-\# 131. Capitalization
-
-
-
-Use sentence case for most UI.
-
-
-
-Preferred:
-
-
-
-> Create Room
-
-
 
 or:
 
-
-
-> Create a room
-
-
-
-Do not use unnecessary ALL CAPS.
-
-
-
-Uppercase may be used for tiny diagnostic labels if visually justified.
-
-
-
-\---
-
-
-
-\# 132. Punctuation
-
-
-
-UI labels generally should not end with periods.
-
-
-
-Full explanatory sentences may use punctuation.
-
-
-
-Examples:
-
-
-
 ```text
-
-Create Room
-
+[ End Room ]
 ```
 
+depending on the current room/session model.
 
+There should not be a SoundMesh-owned play/pause/seek control.
 
-but:
+---
 
+# 57. Volume UX
 
+SoundMesh may expose appropriate device output volume controls.
 
-> Make sure both devices are connected to the same network.
+However, normal system volume remains the authoritative mechanism for each physical device.
 
+If a future SoundMesh-wide volume feature is implemented, it must not imply that SoundMesh controls external media playback.
 
+Per-device volume may exist as an advanced capability.
 
-\---
+---
 
+# 58. Synchronization UX
 
+Synchronization should be visible but understandable.
 
-\# 133. Accessibility Language
-
-
-
-Avoid ambiguous instructions.
-
-
-
-Bad:
-
-
-
-> Try again.
-
-
-
-Better:
-
-
-
-> Try connecting again.
-
-
-
-Best where context is needed:
-
-
-
-> Make sure both phones are on the same network, then try connecting again.
-
-
-
-\---
-
-
-
-\# 134. Visual Hierarchy of the Room
-
-
-
-The room screen should prioritize:
-
-
+Preferred:
 
 ```text
-
-1\. Playback state
-
-2\. Primary playback action
-
-3\. Device health
-
-4\. Room identity
-
-5\. Secondary controls
-
-6\. Diagnostics
-
-```
-
-
-
-\---
-
-
-
-\# 135. Visual Hierarchy of Home
-
-
-
-```text
-
-1\. SoundMesh identity
-
-2\. Core value proposition
-
-3\. Create Room
-
-4\. Join Room
-
-5\. Recent rooms
-
-6\. Settings/about
-
-```
-
-
-
-\---
-
-
-
-\# 136. Visual Hierarchy of Diagnostics
-
-
-
-```text
-
-1\. Overall health
-
-2\. Sync quality
-
-3\. Device states
-
-4\. Network
-
-5\. Audio
-
-6\. Detailed measurements
-
-```
-
-
-
-\---
-
-
-
-\# 137. Design Anti-Patterns
-
-
-
-AI agents and developers MUST NOT introduce the following without an explicit decision:
-
-
-
-\* random gradients
-
-\* neon backgrounds
-
-\* excessive glassmorphism
-
-\* excessive rounded cards
-
-\* giant text everywhere
-
-\* emoji as primary UI icons
-
-\* arbitrary colors
-
-\* inconsistent corner radii
-
-\* arbitrary spacing
-
-\* multiple competing accent colors
-
-\* excessive animations
-
-\* permanent bottom navigation
-
-\* unnecessary onboarding
-
-\* fake loading progress
-
-\* fake synchronization metrics
-
-\* technical jargon in primary UI
-
-\* raw error codes in normal UI
-
-\* IP addresses in normal onboarding
-
-\* configuration-heavy first-run flow
-
-
-
-\---
-
-
-
-\# 138. Design Decision: Blue Identity
-
-
-
-The primary SoundMesh brand color is:
-
-
-
-```text
-
-\#5B8CFF
-
-```
-
-
-
-This is a deliberate product decision.
-
-
-
-Do not replace it with:
-
-
-
-\* purple
-
-\* cyan
-
-\* green
-
-\* red
-
-\* arbitrary gradients
-
-
-
-without updating the design decision documentation.
-
-
-
-\---
-
-
-
-\# 139. Design Decision: Dark-First
-
-
-
-SoundMesh MVP is dark-first.
-
-
-
-Primary experience:
-
-
-
-```text
-
-\#0B0D10
-
-```
-
-
-
-A future light theme may be considered separately.
-
-
-
-Developers must not automatically create a light theme during MVP unless required by platform behavior or explicitly requested.
-
-
-
-\---
-
-
-
-\# 140. Design Decision: Minimal Navigation
-
-
-
-The MVP does not require a permanent multi-tab navigation system.
-
-
-
-The application is primarily a flow:
-
-
-
-```text
-
-Home → Room → Playback
-
-```
-
-
-
-\---
-
-
-
-\# 141. Design Decision: Diagnostics Are Secondary
-
-
-
-Diagnostics are important for development and advanced users but must not dominate normal UX.
-
-
-
-SoundMesh should be approachable to someone who knows nothing about networking or synchronization.
-
-
-
-\---
-
-
-
-\# 142. Design Decision: Technical Complexity Is Hidden
-
-
-
-The interface must not require users to understand:
-
-
-
-\* clock synchronization
-
-\* network latency
-
-\* buffering
-
-\* audio decoding
-
-\* drift
-
-\* transport protocols
-
-\* device clocks
-
-\* calibration algorithms
-
-
-
-unless they intentionally enter diagnostics.
-
-
-
-\---
-
-
-
-\# 143. Design Decision: Mesh Is the Visual Language
-
-
-
-The connected-device mesh is SoundMesh's primary visual metaphor.
-
-
-
-It should appear in:
-
-
-
-\* room visualization
-
-\* connection states
-
-\* synchronization states
-
-\* potentially branding
-
-
-
-but should not become repetitive decoration on every screen.
-
-
-
-\---
-
-
-
-\# 144. Design Decision: No Spotify Clone
-
-
-
-SoundMesh should not attempt to become a music streaming platform.
-
-
-
-Audio selection should remain intentionally simple.
-
-
-
-\---
-
-
-
-\# 145. Design Decision: Performance Before Visual Effects
-
-
-
-If a visual effect causes:
-
-
-
-\* dropped frames
-
-\* excessive GPU usage
-
-\* increased battery drain
-
-\* audio instability
-
-\* synchronization problems
-
-
-
-remove or simplify the effect.
-
-
-
-Functional reliability always outranks visual spectacle.
-
-
-
-\---
-
-
-
-\# 146. UI/UX Acceptance Criteria
-
-
-
-The MVP UI is acceptable only when:
-
-
-
-\### Navigation
-
-
-
-\* user can create a room without unnecessary configuration
-
-\* user can join using QR
-
-\* navigation is predictable
-
-\* back behavior is correct
-
-
-
-\### Visual
-
-
-
-\* all colors come from centralized tokens
-
-\* typography uses the documented scale
-
-\* spacing follows the spacing system
-
-\* no arbitrary decorative colors exist
-
-\* primary accent is consistently SoundMesh Blue
-
-
-
-\### Room
-
-
-
-\* room identity is obvious
-
-\* device count is visible
-
-\* device status is understandable
-
-\* synchronization state is visible
-
-\* primary playback action is obvious
-
-
-
-\### Playback
-
-
-
-\* play/pause state is truthful
-
-\* playback progress is understandable
-
-\* volume is accessible
-
-\* synchronized playback state is visible
-
-
-
-\### Errors
-
-
-
-\* errors are human-readable
-
-\* recovery actions are provided where possible
-
-\* raw technical details remain secondary
-
-
-
-\### Accessibility
-
-
-
-\* important text has adequate contrast
-
-\* touch targets are sufficiently large
-
-\* statuses are not communicated by color alone
-
-\* screen-reader labels exist for important controls
-
-\* increased text sizes do not destroy the layout
-
-\* reduced motion is respected
-
-
-
-\### Performance
-
-
-
-\* animations do not interfere with audio
-
-\* mesh visualization remains lightweight
-
-\* unnecessary rebuilds are avoided
-
-\* playback remains the highest performance priority
-
-
-
-\---
-
-
-
-\# 147. UI/UX Verification
-
-
-
-UI implementation should be tested on:
-
-
-
-\* at least one low-end Android device
-
-\* at least one modern Android device
-
-\* at least one iPhone
-
-\* different screen sizes
-
-\* different text-size settings
-
-\* reduced-motion settings where available
-
-\* portrait orientation
-
-\* network failure states
-
-\* device disconnection
-
-\* synchronization recovery
-
-\* audio preparation failure
-
-\* permission denial
-
-
-
-\---
-
-
-
-\# 148. Visual QA Checklist
-
-
-
-Before a UI feature is considered complete:
-
-
-
-```text
-
-\[ ] Correct background
-
-\[ ] Correct surface hierarchy
-
-\[ ] Correct typography
-
-\[ ] Correct spacing
-
-\[ ] Correct corner radius
-
-\[ ] Correct iconography
-
-\[ ] Correct button states
-
-\[ ] Correct loading state
-
-\[ ] Correct error state
-
-\[ ] Correct accessibility labels
-
-\[ ] Correct contrast
-
-\[ ] Correct safe-area handling
-
-\[ ] Correct dynamic text behavior
-
-\[ ] Correct reduced-motion behavior
-
-\[ ] No arbitrary colors
-
-\[ ] No arbitrary spacing
-
-\[ ] No unnecessary animation
-
-\[ ] No technical jargon in primary UX
-
-```
-
-
-
-\---
-
-
-
-\# 149. Relationship to Other Specifications
-
-
-
-This document does not define:
-
-
-
-\* synchronization algorithms
-
-\* networking protocols
-
-\* audio engine implementation
-
-\* native timing architecture
-
-
-
-Those are defined by:
-
-
-
-```text
-
-DOCS/synchronization.md
-
-DOCS/networking.md
-
-DOCS/audio.md
-
-DOCS/architecture.md
-
-```
-
-
-
-This document defines how those systems are \*\*experienced and represented by the user\*\*.
-
-
-
-\---
-
-
-
-\# 150. Cross-System Rule
-
-
-
-The UI must never contradict the underlying engineering state.
-
-
-
-For example:
-
-
-
-```text
-
-Networking says:
-
-DISCONNECTED
-
-
-
-UI:
-
-Synchronized
-
-```
-
-
-
-is invalid.
-
-
-
-Similarly:
-
-
-
-```text
-
-Audio engine says:
-
-NOT\_PLAYING
-
-
-
-UI:
-
-Playing
-
-```
-
-
-
-is invalid.
-
-
-
-The UI is a representation of actual system state, not an independent simulation.
-
-
-
-\---
-
-
-
-\# 151. MVP Screen Inventory
-
-
-
-The initial application should contain approximately these primary screens/states:
-
-
-
-```text
-
-1\. Home
-
-2\. Create Room
-
-3\. Room — Waiting
-
-4\. Room — Devices
-
-5\. QR Display
-
-6\. Join Room
-
-7\. QR Scanner
-
-8\. Preparing Audio
-
-9\. Synchronizing
-
-10\. Ready
-
-11\. Playback
-
-12\. Device Details
-
-13\. Diagnostics
-
-14\. Settings
-
-15\. Error/Recovery States
-
-```
-
-
-
-Some of these should be implemented as states within a screen rather than completely separate routes where appropriate.
-
-
-
-\---
-
-
-
-\# 152. Preferred Core Experience
-
-
-
-The ideal SoundMesh session should feel like:
-
-
-
-```text
-
-OPEN
-
-
-
-SoundMesh
-
-
-
-Make your phones one speaker.
-
-
-
-&#x20;       Create Room
-
-
-
-&#x20;         Join Room
-
-
-
-
-
-CREATE
-
-
-
-Room created.
-
-
-
-&#x20;       ◉
-
-&#x20;     /   \\
-
-&#x20;   📱     📱
-
-&#x20;     \\   /
-
-&#x20;       📱
-
-
-
-Waiting for devices…
-
-
-
-
-
-JOIN
-
-
-
-Scan the QR.
-
-
-
-&#x20;       \[ QR ]
-
-
-
-
-
-PREPARE
-
-
-
-Preparing audio…
-
-
-
-3 of 5 devices ready.
-
-
-
-
-
-SYNC
-
-
-
 Getting everyone in sync…
-
-
 
 ● ● ● ● ●
 
+Calibrating 5 devices
+```
 
+Then:
 
+```text
+✓ Everyone is synchronized
+```
+
+The user should feel that SoundMesh is actively making the system reliable.
+
+---
+
+# 59. Synchronization Confidence
+
+Normal users should see:
+
+```text
+● Synchronized
+```
+
+Advanced diagnostics may show:
+
+```text
+Sync offset: +7.2 ms
+RTT: 18.4 ms
+Confidence: High
+```
+
+Technical information must not clutter the primary experience.
+
+---
+
+# 60. Preparation Barrier
+
+Before synchronized output begins, required devices should reach the appropriate readiness state.
+
+Example:
+
+```text
+3 of 5 devices ready
+
+Waiting for 2 devices…
+```
+
+If degraded operation is supported, the user must be informed before proceeding.
+
+---
+
+# 61. Host Output vs Participant Output
+
+The host's external media application may continue producing direct audio through the host device's normal output route.
+
+Participants receive captured and replayed audio.
+
+These paths may have different latency.
+
+The UI must therefore never promise perfect synchronization before the system has measured and calibrated the relevant timing.
+
+Normal UI may simply say:
+
+```text
 Calibrating…
+```
 
+rather than exposing implementation details.
 
+Diagnostics may expose relevant measured latency.
 
+---
 
+# 62. Synchronization Recovery
 
-READY
+If synchronization quality degrades:
 
+```text
+Sync quality reduced
 
+Resynchronizing…
+```
 
-✓ Everyone is ready.
+The system should attempt automatic recovery where possible.
 
+The user should not be required to manually restart the entire room for a transient synchronization issue.
 
+---
 
-&#x20;       ▶ Play
+# 63. Device Connection Loss
 
+If a participant disconnects:
 
-
-
-
-PLAY
-
-
-
-Now Playing
-
-
-
-Track Name
-
-
-
-━━━━━━━━━━━━●━━
-
-
-
-● 5 devices synchronized
-
-
-
-
-
-RECOVER
-
-
-
-One device disconnected.
-
-
+```text
+1 device disconnected
 
 Reconnecting…
+```
 
+If the remaining session can safely continue, playback/sharing should continue.
 
+Do not immediately terminate the room because one participant disappeared.
 
+---
 
+# 64. Participant Recovery
 
+When a participant reconnects:
+
+```text
+Reconnecting…
+
+Getting back in sync…
+```
+
+The participant may need to:
+
+* reconnect
+* re-establish timing
+* refill its audio buffer
+* synchronize to a future audio target
+
+The user should see one coherent recovery experience rather than these technical steps.
+
+---
+
+# 65. Host Failure
+
+MVP behavior may be controlled recovery rather than seamless host migration.
+
+If the host becomes unavailable:
+
+```text
+Room connection lost
+
+The host device is unavailable.
+
+[ Return Home ]
+```
+
+Future host migration requires an explicit architectural and UX decision.
+
+---
+
+# 66. Capture Interruption
+
+If capture stops unexpectedly:
+
+```text
+Audio sharing interrupted
+
+SoundMesh can no longer capture
+audio from this device.
+
+[ Try Again ]
+```
+
+The UI should distinguish capture failure from network failure.
+
+---
+
+# 67. Audio Route Change
+
+If the host changes an audio route, such as connecting or disconnecting a Bluetooth device:
+
+```text
+Audio output changed
+
+SoundMesh is checking synchronization…
+```
+
+Timing may need recalibration.
+
+The system should handle this automatically where possible.
+
+---
+
+# 68. Error Philosophy
+
+Every user-facing error should answer:
+
+1. What happened?
+2. Does it matter?
+3. What can the user do?
+
+Example:
+
+> **Couldn't connect to this device.**
+> Make sure both phones are on the same local network.
+
+```text
+[ Try Again ]
+```
+
+Avoid:
+
+```text
+NETWORK_HANDSHAKE_TIMEOUT_1042
+```
+
+in normal UI.
+
+---
+
+# 69. Technical Error Details
+
+Advanced users may access diagnostics.
+
+Example:
+
+```text
+Connection failed
+
+Code:
+NET_HANDSHAKE_TIMEOUT
+
+Retry count:
+3
+
+RTT:
+—
+
+Transport:
+—
+```
+
+Raw technical details belong in diagnostics.
+
+---
+
+# 70. Diagnostics
+
+Diagnostics should be accessible but secondary.
+
+Potential information:
+
+* device ID
+* connection state
+* RTT
+* clock offset
+* estimated sync error
+* calibration confidence
+* packet loss
+* jitter
+* audio buffer state
+* buffer fill
+* underruns
+* stream statistics
+* capture state
+* capture format
+* audio route
+* drift rate
+* recovery events
+* reconnect count
+
+---
+
+# 71. Diagnostic Visual Hierarchy
+
+Diagnostics should prioritize:
+
+```text
+Overall Health
+      ↓
+Synchronization
+      ↓
+Connections
+      ↓
+Audio Capture
+      ↓
+Audio Output
+      ↓
+Raw Technical Data
+```
+
+Raw logs should not dominate the interface.
+
+---
+
+# 72. Status Indicators
+
+Status must use:
+
+* icon/shape
+* text
+* color
+
+not color alone.
+
+Example:
+
+```text
+● Synchronized
+```
+
+rather than:
+
+```text
+●
+```
+
+---
+
+# 73. Accessibility
+
+Accessibility is REQUIRED.
+
+The application must consider:
+
+* contrast
+* dynamic text sizing
+* screen readers
+* touch targets
+* reduced motion
+* non-color status communication
+* accessible labels
+* focus behavior
+* readable errors
+* clear state transitions
+
+---
+
+# 74. Dynamic Text
+
+Layouts must tolerate increased system font sizes.
+
+Text must not:
+
+* overlap
+* clip
+* disappear
+* become unreadable
+* push critical controls beyond usable areas
+
+---
+
+# 75. Screen Reader Semantics
+
+Important controls require descriptive labels.
+
+Examples:
+
+```text
+Create Room
+Join Room
+Scan QR Code
+Show Room QR Code
+Allow Audio Capture
+Open Media App
+End Session
+End Room
+Open Diagnostics
+Device status
+Synchronization status
+```
+
+The mesh visualization should have an accessible summary.
+
+Example:
+
+> “Five devices connected. Four synchronized. One calibrating.”
+
+---
+
+# 76. Reduced Motion
+
+When reduced-motion preferences are enabled:
+
+* disable unnecessary mesh animation
+* reduce transition movement
+* remove decorative pulsing
+* preserve state communication through static visuals
+
+Functionality must remain identical.
+
+---
+
+# 77. Animation Philosophy
+
+Animations communicate state.
+
+They do not exist merely because animation is possible.
+
+Every animation should answer:
+
+> **“What changed?”**
+
+If an animation communicates nothing, remove it.
+
+---
+
+# 78. Animation Duration
+
+Suggested ranges:
+
+```text
+Micro interaction: 100–150 ms
+Normal transition: 150–250 ms
+Major transition: 250–350 ms
+```
+
+SoundMesh should feel responsive.
+
+---
+
+# 79. Mesh Animation Timing
+
+Mesh animations should be:
+
+* subtle
+* coordinated
+* low amplitude
+* visually calm
+
+The animation must never imply synchronization precision greater than the actual system can guarantee.
+
+---
+
+# 80. Loading States
+
+Never show a blank screen during asynchronous work.
+
+Use meaningful states:
+
+```text
+Creating room…
+```
+
+```text
+Connecting…
+```
+
+```text
+Getting audio ready…
+```
+
+```text
+Calibrating…
+```
+
+```text
+Reconnecting…
+```
+
+---
+
+# 81. Empty States
+
+Example:
+
+```text
+No active room
+
+Create a room to connect
+nearby phones.
+
+[ Create Room ]
+```
+
+Avoid:
+
+```text
+Nothing here.
+```
+
+---
+
+# 82. Permission UX
+
+Permissions should be requested only when necessary.
+
+MVP-relevant permissions may include:
+
+* camera permission for QR scanning
+* local-network/nearby-device permissions where required by Android implementation
+* audio capture permission through Android's system capture flow
+
+Do not request every permission on first launch.
+
+---
+
+# 83. Onboarding
+
+The MVP should avoid a long onboarding carousel.
+
+The first screen should communicate the product directly.
+
+Preferred:
+
+```text
+SoundMesh
+
+Make your phones
+one speaker.
+
+[ Create Room ]
+
+    Join Room
+```
+
+Optional:
+
+> Connect nearby phones and hear audio together.
+
+---
+
+# 84. First Successful Session
+
+The first successful session is the most important onboarding experience.
+
+Target:
+
+```text
+Open
+ ↓
+Create Room
+ ↓
+Friend scans QR
+ ↓
+Devices connect
+ ↓
+Allow audio capture
+ ↓
+SoundMesh gets ready
+ ↓
+Open media app
+ ↓
+Play audio
+ ↓
+Everyone hears it together
+```
+
+The technical system should become progressively more impressive without becoming progressively more complicated.
+
+---
+
+# 85. External Media App Handoff
+
+When the session is ready:
+
+```text
+You're ready.
+
+Open your media app
+and play something.
+
+SoundMesh will handle
+the synchronized sharing.
+
+[ Open Media App ]
+```
+
+The app should make it obvious that the user is leaving SoundMesh temporarily without ending the session.
+
+---
+
+# 86. Backgrounding
+
+When the user switches to another app:
+
+* SoundMesh session state remains active where Android permits
+* capture continues through the native capture/session system
+* the foreground service remains active where required
+* a persistent notification communicates active sharing
+
+The visual SoundMesh UI does not need to remain foregrounded.
+
+---
+
+# 87. Feedback During Technical Operations
+
+Use concise human language.
+
+Examples:
+
+```text
+Connecting…
+```
+
+```text
+Getting everyone ready…
+```
+
+```text
+Calibrating…
+```
+
+```text
+Ready to share
+```
+
+```text
+Sharing audio
+```
+
+```text
+Sync quality reduced
+```
+
+```text
+Resynchronizing…
+```
+
+```text
+Audio sharing interrupted
+```
+
+---
+
+# 88. State Truthfulness
+
+The UI must represent actual system state.
+
+Do not display:
+
+```text
+Synchronized
+```
+
+before synchronization succeeds.
+
+Do not display:
+
+```text
+Sharing audio
+```
+
+before capture and audio transport are actually active.
+
+Do not display:
+
+```text
+Connected
+```
+
+while a connection is only being attempted.
+
+UI state must derive from authoritative application/native state.
+
+---
+
+# 89. Optimistic UI
+
+Optimistic UI should be used cautiously.
+
+Actions affecting:
+
+* capture
+* networking
+* synchronization
+* session state
+
+must not falsely imply success.
+
+The interface may immediately acknowledge that the user pressed a button, but the actual state must only change when the underlying system confirms it.
+
+---
+
+# 90. Responsive Design
+
+The UI must adapt to:
+
+* screen sizes
+* aspect ratios
+* safe areas
+* font sizes
+* orientation
+
+Do not hardcode layouts around one phone.
+
+---
+
+# 91. Safe Areas
+
+Content must respect:
+
+* status bars
+* camera cutouts
+* navigation areas
+* gesture areas
+* rounded corners
+
+Use platform-safe-area mechanisms.
+
+---
+
+# 92. Orientation
+
+Portrait is the primary MVP orientation.
+
+Landscape may be considered for:
+
+* tablets
+* expanded diagnostics
+* future layouts
+
+No core feature should become unusable because of orientation changes where the platform permits them.
+
+---
+
+# 93. Large Screens
+
+On larger displays:
+
+* preserve comfortable reading width
+* optionally use two-column layouts
+* avoid stretching cards across the entire screen
+* preserve mobile-like hierarchy where appropriate
+
+---
+
+# 94. UI Component Architecture
+
+Reusable components should include:
+
+```text
+PrimaryButton
+SecondaryButton
+IconButton
+TextButton
+
+Card
+StatusBadge
+DeviceRow
+DeviceStatus
+
+RoomMesh
+
+CapturePermissionCard
+CaptureStatus
+SessionStatus
+SyncStatus
+ConnectionStatus
+
+ProgressIndicator
+LoadingState
+ErrorState
+EmptyState
+
+Dialog
+BottomSheet
+Snackbar
+
+DiagnosticMetric
+DiagnosticSection
+```
+
+The application should not create media-player-specific components such as:
+
+```text
+PlaybackControls
+SeekBar
+TrackList
+AudioPicker
+NowPlayingCard
+```
+
+unless a future documented product decision explicitly introduces such functionality.
+
+---
+
+# 95. Design Tokens
+
+Colors, typography, spacing, radii, and dimensions must be centralized.
+
+Conceptually:
+
+```text
+colors.background.primary
+colors.background.secondary
+colors.surface.default
+colors.surface.elevated
+
+colors.text.primary
+colors.text.secondary
+colors.text.muted
+
+colors.accent.primary
+colors.accent.light
+colors.accent.dark
+
+colors.status.success
+colors.status.warning
+colors.status.error
+```
+
+Do not scatter raw values throughout the application.
+
+---
+
+# 96. Tokenized Typography
+
+Centralize:
+
+```text
+typography.display
+typography.largeTitle
+typography.title
+typography.heading
+typography.body
+typography.bodyEmphasis
+typography.caption
+typography.metadata
+```
+
+---
+
+# 97. Tokenized Spacing
+
+Use:
+
+```text
+spacing.xs
+spacing.sm
+spacing.md
+spacing.lg
+spacing.xl
+spacing.xxl
+```
+
+mapped to the documented spacing scale.
+
+---
+
+# 98. Platform Conventions
+
+Respect Android conventions where appropriate.
+
+Examples:
+
+* system permission dialogs
+* navigation gestures
+* accessibility behavior
+* keyboard behavior
+* system sharing
+* camera permission
+* MediaProjection capture permission
+* foreground-service notification behavior
+
+Do not recreate system permission dialogs.
+
+---
+
+# 99. Flutter UI Boundary
+
+Flutter owns:
+
+* visual UI
+* navigation
+* user interaction
+* high-level room/session state presentation
+* design system
+* accessibility semantics
+* non-realtime animations
+
+Native Android code owns timing-critical operations.
+
+This includes:
+
+* audio capture
+* realtime audio buffering
+* audio transport
+* native output
+* timing measurements
+* synchronization scheduling
+* foreground service lifecycle where required
+
+---
+
+# 100. Realtime UI Constraint
+
+High-frequency audio or synchronization callbacks must not continuously drive Flutter widget rebuilds.
+
+Preferred:
+
+```text
+Native realtime system
+        ↓
+Aggregated state
+        ↓
+Flutter
+        ↓
+UI
+```
+
+Flutter should display meaningful state updates rather than every internal timing event.
+
+---
+
+# 101. Session UI Update Frequency
+
+The session UI should update at human-useful frequencies.
+
+Do not rebuild:
+
+* device lists
+* mesh visualization
+* navigation
+* static content
+
+for every audio frame or timing measurement.
+
+---
+
+# 102. Mesh Performance
+
+The mesh must remain lightweight.
+
+Avoid:
+
+* particle systems
+* expensive blur
+* GPU-heavy effects
+* unnecessary redraws
+* dozens of animated widgets
+
+It must perform comfortably on supported lower-end Android devices.
+
+---
+
+# 103. Battery Awareness
+
+Decorative animation should reduce or stop when:
+
+* the screen is inactive
+* the room is stable
+* the application is backgrounded
+
+Audio synchronization and capture always take priority over visual effects.
+
+---
+
+# 104. Audio-First UX
+
+SoundMesh is fundamentally a realtime audio application.
+
+Visual effects must never compromise:
+
+* capture stability
+* audio output
+* synchronization
+* CPU
+* battery
+* responsiveness
+
+If an animation conflicts with realtime audio performance, remove the animation.
+
+---
+
+# 105. Error Recovery UX
+
+Recovery should be progressive:
+
+```text
+Detect
+  ↓
+Attempt automatic recovery
+  ↓
+Inform user if needed
+  ↓
+Retry
+  ↓
+Request intervention only if necessary
+```
+
+Transient problems should not unnecessarily interrupt the user.
+
+---
+
+# 106. Notifications / Snackbars
+
+Use snackbars for:
+
+* minor temporary information
+* recoverable warnings
+* successful minor actions
+
+Do not use snackbars for critical session state that must remain visible.
+
+---
+
+# 107. Dialogs
+
+Dialogs should be reserved for:
+
+* destructive actions
+* important decisions
+* critical errors
+* situations requiring explicit user intervention
+
+Do not turn every action into a confirmation dialog.
+
+---
+
+# 108. Destructive Actions
+
+Ending a room may require confirmation.
+
+Example:
+
+> **End this room?**
+> Audio sharing will stop for all connected devices.
+
+```text
+Cancel
+
+End Room
+```
+
+---
+
+# 109. Room Lifecycle UX
+
+Map technical states into human-readable states.
+
+```text
+CREATED
+→ Creating room…
+
+DISCOVERABLE
+→ Waiting for devices…
+
+JOINING
+→ Connecting…
+
+READY
+→ Getting ready…
+
+CAPTURE_PERMISSION_REQUIRED
+→ Audio permission required
+
+CAPTURING
+→ Audio capture ready
+
+STREAMING
+→ Sharing audio
+
+SYNCHRONIZING
+→ Getting everyone in sync…
+
+DEGRADED
+→ Sync quality reduced
+
+RECOVERING
+→ Resynchronizing…
+
+ENDING
+→ Ending room…
+
+CLOSED
+→ Room ended
+
+ERROR
+→ Something went wrong
+```
+
+Internal enum names must never appear in normal production UI.
+
+---
+
+# 110. Sync Quality Presentation
+
+Normal:
+
+```text
+● Synchronized
+```
+
+Degraded:
+
+```text
+● Sync quality reduced
+```
+
+Recovering:
+
+```text
+↻ Resynchronizing…
+```
+
+Failed:
+
+```text
+Couldn't synchronize this device.
+```
+
+---
+
+# 111. No False Precision
+
+Normal UI should not display meaningless precision.
+
+Avoid:
+
+```text
+Synchronization: 98.371%
+```
+
+unless the metric has a clearly defined meaning.
+
+Advanced diagnostics may display measured values with appropriate uncertainty.
+
+---
+
+# 112. Premium Feel Through Restraint
+
+Premium appearance should come from:
+
+* consistent spacing
+* typography
+* controlled color
+* hierarchy
+* smooth transitions
+* alignment
+* whitespace
+* stable components
+
+Not:
+
+* gradients everywhere
+* glassmorphism everywhere
+* huge shadows
+* neon effects
+* excessive animation
+
+---
+
+# 113. Glassmorphism
+
+Glassmorphism is not the default design language.
+
+Translucent or blurred surfaces may be used selectively if performance and readability permit.
+
+The base UI must remain attractive without blur.
+
+---
+
+# 114. Shadows
+
+Shadows should be:
+
+* subtle
+* soft
+* low opacity
+* used primarily for separation
+
+Luminance separation is preferred on dark backgrounds.
+
+---
+
+# 115. Background Treatment
+
+The primary background should remain mostly flat.
+
+Optional subtle tonal variation may be used around major areas.
+
+Do not create animated backgrounds.
+
+---
+
+# 116. Brand Mark
+
+The SoundMesh logo should conceptually represent:
+
+* connected devices
+* sound
+* coordination
+* synchronization
+
+It should work in:
+
+* app icon
+* splash screen
+* header
+* QR presentation
+* GitHub/README branding
+
+The logo must remain recognizable without color.
+
+---
+
+# 117. App Icon
+
+The app icon should be:
+
+* simple
+* high contrast
+* recognizable at small sizes
+* based on the mesh concept
+* compatible with SoundMesh Blue and the dark identity
+
+Avoid text inside the app icon.
+
+---
+
+# 118. Splash Screen
+
+Keep it minimal.
+
+Preferred:
+
+```text
+SoundMesh
+```
+
+with the logo/mesh mark.
+
+Do not create a long animated splash sequence.
+
+---
+
+# 119. Interaction Priority
+
+When multiple actions are available:
+
+```text
+Primary task
+    ↓
+Secondary task
+    ↓
+Supporting information
+    ↓
+Advanced controls
+    ↓
+Diagnostics
+```
+
+Diagnostics must never compete with the primary session action.
+
+---
+
+# 120. MVP User Flow
+
+Complete intended MVP flow:
+
+```text
+Launch
+  ↓
+Home
+  ↓
+Create Room
+  ↓
+Room Created
+  ↓
+Show QR
+  ↓
+Participant Scans
+  ↓
+Connection
+  ↓
+Devices Ready
+  ↓
+Host Grants Audio Capture Permission
+  ↓
+Capture Ready
+  ↓
+Synchronization
+  ↓
+Ready to Share
+  ↓
+Open External Media App
+  ↓
+Play Audio
+  ↓
+SoundMesh Captures Live Audio
+  ↓
+Participants Receive Audio
+  ↓
+Synchronized Audio Output
+  ↓
+Monitor Session
+  ↓
+Recover if Necessary
+  ↓
+End Session / End Room
+```
+
+SoundMesh does not select or control the media being played.
+
+---
+
+# 121. Join Flow
+
+```text
+Home
+  ↓
+Join Room
+  ↓
+Scan QR
+  ↓
+Request Camera Permission if necessary
+  ↓
+QR Validated
+  ↓
+Connect
+  ↓
+Join Handshake
+  ↓
+Device Identified
+  ↓
+Prepare Audio Session
+  ↓
+Calibration
+  ↓
+Ready
+```
+
+The user should not need to see protocol details.
+
+---
+
+# 122. Host Capture Flow
+
+```text
+Room Ready
+  ↓
+Audio Capture Permission
+  ↓
+Permission Granted
+  ↓
+Capture Ready
+  ↓
+Open External Media App
+  ↓
+External App Produces Audio
+  ↓
+SoundMesh Detects Captured Audio
+  ↓
+Live Audio Session Active
+```
+
+---
+
+# 123. Participant Flow
+
+```text
+Join Room
+  ↓
+Connect
+  ↓
+Receive Session Configuration
+  ↓
+Timing Calibration
+  ↓
+Prepare Audio Output
+  ↓
+Fill Buffer
+  ↓
+Wait for Synchronization Target
+  ↓
+Synchronized Output
+```
+
+The participant should experience this as one simple “getting ready” process.
+
+---
+
+# 124. Device State Presentation
+
+Every device may internally have detailed states.
+
+Normal UI should reduce them to:
+
+```text
+Connecting…
+Getting ready…
+Calibrating…
+Ready
+Synchronized
+Degraded
+Recovering…
+Disconnected
+```
+
+Technical state names belong only in diagnostics.
+
+---
+
+# 125. Major Component States
+
+Every major component should consider:
+
+```text
+Default
+Pressed
+Focused
+Disabled
+Loading
+Success
+Warning
+Error
+Selected
+Unavailable
+```
+
+Not every component requires every visual state.
+
+---
+
+# 126. Button States
+
+Primary button:
+
+```text
+Default → Accent
+Pressed → Accent Dark
+Disabled → Muted surface/text
+Loading → Accent + progress indicator
+```
+
+Button state must accurately reflect the underlying operation.
+
+---
+
+# 127. Inputs
+
+Inputs should distinguish:
+
+```text
+Default
+Focused
+Filled
+Error
+Disabled
+```
+
+Focus should use the SoundMesh accent while preserving contrast.
+
+Errors require textual explanation.
+
+---
+
+# 128. QR Scanner UX
+
+Scanner should:
+
+* open quickly
+* clearly show scan region
+* handle camera permission
+* indicate successful detection
+* reject invalid codes gracefully
+
+Invalid QR:
+
+> **That isn't a SoundMesh room code.**
+
+Do not expose parsing errors.
+
+---
+
+# 129. Offline Philosophy
+
+SoundMesh should never imply that Internet access is required for local operation.
+
+If the Internet is unavailable but local connectivity works:
+
+> SoundMesh can continue communicating locally.
+
+Internet availability should not be presented as a prerequisite for the MVP.
+
+---
+
+# 130. Network Problem UX
+
+If the room cannot be reached:
+
+> **Couldn't find the room.**
+
+Supporting explanation:
+
+> Make sure the devices are connected to the same local network.
+
+The interface should guide the user toward the likely cause.
+
+---
+
+# 131. Network Permission UX
+
+If Android requires a relevant permission:
+
+> SoundMesh needs local network access to connect nearby phones.
+
+Do not expose API names or implementation terminology.
+
+---
+
+# 132. Device Naming
+
+Use human-readable names:
+
+```text
+Faraz's Phone
+Mahin's Phone
+Galaxy A52
+Pixel
+```
+
+Technical identifiers remain hidden except in diagnostics.
+
+---
+
+# 133. Device Identity
+
+Device names are presentation identity.
+
+They are not authentication identity.
+
+The UI must never imply that a device name is a security credential.
+
+---
+
+# 134. Security UX
+
+Normal UI should not expose security implementation details.
+
+Room joining should feel effortless.
+
+If host approval is introduced later:
+
+```text
+Mahin wants to join
+
+[ Allow ]
+
+[ Deny ]
+```
+
+Security should be understandable without exposing protocol mechanics.
+
+---
+
+# 135. Room Privacy
+
+Do not expose permanent room credentials in normal UI.
+
+QR codes should contain temporary join information according to the networking specification.
+
+---
+
+# 136. Loading Progress
+
+Progress indicators should reflect actual measurable progress.
+
+If progress cannot be accurately measured, use an indeterminate indicator.
+
+Never fake progress.
+
+---
+
+# 137. Time Perception
+
+The interface should acknowledge actions immediately.
+
+Instead of appearing frozen:
+
+```text
+Preparing…
+```
+
+```text
+Connecting…
+```
+
+```text
+Calibrating…
+```
+
+should appear as soon as appropriate.
+
+---
+
+# 138. Microcopy Rules
+
+Use:
+
+* short sentences
+* human language
+* active voice
+* clear verbs
+* minimal technical terminology
+
+Preferred:
+
+> Getting everyone in sync…
+
+Avoid:
+
+> Synchronization subsystem initialization in progress.
+
+Preferred:
+
+> Couldn't connect to this device.
+
+Avoid:
+
+> Connection establishment procedure failed.
+
+---
+
+# 139. Capitalization
+
+Use sentence case for most UI.
+
+Preferred:
+
+```text
+Create Room
+```
+
+or:
+
+```text
+Create a room
+```
+
+Avoid unnecessary ALL CAPS.
+
+---
+
+# 140. Punctuation
+
+UI labels generally should not end with periods.
+
+Explanatory sentences may use punctuation.
+
+Example:
+
+```text
+Create Room
+```
+
+versus:
+
+> Make sure both phones are on the same network.
+
+---
+
+# 141. Accessibility Language
+
+Instructions should be explicit.
+
+Bad:
+
+```text
+Try again.
+```
+
+Better:
+
+```text
+Try connecting again.
+```
+
+Best where context matters:
+
+```text
+Make sure both phones are on the same network,
+then try connecting again.
+```
+
+---
+
+# 142. Visual Hierarchy of the Room
+
+Prioritize:
+
+```text
+1. Current session state
+2. Primary session action
+3. Synchronization state
+4. Device health
+5. Room identity
+6. Secondary controls
+7. Diagnostics
+```
+
+The room should emphasize what SoundMesh is doing now.
+
+---
+
+# 143. Visual Hierarchy of Home
+
+```text
+1. SoundMesh identity
+2. Core value proposition
+3. Create Room
+4. Join Room
+5. Supporting information
+6. Settings/About
+```
+
+---
+
+# 144. Visual Hierarchy of Diagnostics
+
+```text
+1. Overall health
+2. Synchronization
+3. Device states
+4. Network
+5. Audio capture
+6. Audio output
+7. Detailed measurements
+```
+
+---
+
+# 145. Design Anti-Patterns
+
+AI agents and developers MUST NOT introduce:
+
+* random gradients
+* neon backgrounds
+* excessive glassmorphism
+* excessive rounded cards
+* giant text everywhere
+* emoji as primary UI icons
+* arbitrary colors
+* inconsistent corner radii
+* arbitrary spacing
+* multiple competing accent colors
+* excessive animation
+* permanent bottom navigation
+* unnecessary onboarding
+* fake loading progress
+* fake synchronization metrics
+* technical jargon in primary UI
+* raw error codes in normal UI
+* IP addresses in normal onboarding
+* configuration-heavy first-run flow
+* media-player controls that SoundMesh does not own
+* fake track metadata
+* fake playback progress
+* fake audio-library screens
+* file-transfer progress as a primary UX
+* language implying that SoundMesh selects or controls external media
+
+---
+
+# 146. Design Decision: Blue Identity
+
+The primary SoundMesh brand color is:
+
+```text
+#5B8CFF
+```
+
+Do not replace it without updating the design decision documentation.
+
+---
+
+# 147. Design Decision: Dark-First
+
+SoundMesh MVP is dark-first.
+
+Primary background:
+
+```text
+#0B0D10
+```
+
+A future light theme may be considered separately.
+
+---
+
+# 148. Design Decision: Minimal Navigation
+
+The MVP does not require a permanent multi-tab navigation system.
+
+The primary experience is:
+
+```text
+Home → Room → Active Session
+```
+
+The external media application exists outside SoundMesh's navigation hierarchy.
+
+---
+
+# 149. Design Decision: Diagnostics Are Secondary
+
+Diagnostics are important for development and advanced users but must not dominate normal UX.
+
+---
+
+# 150. Design Decision: Technical Complexity Is Hidden
+
+The interface must not require users to understand:
+
+* clock synchronization
+* network latency
+* jitter buffers
+* audio packetization
+* audio timestamps
+* capture APIs
+* transport protocols
+* drift correction
+* device clocks
+
+unless they intentionally enter diagnostics.
+
+---
+
+# 151. Design Decision: Mesh Is the Visual Language
+
+The connected-device mesh is SoundMesh's primary visual metaphor.
+
+It may appear in:
+
+* room visualization
+* connection states
+* synchronization states
+* branding
+
+It should not become repetitive decoration on every screen.
+
+---
+
+# 152. Design Decision: SoundMesh Is Not a Media Player
+
+SoundMesh does not own:
+
+* media selection
+* media libraries
+* track lists
+* playback controls
+* seeking
+* subtitles
+* playback speed
+* external media state
+
+The external application remains the source of truth for media playback.
+
+---
+
+# 153. Design Decision: Live Audio Is the Primary Data Experience
+
+During an active session, the primary audio experience is:
+
+```text
+External App
+     ↓
+Audio Capture
+     ↓
+Live Audio Stream
+     ↓
+Synchronized Output
+```
+
+The UI must not represent audio as a file being copied between devices.
+
+---
+
+# 154. Design Decision: Performance Before Visual Effects
+
+If a visual effect causes:
+
+* dropped frames
+* excessive GPU usage
+* battery drain
+* audio instability
+* synchronization problems
+
+remove or simplify the effect.
+
+Functional reliability always outranks visual spectacle.
+
+---
+
+# 155. UI/UX Acceptance Criteria
+
+The MVP UI is acceptable only when:
+
+## Navigation
+
+* user can create a room without unnecessary configuration
+* user can join using QR
+* navigation is predictable
+* back behavior is correct
+
+## Visual
+
+* colors are centralized
+* typography uses the documented scale
+* spacing follows the spacing system
+* no arbitrary decorative colors exist
+* SoundMesh Blue is used consistently
+
+## Room
+
+* room identity is obvious
+* device count is visible
+* device status is understandable
+* session state is visible
+* synchronization state is visible
+* primary session action is obvious
+
+## Capture
+
+* capture permission is requested contextually
+* permission state is truthful
+* unsupported sources are clearly explained
+* capture readiness is visible
+* the user understands when to open the external media application
+
+## Active Session
+
+* live audio sharing state is visible
+* synchronization state is visible
+* device health is visible
+* background operation is understandable
+* SoundMesh does not pretend to control external media playback
+
+## Errors
+
+* errors are human-readable
+* recovery actions are provided where possible
+* raw technical details remain secondary
+
+## Accessibility
+
+* important text has adequate contrast
+* touch targets are sufficiently large
+* status is not communicated by color alone
+* screen-reader labels exist
+* increased text sizes do not destroy layout
+* reduced motion is respected
+
+## Performance
+
+* animations do not interfere with audio
+* mesh visualization remains lightweight
+* unnecessary rebuilds are avoided
+* realtime audio remains the highest performance priority
+
+---
+
+# 156. UI/UX Verification
+
+The MVP should be tested on:
+
+* at least one lower-end Android device
+* at least one modern Android device
+* different screen sizes
+* different system text-size settings
+* reduced-motion settings where available
+* portrait orientation
+* network failure states
+* device disconnection
+* synchronization recovery
+* audio capture permission denial
+* unsupported capture sources
+* capture interruption
+* audio route changes
+* background operation
+* foreground-service behavior
+
+iOS is not required for MVP UI verification.
+
+---
+
+# 157. Visual QA Checklist
+
+Before a UI feature is considered complete:
+
+```text
+[ ] Correct background
+[ ] Correct surface hierarchy
+[ ] Correct typography
+[ ] Correct spacing
+[ ] Correct corner radius
+[ ] Correct iconography
+[ ] Correct button states
+[ ] Correct loading state
+[ ] Correct error state
+[ ] Correct capture state
+[ ] Correct session state
+[ ] Correct sync state
+[ ] Correct accessibility labels
+[ ] Correct contrast
+[ ] Correct safe-area handling
+[ ] Correct dynamic text behavior
+[ ] Correct reduced-motion behavior
+[ ] No arbitrary colors
+[ ] No arbitrary spacing
+[ ] No unnecessary animation
+[ ] No technical jargon in primary UX
+[ ] No fake synchronization information
+[ ] No fake playback controls
+[ ] No media-player ownership implied
+```
+
+---
+
+# 158. Relationship to Other Specifications
+
+This document does not define:
+
+* synchronization algorithms
+* networking protocols
+* audio engine implementation
+* Android capture implementation
+* native timing architecture
+
+Those are defined by:
+
+```text
+DOCS/synchronization.md
+DOCS/networking.md
+DOCS/audio.md
+DOCS/architecture.md
+```
+
+This document defines how those systems are **experienced and represented by the user**.
+
+---
+
+# 159. Cross-System Rule
+
+The UI must never contradict underlying engineering state.
+
+For example:
+
+```text
+Networking:
+DISCONNECTED
+
+UI:
+Synchronized
+```
+
+is invalid.
+
+Similarly:
+
+```text
+Capture:
+NOT_CAPTURING
+
+UI:
+Sharing audio
+```
+
+is invalid.
+
+Similarly:
+
+```text
+Synchronization:
+NOT_READY
+
+UI:
+Synchronized
+```
+
+is invalid.
+
+The UI is a representation of actual system state, not an independent simulation.
+
+---
+
+# 160. MVP Screen Inventory
+
+The initial application should contain approximately these primary screens/states:
+
+```text
+1. Home
+2. Create Room
+3. Room — Waiting
+4. QR Display
+5. Join Room
+6. QR Scanner
+7. Room — Devices
+8. Audio Capture Permission
+9. Capture Ready
+10. Waiting for External Audio
+11. Synchronizing
+12. Active Audio Session
+13. Device Details
+14. Diagnostics
+15. Settings
+16. Error / Recovery States
+```
+
+Several should be implemented as states within a screen rather than completely separate routes where appropriate.
+
+There should be no required:
+
+* track-selection screen
+* music library
+* Now Playing screen
+* seek interface
+* SoundMesh-owned playback timeline
+
+---
+
+# 161. Preferred Core Experience
+
+The ideal SoundMesh session should feel like:
+
+```text
+OPEN
+
+SoundMesh
+
+Make your phones
+one speaker.
+
+       Create Room
+
+         Join Room
+```
+
+Then:
+
+```text
+CREATE
+
+Room created.
+
+       ◉
+     /   \
+   📱     📱
+     \   /
+       📱
+
+Waiting for devices…
+```
+
+Then:
+
+```text
+JOIN
+
+Scan the QR.
+
+      [ QR ]
+```
+
+Then:
+
+```text
+CONNECT
+
+3 devices connected.
+
+Getting everyone ready…
+```
+
+Then:
+
+```text
+CAPTURE
+
+Audio capture permission
+
+SoundMesh needs permission
+to share audio from this phone.
+
+[ Allow ]
+```
+
+Then:
+
+```text
+READY
+
+Everyone is ready.
+
+Open your media app
+and play something.
+
+[ Open Media App ]
+```
+
+Then:
+
+```text
+SHARING
+
+● Sharing audio
+
+5 devices synchronized
+```
+
+Then:
+
+```text
+RECOVER
+
+Sync quality reduced.
+
+Resynchronizing…
+```
+
+Then:
+
+```text
 END
-
-
 
 End Room?
 
+Audio sharing will stop
+for all connected devices.
+
+Cancel     End Room
 ```
 
+The user should experience this as one simple process.
 
+---
 
-The user experience should be this simple even though the engineering beneath it is highly sophisticated.
+# 162. Ultimate Design Principle
 
+SoundMesh should create a deliberate contrast.
 
-
-\---
-
-
-
-\# 153. Ultimate Design Principle
-
-
-
-SoundMesh should create a deliberate contrast:
-
-
-
-\### Under the hood
-
-
+## Under the hood
 
 ```text
-
 Distributed systems
-
+Android audio capture
+Live audio transport
 Clock synchronization
-
-Network measurement
-
-Audio scheduling
-
 Latency estimation
-
+Jitter buffering
+Audio scheduling
 Drift correction
-
 Recovery algorithms
-
 Native audio engines
-
 ```
 
-
-
-\### On the screen
-
-
+## On the screen
 
 ```text
-
 Create
-
 Join
-
-Choose
-
+Get ready
 Play
-
 ```
-
-
-
-That contrast is fundamental to the product.
-
-
 
 The engineering should be impressive.
 
-
-
 The interface should make it feel effortless.
 
+---
 
+# 163. Final UX Principle
 
-\---
+> **SoundMesh should feel like the complexity disappeared.**
 
-
-
-\# 154. Final UI/UX Principle
-
-
-
-> \*\*SoundMesh should feel like the complexity disappeared.\*\*
-
-
-
-A user should never think:
-
-
+The user should not think:
 
 > “How are these phones synchronizing?”
 
-
-
 They should think:
 
-
-
-> \*\*“Holy shit, they're all playing together.”\*\*
-
-
+> **“Holy shit, they're all playing together.”**
 
 That moment is the product.
 
+The interface exists to reach that moment as quickly, clearly, reliably, and beautifully as possible.
 
+---
 
-The interface exists to get the user to that moment as quickly, clearly, reliably, and beautifully as possible.
-
-
-
-\---
-
-
-
-\# 155. Definition of Done
-
-
+# 164. Definition of Done
 
 `ui-ux.md` is considered implemented when:
 
+* the documented color system is centralized
+* typography is centralized
+* spacing is tokenized
+* major screens follow the specified hierarchy
+* room/device states have explicit UI representations
+* capture states have explicit UI representations
+* synchronization states have clear user-facing language
+* active audio-session UI is implemented
+* external-media handoff UX is implemented
+* error and recovery states exist
+* accessibility requirements are addressed
+* responsive behavior is implemented
+* animations are purposeful and lightweight
+* technical state is accurately represented
+* no SoundMesh-owned media-player model remains
+* no file-distribution UX is required
+* no major UI decisions are left to arbitrary implementation preference
 
-
-\* the documented color system is centralized
-
-\* typography is centralized
-
-\* spacing is tokenized
-
-\* major screens follow the specified hierarchy
-
-\* room/device states have explicit UI representations
-
-\* synchronization states have clear user-facing language
-
-\* playback controls are implemented
-
-\* error and recovery states exist
-
-\* accessibility requirements are addressed
-
-\* responsive behavior is implemented
-
-\* animations are purposeful and lightweight
-
-\* technical state is accurately represented
-
-\* no major UI decisions are left to arbitrary implementation preference
-
-
-
-\*\*Source of truth:\*\* This document governs SoundMesh's visual and interaction design unless superseded by an explicit documented decision.
-
-
-
+**Source of truth:** This document governs SoundMesh's visual and interaction design unless superseded by an explicit documented decision.

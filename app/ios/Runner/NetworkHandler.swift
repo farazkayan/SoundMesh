@@ -8,6 +8,7 @@ internal final class FrameDecoder {
     private var payloadBuffer = Data()
     private var payloadBytesRead = 0
     private var expectedPayloadLength: Int?
+    private var skipBytesRemaining = 0
     private let onFrameStarted: () -> Void
     private let onFrameCompleted: (Int) -> Void
     private let onInvalidLength: (Int) -> Void
@@ -31,6 +32,15 @@ internal final class FrameDecoder {
         var messages: [String] = []
 
         while !remaining.isEmpty {
+            if skipBytesRemaining > 0 {
+                // Discard the payload declared by an oversized frame header so
+                // the byte stream stays in sync instead of its payload bytes
+                // being misparsed as new frame headers.
+                let toSkip = min(skipBytesRemaining, remaining.count)
+                remaining.removeFirst(toSkip)
+                skipBytesRemaining -= toSkip
+                continue
+            }
             if let payloadLength = expectedPayloadLength {
                 let bytesToRead = min(payloadLength - payloadBytesRead, remaining.count)
                 payloadBuffer.append(Data(remaining.prefix(bytesToRead)))
@@ -54,8 +64,16 @@ internal final class FrameDecoder {
 
                 if headerBuffer.count == frameLength {
                     let payloadLength = readFrameLength()
-                    if payloadLength <= 0 || payloadLength > maxPayloadLength {
+                    if payloadLength == 0 {
+                        // An empty frame is fully consumed by its header; the
+                        // next byte is a new frame header, so recovery is sound.
                         onInvalidLength(payloadLength)
+                        reset()
+                        continue
+                    }
+                    if payloadLength > maxPayloadLength {
+                        onInvalidLength(payloadLength)
+                        skipBytesRemaining = payloadLength
                         reset()
                         continue
                     }
@@ -73,6 +91,7 @@ internal final class FrameDecoder {
         payloadBuffer.removeAll(keepingCapacity: true)
         payloadBytesRead = 0
         expectedPayloadLength = nil
+        skipBytesRemaining = 0
     }
 
     private func readFrameLength() -> Int {
@@ -92,14 +111,23 @@ class NetworkHandler: NetworkHostPlatform {
 
     private var flutterApi: NetworkFlutterApi?
     private var binaryMessenger: FlutterBinaryMessenger?
+    // Bumped by stopAll(); notifications from cancelled listeners/connections
+    // of a previous attempt are suppressed so a stale "disconnected" cannot
+    // land after a new attempt's "connecting".
+    private var stateGeneration = 0
 
     func setFlutterApi(_ api: NetworkFlutterApi) {
         self.flutterApi = api
     }
 
     func startHosting(port: Int64) throws -> Bool {
+        guard port >= 1 && port <= Int64(UInt16.max) else {
+            throw PigeonError(code: "INVALID_PORT", message: "Port must be between 1 and 65535", details: nil)
+        }
+        print("[HostLifecycle] startHosting called, port=\(port)")
         stopAll()
         notifyState("connecting")
+        let generation = stateGeneration
 
         do {
             let parameters = NWParameters.tcp
@@ -109,29 +137,41 @@ class NetworkHandler: NetworkHostPlatform {
             listener = try NWListener(using: parameters, on: nwPort)
 
             listener?.stateUpdateHandler = { [weak self] state in
+                guard let self, self.stateGeneration == generation else { 
+                    print("[HostLifecycle] Listener stateUpdateHandler: superseded, gen=\(generation), currentGen=\(self?.stateGeneration ?? -1)")
+                    return 
+                }
+                print("[HostLifecycle] Listener state change: \(state), gen=\(generation)")
                 switch state {
                 case .ready:
-                    self?.notifyState("connected")
+                    self.notifyState("connected")
                 case .failed(let error):
                     print("Listener failed: \(error)")
-                    self?.notifyState("failed")
+                    self.notifyState("failed")
                 case .cancelled:
-                    self?.notifyState("disconnected")
+                    self.notifyState("disconnected")
                 default:
                     break
                 }
             }
 
             listener?.newConnectionHandler = { [weak self] newConnection in
-                if self?.connection == nil {
-                    self?.pendingConnection = newConnection
-                    self?.acceptConnection()
+                guard let self, self.stateGeneration == generation else {
+                    print("[HostLifecycle] newConnectionHandler: superseded, gen=\(generation)")
+                    newConnection.cancel()
+                    return
+                }
+                print("[HostLifecycle] newConnectionHandler: received connection, gen=\(generation)")
+                if self.connection == nil {
+                    self.pendingConnection = newConnection
+                    self.acceptConnection()
                 } else {
                     newConnection.cancel()
                 }
             }
 
             listener?.start(queue: queue)
+            print("[HostLifecycle] Listener started on port \(port), gen=\(generation)")
             return true
         } catch {
             print("Failed to start hosting: \(error)")
@@ -144,17 +184,24 @@ class NetworkHandler: NetworkHostPlatform {
         guard let conn = pendingConnection else { return }
         connection = conn
         pendingConnection = nil
+        let generation = stateGeneration
+        print("[HostLifecycle] acceptConnection: accepted connection, gen=\(generation)")
 
         connection?.stateUpdateHandler = { [weak self] state in
+            guard let self, self.stateGeneration == generation else { 
+                print("[HostLifecycle] Connection stateUpdateHandler: superseded, gen=\(generation)")
+                return 
+            }
+            print("[HostLifecycle] Connection state change: \(state), gen=\(generation)")
             switch state {
             case .ready:
-                self?.notifyState("connected")
-                self?.startReading()
+                self.notifyState("connected")
+                self.startReading()
             case .failed(let error):
                 print("Connection failed: \(error)")
-                self?.notifyState("failed")
+                self.notifyState("failed")
             case .cancelled:
-                self?.notifyState("disconnected")
+                self.notifyState("disconnected")
             default:
                 break
             }
@@ -164,8 +211,13 @@ class NetworkHandler: NetworkHostPlatform {
     }
 
     func connectToHost(ipAddress: String, port: Int64) throws -> Bool {
+        guard port >= 1 && port <= Int64(UInt16.max) else {
+            throw PigeonError(code: "INVALID_PORT", message: "Port must be between 1 and 65535", details: nil)
+        }
+        print("[HostLifecycle] connectToHost called, ip=\(ipAddress), port=\(port)")
         stopAll()
         notifyState("connecting")
+        let generation = stateGeneration
 
         let host = NWEndpoint.Host(ipAddress)
         let nwPort = NWEndpoint.Port(integerLiteral: UInt16(port))
@@ -173,15 +225,20 @@ class NetworkHandler: NetworkHostPlatform {
         connection = NWConnection(host: host, port: nwPort, using: .tcp)
 
         connection?.stateUpdateHandler = { [weak self] state in
+            guard let self, self.stateGeneration == generation else { 
+                print("[HostLifecycle] Connect stateUpdateHandler: superseded, gen=\(generation)")
+                return 
+            }
+            print("[HostLifecycle] Connect state change: \(state), gen=\(generation)")
             switch state {
             case .ready:
-                self?.notifyState("connected")
-                self?.startReading()
+                self.notifyState("connected")
+                self.startReading()
             case .failed(let error):
                 print("Connection failed: \(error)")
-                self?.notifyState("failed")
+                self.notifyState("failed")
             case .cancelled:
-                self?.notifyState("disconnected")
+                self.notifyState("disconnected")
             default:
                 break
             }
@@ -208,6 +265,21 @@ class NetworkHandler: NetworkHostPlatform {
         })
 
         return true
+    }
+
+    func sendChatMessage(text: String) throws -> Bool {
+        guard let conn = connection, conn.state == .ready else { return false }
+        
+        // The actual ProtocolMessage.chat construction happens in Dart
+        // This is a pass-through for pre-encoded messages from Dart
+        return try sendMessage(message: text)
+    }
+
+    func sendProtocolMessage(message: String) throws -> Bool {
+        guard let conn = connection, conn.state == .ready else { return false }
+        
+        // Pass through raw protocol message (already JSON encoded)
+        return try sendMessage(message: message)
     }
 
     func disconnect() throws {
@@ -255,6 +327,7 @@ class NetworkHandler: NetworkHostPlatform {
 
     private func startReading() {
         guard let conn = connection, conn.state == .ready, !isReading else { return }
+        print("[HostLifecycle] startReading: starting reader, readGeneration=\(readGeneration + 1)")
 
         readGeneration += 1
         let generation = readGeneration
@@ -275,6 +348,7 @@ class NetworkHandler: NetworkHostPlatform {
 
     private func readNextChunk(_ conn: NWConnection, generation: Int) {
         guard isReading, readGeneration == generation, connection === conn, conn.state == .ready else {
+            print("[HostLifecycle] readNextChunk: guard failed, isReading=\(isReading), readGeneration=\(readGeneration), generation=\(generation), connection==conn=\(connection === conn), conn.state=\(conn.state)")
             return
         }
 
@@ -283,6 +357,7 @@ class NetworkHandler: NetworkHostPlatform {
                   self.isReading,
                   self.readGeneration == generation,
                   self.connection === conn else {
+                print("[HostLifecycle] readNextChunk completion: guard failed")
                 return
             }
 
@@ -314,13 +389,20 @@ class NetworkHandler: NetworkHostPlatform {
     }
 
     private func finishReading(generation: Int) {
-        guard readGeneration == generation else { return }
+        guard readGeneration == generation else { 
+            print("[HostLifecycle] finishReading: superseded, gen=\(generation), currentGen=\(readGeneration)")
+            return 
+        }
+        print("[HostLifecycle] finishReading: completed, gen=\(generation)")
         isReading = false
         frameDecoder = nil
         print("NetworkHandler: Resetting frame state: headerBytesRead=0, payloadBytesRead=0")
     }
 
     private func stopAll() {
+        print("[HostLifecycle] stopAll() called, current stateGeneration=\(stateGeneration)")
+        stateGeneration += 1
+        print("[HostLifecycle] stopAll: incremented stateGeneration to \(stateGeneration)")
         listener?.cancel()
         listener = nil
         connection?.cancel()
@@ -348,6 +430,7 @@ class NetworkHandler: NetworkHostPlatform {
     }
 
     private func notifyState(_ state: String) {
+        print("[HostLifecycle] notifyState(\(state)) called, stateGeneration=\(stateGeneration)")
         guard let api = flutterApi else { return }
         DispatchQueue.main.async {
             Task {

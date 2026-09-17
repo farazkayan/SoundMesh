@@ -1320,6 +1320,15 @@ Architectural uncertainty must not be silently resolved.
 
 ```
 
+## Platform Scope Exception (added per decisions.md entry above)
+
+iOS and Android remain first-class targets for all SoundMesh systems
+EXCEPT audio-source capture. Audio-source capture (the host capturing
+system/other-app audio to distribute) is ANDROID-ONLY, due to iOS
+platform sandboxing preventing general-purpose background audio capture
+from other apps. iOS devices remain fully first-class as PARTICIPANTS
+that receive and play synchronized audio — this exception applies only
+to the HOST/capture role, not to iOS's role in the system generally.
 
 
 \---

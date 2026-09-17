@@ -1,3646 +1,2476 @@
-\# SoundMesh — AI Engineering Context
+# SoundMesh — AI Engineering Context
 
+**Document Status:** REQUIRED
+**Document Type:** AI Developer Context / Project Context
+**Audience:** AI coding agents, AI-assisted developers, maintainers
+**Primary Authority:** High-level project context and AI orientation
+**Detailed Specifications:** See `DOCS/*.md`
+**Repository Instructions:** See `AGENTS.md`
 
+---
 
-\*\*Document Status:\*\* REQUIRED
+# 1. Purpose
 
-\*\*Document Type:\*\* AI Developer Context / Project Context
+This document provides the minimum high-level context an AI coding agent must understand before modifying SoundMesh.
 
-\*\*Audience:\*\* AI coding agents, AI-assisted developers, maintainers
-
-\*\*Primary Authority:\*\* High-level project context and AI orientation
-
-\*\*Detailed Specifications:\*\* See `DOCS/\*.md`
-
-\*\*Repository Instructions:\*\* See `AGENTS.md`
-
-
-
-\---
-
-
-
-\# 1. Purpose
-
-
-
-This document provides the minimum high-level context an AI coding agent should understand before modifying SoundMesh.
-
-
-
-It exists because AI agents can produce technically valid code that is nevertheless incorrect for the project's architecture.
-
-
+It exists because technically valid code can still be architecturally incorrect.
 
 An agent must understand:
 
-
-
-\* what SoundMesh is
-
-\* what problem it solves
-
-\* what matters most
-
-\* how the system is structured
-
-\* which decisions are already settled
-
-\* which areas are experimental
-
-\* which areas are unknown
-
-\* where different responsibilities belong
-
-\* how success is measured
-
-
+* what SoundMesh is
+* what problem it solves
+* what the MVP actually does
+* what is already decided
+* what remains experimental
+* where responsibilities belong
+* what must not be built
+* how success is measured
 
 This document does not replace the detailed specifications.
 
+It provides the mental model required to interpret them correctly.
 
+---
 
-It provides the mental model required to use them correctly.
+# 2. What Is SoundMesh?
 
+SoundMesh is an Android-first local application that allows multiple nearby phones to behave as a synchronized distributed speaker system.
 
+The core product idea is:
 
-\---
+> **Turn nearby phones into one synchronized speaker.**
 
+SoundMesh does not provide a media library or replace the user's media applications.
 
+Instead, the user's normal media application remains responsible for playing media.
 
-\# 2. What Is SoundMesh?
+SoundMesh captures eligible audio from the host device, distributes that live audio to participating devices, and coordinates their audio output.
 
+---
 
+# 3. The Actual Product Model
 
-SoundMesh is a mobile application that allows multiple nearby phones to coordinate audio playback so that they behave like one synchronized speaker system.
+The intended user experience is:
 
+```text
+Open SoundMesh
+      ↓
+Create or join a room
+      ↓
+Connect nearby devices
+      ↓
+Allow audio capture
+      ↓
+Open a normal media app
+      ↓
+Play media normally
+      ↓
+SoundMesh captures the host's audio
+      ↓
+SoundMesh distributes the live audio
+      ↓
+Participant phones output it together
+```
 
+The external media application remains the source of truth for media playback.
 
-The core idea is:
+SoundMesh does not become the media player.
 
+---
 
+# 4. What SoundMesh Is NOT
 
-> \*\*Turn nearby phones into one synchronized speaker.\*\*
+AI agents must understand these boundaries.
 
+SoundMesh is **not**:
 
+* a music player
+* a video player
+* a media library
+* a playlist manager
+* a file-sharing application
+* an audio downloader
+* a cloud music service
+* a media synchronization service based on shared files
 
-The application is designed for situations where people have multiple phones but do not have a physical speaker available.
+SoundMesh does not own:
 
+* song selection
+* video selection
+* media metadata
+* subtitles
+* seeking
+* playback position inside the external media application
+* play/pause controls for the external application
+* media decoding as a general-purpose player
 
+The user's external media application owns those responsibilities.
 
-\---
+---
 
-
-
-\# 3. The Core Problem
-
-
+# 5. Core Technical Problem
 
 Playing audio on one phone is easy.
 
-
-
-Playing the same audio on multiple phones is also easy.
-
-
+Streaming audio between phones is also possible.
 
 The difficult problem is:
 
+> **Making independent physical devices produce sufficiently synchronized audio.**
 
+Each device has its own:
 
-> \*\*Making independent physical devices produce sufficiently synchronized audio.\*\*
+* processor
+* operating-system scheduling
+* monotonic clock
+* audio hardware
+* output pipeline
+* speaker
+* network conditions
+* audio latency
 
+SoundMesh must coordinate these independent systems.
 
+The goal is not merely to synchronize application state.
 
-Each phone has its own:
+The goal is to synchronize **actual sound output**.
 
+---
 
+# 6. Primary Engineering Challenge
 
-\* processor
+The highest-priority technical question is:
 
-\* operating system
+> **Can SoundMesh capture eligible external-app audio on Android, transport it live over a local network, and produce sufficiently synchronized physical audio across multiple heterogeneous phones?**
 
-\* clock
+Everything else is secondary until this is proven.
 
-\* audio hardware
+A beautiful interface does not compensate for broken audio synchronization.
 
-\* audio pipeline
+A successful network connection does not prove synchronized sound.
 
-\* speaker
+A reported clock offset does not prove synchronized speakers.
 
-\* network behavior
+A successful demo on one pair of devices does not prove scalability.
 
-\* latency characteristics
+---
 
+# 7. Core Engineering Principle
 
+SoundMesh follows:
 
-SoundMesh exists to coordinate those independent systems.
+> **Prove the hardest technical assumption first, then build the product around measured evidence.**
 
-
-
-\---
-
-
-
-\# 4. What Makes SoundMesh Technically Interesting?
-
-
-
-The basic product concept is not new.
-
-
-
-Similar products have existed.
-
-
-
-Therefore SoundMesh must not depend on novelty of the statement:
-
-
-
-> “Multiple phones can play audio together.”
-
-
-
-The engineering differentiation is execution quality.
-
-
-
-Important areas include:
-
-
-
-\* automatic calibration
-
-\* accurate timing
-
-\* scheduled playback
-
-\* clock relationship estimation
-
-\* drift detection
-
-\* drift correction
-
-\* heterogeneous-device support
-
-\* local-first operation
-
-\* resilient joining
-
-\* recovery
-
-\* synchronization diagnostics
-
-\* measurable performance
-
-
-
-\---
-
-
-
-\# 5. Primary Engineering Challenge
-
-
-
-The most important technical question is:
-
-
-
-> \*\*Can SoundMesh reliably synchronize audio across multiple heterogeneous physical phones to a perceptually coherent level?\*\*
-
-
-
-Everything else is secondary to proving this.
-
-
-
-A beautiful UI does not compensate for poor synchronization.
-
-
-
-A successful network connection does not prove synchronization.
-
-
-
-A low reported timing error does not automatically prove low physical acoustic error.
-
-
-
-\---
-
-
-
-\# 6. Core Engineering Principle
-
-
-
-The project follows:
-
-
-
-> \*\*Prove the hardest technical assumption first, then build the product around what the evidence shows.\*\*
-
-
-
-Do not spend the majority of development time on:
-
-
-
-\* animations
-
-\* settings
-
-\* social features
-
-\* cloud systems
-
-\* playlists
-
-\* accounts
-
-
-
-before the core synchronization system works.
-
-
-
-\---
-
-
-
-\# 7. Product Model
-
-
-
-The application uses a room-based model.
-
-
-
-Conceptually:
-
-
+Development should prioritize:
 
 ```text
-
-Host
-
-&#x20;├── Participant
-
-&#x20;├── Participant
-
-&#x20;├── Participant
-
-&#x20;└── Participant
-
+Capture feasibility
+        ↓
+Live audio transport
+        ↓
+Native audio output
+        ↓
+End-to-end pipeline
+        ↓
+Clock synchronization
+        ↓
+Audio timing calibration
+        ↓
+Two-device synchronization
+        ↓
+Drift correction
+        ↓
+Multi-device scaling
+        ↓
+Recovery
+        ↓
+Product UX
+        ↓
+Polish
 ```
 
+Do not spend the majority of development time on secondary features before the core audio system works.
 
+---
 
-The host coordinates the room.
+# 8. Platform Strategy
 
+The MVP is:
 
-
-Participants join the room and synchronize with the session.
-
-
-
-The host is not necessarily a continuous audio-streaming server.
-
-
-
-\---
-
-
-
-\# 8. Platform Strategy
-
-
-
-SoundMesh targets:
-
-
-
-\* Android
-
-\* iOS
-
-
+> **Android-only.**
 
 The primary application framework is:
 
+> **Flutter.**
 
+Android is required because the MVP depends on Android platform capabilities for capturing eligible external application audio.
 
-> \*\*Flutter\*\*
+iOS is not an active MVP platform requirement.
 
+Future iOS support may be investigated separately if a technically valid architecture becomes available.
 
+AI agents must not introduce iOS-specific MVP abstractions merely to preserve theoretical cross-platform parity.
 
-Flutter provides:
+---
 
+# 9. Android External Audio Capture
 
-
-\* UI
-
-\* navigation
-
-\* high-level application state
-
-\* user interaction
-
-\* cross-platform presentation
-
-
-
-Native Android/iOS code provides platform-specific realtime capabilities.
-
-
-
-\---
-
-
-
-\# 9. Flutter / Native Boundary
-
-
-
-The architecture is:
-
-
-
-```text
-
-Flutter
-
-&#x20;  │
-
-&#x20;  │ typed platform interface
-
-&#x20;  ↓
-
-Native Android / iOS
-
-&#x20;  │
-
-&#x20;  ├── Audio
-
-&#x20;  ├── Timing
-
-&#x20;  └── Networking
-
-```
-
-
-
-Flutter should not be treated as the realtime audio engine.
-
-
-
-Timing-critical operations should remain as close to the native platform APIs as practical.
-
-
-
-Pigeon is the preferred mechanism for strongly typed platform APIs where appropriate.
-
-
-
-\---
-
-
-
-\# 10. Realtime Boundary Rule
-
-
-
-Do not send high-frequency realtime audio events through Flutter unless there is a compelling technical reason.
-
-
-
-Bad conceptual architecture:
-
-
-
-```text
-
-Native audio callback
-
-&#x20;↓
-
-Flutter
-
-&#x20;↓
-
-Dart
-
-&#x20;↓
-
-Widget rebuild
-
-&#x20;↓
-
-Native audio
-
-```
-
-
-
-Preferred:
-
-
-
-```text
-
-Native realtime subsystem
-
-&#x20;↓
-
-Internal processing
-
-&#x20;↓
-
-Aggregated state/measurements
-
-&#x20;↓
-
-Flutter
-
-&#x20;↓
-
-UI
-
-```
-
-
-
-Flutter should observe the system rather than control every realtime event.
-
-
-
-\---
-
-
-
-\# 11. Networking Model
-
-
-
-SoundMesh is:
-
-
-
-> \*\*Local-first.\*\*
-
-
-
-Normal playback should not require Internet access.
-
-
-
-Preferred MVP environments:
-
-
-
-\* local Wi-Fi
-
-\* phone hotspot/local network
-
-
-
-The Internet should not become a hidden dependency.
-
-
-
-\---
-
-
-
-\# 12. Preferred Networking Architecture
-
-
+The host captures eligible audio from another Android application using Android's supported audio playback capture mechanisms.
 
 Conceptually:
 
-
-
 ```text
-
-&#x20;            Local Network
-
-
-
-Host ─────────────────── Participant
-
-&#x20; │                           │
-
-&#x20; ├────────────────────────── Participant
-
-&#x20; │                           │
-
-&#x20; └────────────────────────── Participant
-
+External Media App
+        ↓
+Android Audio Playback Capture
+        ↓
+Captured Audio Frames
+        ↓
+SoundMesh
 ```
 
+Capture may require:
 
+* user-granted MediaProjection permission
+* appropriate Android permissions
+* a compatible foreground-service lifecycle
+* a source application that permits capture
 
-The exact physical network topology may vary.
+Not every external application is guaranteed to be captureable.
 
+Source applications may explicitly prevent audio playback capture.
 
+Therefore capture compatibility is a runtime condition, not a universal assumption.
 
-The application should abstract the transport from the higher-level room protocol.
+---
 
+# 10. Capture Is a First-Class Subsystem
 
+Capture has explicit states.
 
-\---
-
-
-
-\# 13. QR-First Joining
-
-
-
-The intended onboarding path is:
-
-
+Conceptually:
 
 ```text
+UNAVAILABLE
+     ↓
+PERMISSION_REQUIRED
+     ↓
+CAPTURING
+     ↓
+STREAMING
+```
 
+It may also transition to:
+
+```text
+INTERRUPTED
+DEGRADED
+ERROR
+STOPPED
+```
+
+Important failure cases include:
+
+* permission denied
+* MediaProjection revoked
+* source application refuses capture
+* capture becomes unavailable
+* capture is interrupted
+* unsupported capture format
+* audio route changes
+* operating-system restrictions
+* foreground-service failure
+
+AI agents must represent these conditions honestly.
+
+---
+
+# 11. Live Audio Pipeline
+
+The authoritative audio architecture is:
+
+```text
+External Media App
+        ↓
+Android AudioPlaybackCapture
+        ↓
+Captured Audio Frames
+        ↓
+Timestamp + Sequence Number
+        ↓
+Packetization
+        ↓
+Local Audio Transport
+        ↓
+Participant Jitter Buffer
+        ↓
+Shared Timeline
+        ↓
+Scheduled Native Audio Output
+        ↓
+Participant Speaker
+```
+
+The host's external media application continues playing its own audio.
+
+This creates a critical distinction between:
+
+```text
+Host external-app output
+```
+
+and:
+
+```text
+Captured host audio
+        ↓
+Network
+        ↓
+Participant output
+```
+
+Their latency paths may differ.
+
+This must be measured.
+
+---
+
+# 12. Host Output Latency
+
+The host's direct external-app output and a participant's replayed output do not necessarily have identical latency.
+
+Conceptually:
+
+```text
 Host:
 
-Create Room
-
-&#x20;↓
-
-Display QR
-
+External App
+    ↓
+Host Audio Output
 
 
 Participant:
 
-Join Room
-
-&#x20;↓
-
-Scan QR
-
-&#x20;↓
-
-Connect
-
+External App
+    ↓
+Capture
+    ↓
+Network
+    ↓
+Jitter Buffer
+    ↓
+Scheduled Output
+    ↓
+Participant Speaker
 ```
 
+The host therefore cannot automatically be treated as having the same acoustic timing as participants.
 
+SoundMesh must measure or otherwise account for the relevant capture, transport, buffering, and output timing.
 
-Users should not normally need to enter:
+The exact host-output strategy remains an engineering question until validated experimentally.
 
+An AI agent must not silently assume that host direct output and participant output have identical latency.
 
+---
 
-\* IP addresses
+# 13. Host and Participant Model
 
-\* ports
-
-\* technical connection parameters
-
-
-
-manually.
-
-
-
-\---
-
-
-
-\# 14. QR Security Principle
-
-
-
-QR payloads may contain temporary bootstrap information.
-
-
-
-They must not contain:
-
-
-
-\* permanent credentials
-
-\* long-lived secrets
-
-\* private keys
-
-\* unnecessary personal information
-
-\* audio data
-
-
-
-Short-lived join authorization is preferred.
-
-
-
-\---
-
-
-
-\# 15. IP Address Is Not Identity
-
-
-
-An IP address represents a network location.
-
-
-
-It must not be treated as a permanent device identity.
-
-
-
-SoundMesh should use explicit identifiers for:
-
-
-
-\* room
-
-\* session
-
-\* participant/device
-
-
-
-\---
-
-
-
-\# 16. Audio Architecture
-
-
-
-The preferred architecture is:
-
-
+SoundMesh uses a host-participant room model.
 
 ```text
-
-Host selects audio
-
-&#x20;      ↓
-
-Audio distributed to participants
-
-&#x20;      ↓
-
-Each device stores/prepares local copy
-
-&#x20;      ↓
-
-Each device schedules local playback
-
-&#x20;      ↓
-
-Synchronization maintained
-
+                    Host
+                     │
+          ┌──────────┼──────────┐
+          ↓          ↓          ↓
+     Participant  Participant  Participant
 ```
 
+The host coordinates:
 
+* room state
+* session state
+* stream configuration
+* session generation
+* synchronization targets
+* participant coordination
 
-This is preferred over continuously streaming decoded audio from the host.
+The host is authoritative for room/session coordination.
 
+The host is **not automatically assumed to be the physical audio timing reference**.
 
+Physical output timing must be measured.
 
-\---
+---
 
+# 14. Flutter / Native Boundary
 
-
-\# 17. Why Audio Is Distributed First
-
-
-
-If every device already has the audio asset, the network does not need to continuously deliver the audio during playback.
-
-
-
-The system instead needs to coordinate:
-
-
-
-\* when playback starts
-
-\* where playback is
-
-\* how devices drift
-
-\* how devices recover
-
-
-
-This reduces the synchronization system's dependence on continuous network streaming.
-
-
-
-\---
-
-
-
-\# 18. Audio Integrity
-
-
-
-A participant must not assume that a received audio file is correct.
-
-
-
-The asset should be verified using a content hash or equivalent integrity mechanism.
-
-
-
-Conceptually:
-
-
+The architecture is:
 
 ```text
-
-Transfer
-
-&#x20;↓
-
-Hash verification
-
-&#x20;↓
-
-Valid
-
-&#x20;↓
-
-Prepare
-
+Flutter
+   │
+   │ Typed platform interface
+   ↓
+Native Android
+   │
+   ├── Audio Capture
+   ├── Audio Transport
+   ├── Jitter Buffer
+   ├── Audio Output
+   ├── Timing
+   └── Realtime Networking
 ```
 
-
-
-If verification fails:
-
-
-
-```text
-
-Transfer
-
-&#x20;↓
-
-Hash mismatch
-
-&#x20;↓
-
-Reject / recover
-
-```
-
-
-
-\---
-
-
-
-\# 19. Audio Preparation
-
-
-
-A device is not READY merely because it possesses an audio file.
-
-
-
-Preparation should include:
-
-
-
-\* asset validation
-
-\* integrity verification
-
-\* decoder availability
-
-\* audio engine initialization
-
-\* required buffering
-
-\* playback readiness
-
-\* synchronization readiness
-
-
-
-\---
-
-
-
-\# 20. Local Playback
-
-
-
-Each participant should ideally play its local audio asset through its native audio system.
-
-
-
-The native layer is responsible for timing-sensitive playback operations.
-
-
-
-Flutter is responsible for presenting the resulting state.
-
-
-
-\---
-
-
-
-\# 21. Synchronization Mental Model
-
-
-
-The most important concept an AI agent must understand is:
-
-
-
-> \*\*SoundMesh is a distributed timing system.\*\*
-
-
-
-There is no single magical global clock that every phone automatically shares with perfect accuracy.
-
-
-
-Each phone has its own timing system.
-
-
-
-SoundMesh estimates relationships between them.
-
-
-
-\---
-
-
-
-\# 22. Shared Logical Timeline
-
-
-
-SoundMesh creates a shared logical playback timeline.
-
-
-
-Each participant maps its local timing system to that timeline.
-
-
-
-Conceptually:
-
-
-
-```text
-
-Host clock
-
-&#x20;    │
-
-&#x20;    ├── shared timeline
-
-&#x20;    │
-
-Participant A clock
-
-&#x20;    │
-
-Participant B clock
-
-&#x20;    │
-
-Participant C clock
-
-```
-
-
-
-The goal is not to make physical clocks identical.
-
-
-
-The goal is to coordinate playback events.
-
-
-
-\---
-
-
-
-\# 23. Monotonic Time
-
-
-
-Synchronization calculations should use monotonic timing sources where available.
-
-
-
-Do not rely exclusively on wall-clock time.
-
-
-
-Wall clocks may change because of:
-
-
-
-\* system synchronization
-
-\* user adjustments
-
-\* timezone changes
-
-\* operating-system corrections
-
-
-
-Elapsed-time synchronization requires stable timing references.
-
-
-
-\---
-
-
-
-\# 24. Timestamp Exchange
-
-
-
-A conceptual exchange is:
-
-
-
-```text
-
-Participant → Host: t1
-
-Host receives:    t2
-
-Host → Participant: t3
-
-Participant receives: t4
-
-```
-
-
-
-The system can estimate clock relationship and RTT from these measurements under the documented assumptions.
-
-
-
-The exact implementation must follow `synchronization.md`.
-
-
-
-\---
-
-
-
-\# 25. RTT Is Not Audio Latency
-
-
-
-This distinction is critical.
-
-
-
-These are different concepts:
-
-
-
-```text
-
-Network RTT
-
-Clock offset
-
-Network one-way delay
-
-Audio preparation latency
-
-Audio output latency
-
-Speaker latency
-
-```
-
-
-
-Do not substitute one measurement for another.
-
-
-
-For example:
-
-
-
-> Low RTT does not automatically mean low speaker latency.
-
-
-
-\---
-
-
-
-\# 26. Calibration
-
-
-
-Before synchronized playback, participants should measure the timing relationship.
-
-
-
-Conceptual lifecycle:
-
-
-
-```text
-
-Connect
-
-&#x20;↓
-
-Measure
-
-&#x20;↓
-
-Estimate
-
-&#x20;↓
-
-Reject outliers
-
-&#x20;↓
-
-Determine uncertainty
-
-&#x20;↓
-
-Calibrated
-
-```
-
-
-
-Calibration must provide a confidence/quality assessment.
-
-
-
-\---
-
-
-
-\# 27. Scheduled Playback
-
-
-
-SoundMesh must schedule playback against a future target.
-
-
+Flutter owns:
+
+* UI
+* navigation
+* high-level application state
+* room/session presentation
+* user interaction
+* aggregated diagnostics
+
+Native Android owns timing-sensitive operations including:
+
+* MediaProjection
+* AudioPlaybackCapture
+* foreground service
+* capture buffers
+* audio packetization
+* high-frequency audio transport
+* jitter buffering
+* native audio output
+* output scheduling
+* timing measurements
+* realtime audio processing
+
+Pigeon or another strongly typed platform interface may be used where appropriate.
+
+---
+
+# 15. Realtime Boundary Rule
+
+Do not send every audio frame through Flutter.
 
 Bad:
 
-
-
 ```text
-
-PLAY NOW
-
+Native Audio Callback
+        ↓
+Flutter
+        ↓
+Dart
+        ↓
+Widget
+        ↓
+Native Audio
 ```
-
-
-
-Why?
-
-
-
-Because different devices receive the command at different times.
-
-
 
 Preferred:
 
-
-
 ```text
-
-Current synchronized timeline
-
-&#x20;         +
-
-Future target
-
-&#x20;         ↓
-
-Native scheduled playback
-
+Native Realtime Subsystem
+        ↓
+Internal Processing
+        ↓
+Aggregated State / Measurements
+        ↓
+Flutter
+        ↓
+UI
 ```
 
+Flutter should observe the realtime subsystem rather than participate in every audio operation.
 
+High-frequency audio data must remain in native/realtime infrastructure.
 
-\---
+---
 
+# 16. Local-First Networking
 
+SoundMesh is:
 
-\# 28. Preparation Barrier
+> **Local-first.**
 
+Normal MVP operation should not require Internet access.
 
+Expected environments include:
 
-A synchronized start requires participants to be ready before the playback target.
+* local Wi-Fi
+* phone hotspot
+* other suitable local networks
 
+The Internet must not become a hidden runtime dependency.
 
+---
 
-The host should not schedule a synchronized start while participants are still:
+# 17. Networking Planes
 
+Networking is logically divided into three planes.
 
+### Control Plane
 
-\* downloading audio
+Responsible for:
 
-\* decoding
+* room state
+* device state
+* session state
+* capture state
+* permissions
+* commands
+* errors
+* heartbeats
+* recovery
 
-\* initializing playback
+### Audio Data Plane
 
-\* calibrating
+Responsible for:
 
+* live captured audio frames
+* sequence numbers
+* timestamps
+* buffering
+* reordering
+* packet loss handling
+* backpressure
+* stream statistics
 
+### Timing Plane
 
-unless the protocol explicitly supports that condition.
+Responsible for:
 
+* timestamp exchange
+* RTT measurements
+* clock relationship estimation
+* timing telemetry
+* synchronization inputs
 
+These planes may share physical connections initially.
 
-\---
+They must remain logically distinct.
 
+---
 
+# 18. Live Audio Is Not File Transfer
 
-\# 29. Synchronization Measurement
+The active audio architecture is live streaming.
 
-
-
-The system must measure actual synchronization quality.
-
-
-
-A useful group metric is:
-
-
+The old architecture of:
 
 ```text
-
-groupSpread =
-
-maximum playback position
-
-\-
-
-minimum playback position
-
+Select File
+    ↓
+Transfer File
+    ↓
+Verify Hash
+    ↓
+Store File
+    ↓
+Prepare File
+    ↓
+Play File
 ```
 
+is not the MVP architecture.
 
-
-This represents how far apart the devices are according to the available playback measurements.
-
-
-
-\---
-
-
-
-\# 30. Physical Synchronization
-
-
-
-Software measurements are not sufficient proof of audible synchronization.
-
-
-
-Actual acoustic output can differ because of:
-
-
-
-\* speaker hardware
-
-\* operating-system audio processing
-
-\* output latency
-
-\* Bluetooth
-
-\* device-specific behavior
-
-
-
-Therefore physical measurement is required for strong validation.
-
-
-
-\---
-
-
-
-\# 31. Initial Synchronization Targets
-
-
-
-Initial engineering targets are:
-
-
+The active architecture is:
 
 ```text
-
-Startup group spread:
-
-≤ 20 ms
-
-
-
-Steady-state group spread:
-
-≤ 20 ms
-
-
-
-Preferred correction stretch:
-
-≤ 10 ms
-
-```
-
-
-
-These are:
-
-
-
-> \*\*Engineering targets, not universal guarantees.\*\*
-
-
-
-Do not represent them as guaranteed performance.
-
-
-
-\---
-
-
-
-\# 32. Drift
-
-
-
-Even if devices start together, their playback timing may diverge.
-
-
-
-Conceptually:
-
-
-
-```text
-
-Device A
-
-───────────────
-
-
-
-Device B
-
-──────────────
-
-&#x20;             ↘
-
-&#x20;              increasingly different
-
-```
-
-
-
-SoundMesh must monitor for this.
-
-
-
-\---
-
-
-
-\# 33. Drift Correction
-
-
-
-Preferred correction hierarchy:
-
-
-
-```text
-
-Monitor
-
-&#x20;↓
-
-Estimate drift
-
-&#x20;↓
-
-Tiny playback-rate correction
-
-&#x20;↓
-
-Re-measure
-
-&#x20;↓
-
-Small position correction
-
-&#x20;↓
-
-Controlled resynchronization
-
-```
-
-
-
-Corrections should prioritize:
-
-
-
-\* stability
-
-\* inaudibility
-
-\* avoiding oscillation
-
-
-
-\---
-
-
-
-\# 34. Do Not Build a Fragile Feedback Loop
-
-
-
-Synchronization correction must not continuously overreact.
-
-
-
-Bad behavior:
-
-
-
-```text
-
-Device too early
-
-&#x20;↓
-
-Huge correction
-
-&#x20;↓
-
-Device too late
-
-&#x20;↓
-
-Huge correction
-
-&#x20;↓
-
-Device too early
-
-&#x20;↓
-
-...
-
-```
-
-
-
-The system should use measured error, uncertainty, thresholds, and controlled correction.
-
-
-
-\---
-
-
-
-\# 35. Playback Generations
-
-
-
-Playback commands should support a generation/version mechanism where appropriate.
-
-
-
-Purpose:
-
-
-
-Prevent stale commands from affecting current playback.
-
-
-
-Example:
-
-
-
-```text
-
-Generation 10 → PLAY
-
-Generation 11 → PAUSE
-
-Generation 10 → PLAY
-
-```
-
-
-
-The final command is stale and should not override the newer state.
-
-
-
-\---
-
-
-
-\# 36. Late Joining
-
-
-
-A participant joining an active room must not immediately begin playback.
-
-
-
-Expected flow:
-
-
-
-```text
-
-Join
-
-&#x20;↓
-
-Receive audio
-
-&#x20;↓
-
-Prepare
-
-&#x20;↓
-
-Calibrate
-
-&#x20;↓
-
-Determine timeline position
-
-&#x20;↓
-
+Capture
+    ↓
+Frame
+    ↓
+Timestamp
+    ↓
+Transmit
+    ↓
+Buffer
+    ↓
 Schedule
-
-&#x20;↓
-
-Join playback
-
+    ↓
+Output
 ```
 
+AI agents must not reintroduce audio asset distribution unless a new architectural decision explicitly requires it.
 
+---
 
-\---
+# 19. Audio Frames
 
+The exact wire format remains implementation-dependent.
 
+Conceptually an audio frame contains:
 
-\# 37. Failure Handling
+```text
+AudioFrame {
+    sessionGeneration
+    sequenceNumber
+    captureTimestamp
+    sampleFormat
+    sampleRate
+    channels
+    payload
+}
+```
 
+The actual serialization, packet size, codec/PCM representation, and transport must be determined through implementation and measurement.
 
+Sequence numbers are required for detecting:
 
-SoundMesh must explicitly handle:
+* loss
+* duplication
+* reordering
+* gaps
 
+Timestamps are required for:
 
+* timing
+* buffering
+* scheduling
+* synchronization
+* diagnostics
 
-\* participant disconnect
+---
 
-\* host disconnect
+# 20. Transport Is an Engineering Decision
 
-\* network interruption
+Do not assume that one transport is automatically correct.
 
-\* network change
+Reliable ordered transport may be appropriate for:
 
-\* transfer failure
+* control messages
+* room state
+* configuration
 
-\* calibration failure
+Live audio transport must be evaluated for:
 
-\* audio preparation failure
+* latency
+* jitter
+* packet loss
+* reordering
+* head-of-line blocking
+* implementation complexity
+* CPU usage
+* bandwidth
 
-\* playback failure
+TCP, UDP, QUIC, WebSocket, or another mechanism must not be treated as permanently decided unless `decisions.md` explicitly says so.
 
-\* audio route changes
-
-\* interruption
-
-\* backgrounding
-
-\* device lock
-
-\* thermal pressure
-
-
-
-Failure behavior should be deterministic.
-
-
-
-\---
-
-
-
-\# 38. Host Failure
-
-
-
-MVP does not require seamless host migration.
-
-
-
-If the host disappears, the system may perform controlled recovery.
-
-
-
-Do not introduce complex host-election architecture unless a documented requirement justifies it.
-
-
-
-\---
-
-
-
-\# 39. Network Architecture
-
-
-
-The network should conceptually contain:
-
-
-
-\### Control plane
-
-
-
-Responsible for:
-
-
-
-\* room state
-
-\* participant state
-
-\* audio transfer
-
-\* commands
-
-\* recovery
-
-
-
-\### Timing plane
-
-
-
-Responsible for:
-
-
-
-\* timestamp exchange
-
-\* clock measurements
-
-\* synchronization calculations
-
-\* timing health
-
-
-
-This distinction prevents control traffic from being confused with realtime timing.
-
-
-
-\---
-
-
-
-\# 40. Transport Principle
-
-
-
-Reliable transport should be the MVP baseline for:
-
-
-
-\* control
-
-\* room state
-
-\* file transfer
-
-
-
-UDP is experimental.
-
-
+Choose based on evidence.
 
 Do not introduce UDP merely because it is associated with realtime systems.
 
+---
 
+# 21. QR-First Joining
 
-It must demonstrate measurable benefit.
-
-
-
-\---
-
-
-
-\# 41. State Machines
-
-
-
-Important subsystems should use explicit state machines.
-
-
-
-Room state conceptually:
-
-
+The intended onboarding flow is:
 
 ```text
+Host
+ ↓
+Create Room
+ ↓
+Display QR
 
-CREATED
-
-&#x20;↓
-
-DISCOVERABLE
-
-&#x20;↓
-
-JOINING
-
-&#x20;↓
-
-CALIBRATING
-
-&#x20;↓
-
-READY
-
-&#x20;↓
-
-PLAYING
-
-&#x20;↓
-
-PAUSED / RECOVERING
-
-&#x20;↓
-
-PLAYING
-
-&#x20;↓
-
-ENDING
-
-&#x20;↓
-
-CLOSED
-
+Participant
+ ↓
+Join Room
+ ↓
+Scan QR
+ ↓
+Connect
 ```
 
+Users should not normally need to enter:
 
+* IP addresses
+* ports
+* protocol parameters
 
-Avoid replacing explicit state with large collections of unrelated booleans.
+manually.
 
+The QR payload may contain temporary bootstrap information.
 
+---
 
-\---
+# 22. QR Security
 
+QR payloads must not contain:
 
+* permanent credentials
+* long-lived secrets
+* private keys
+* unnecessary personal information
+* audio data
 
-\# 42. UI Philosophy
+Prefer:
 
+* room identifiers
+* endpoint/bootstrap information
+* protocol version
+* short-lived join authorization
 
+Use established authentication/encryption mechanisms.
 
-SoundMesh should feel:
+Do not invent custom cryptography.
 
+---
 
+# 23. Identity
 
-\* dark
+An IP address is a network location, not a permanent device identity.
 
-\* minimal
+Use explicit identifiers for:
 
-\* premium
+* room
+* session
+* device
+* participant
 
-\* calm
+Network addresses may change.
 
-\* audio-focused
+Logical identity must survive ordinary network changes where appropriate.
 
-\* technically sophisticated without being visually noisy
+---
 
+# 24. Synchronization Mental Model
 
+The most important synchronization concept is:
 
-The UI should hide implementation complexity.
+> **SoundMesh is a distributed timing system.**
 
+There is no magically shared perfect clock.
 
+Each device has its own clock.
 
-\---
+SoundMesh estimates relationships between clocks and coordinates output against a shared logical timeline.
 
-
-
-\# 43. Primary User Actions
-
-
-
-The primary mental model should be:
-
-
+The objective is:
 
 ```text
-
-Create
-
-Join
-
-Choose
-
-Play
-
+Independent clocks
+       ↓
+Measured relationship
+       ↓
+Shared timeline
+       ↓
+Scheduled output
 ```
 
+---
 
+# 25. Monotonic Time
 
-Users should not need to understand:
+Synchronization calculations should use monotonic timing sources where available.
 
+Do not rely exclusively on wall-clock time.
 
+Wall clocks may change because of:
 
-\* clock offsets
+* system synchronization
+* user adjustments
+* timezone changes
+* operating-system corrections
 
-\* RTT
+Elapsed-time synchronization requires stable timing references.
 
-\* protocol versions
+---
 
-\* transport layers
+# 26. Timestamp Exchange
 
-\* calibration algorithms
-
-
-
-unless they enter diagnostics.
-
-
-
-\---
-
-
-
-\# 44. Visual Direction
-
-
-
-Primary background:
-
-
+A conceptual exchange is:
 
 ```text
-
-\#0B0D10
-
+Participant → Host: t1
+Host receives:      t2
+Host → Participant: t3
+Participant receives: t4
 ```
 
+These measurements can provide inputs for estimating:
 
+* RTT
+* clock relationships
+* timing uncertainty
 
-Primary surface:
+The exact algorithm must follow `synchronization.md`.
 
+---
 
+# 27. RTT Is Not Audio Latency
+
+These are different measurements:
 
 ```text
-
-\#181D23
-
+Network RTT
+Clock Offset
+Network One-Way Delay
+Capture Latency
+Network Latency
+Jitter Buffer Delay
+Audio Output Latency
+Speaker Latency
 ```
 
+Never substitute one for another.
 
+For example:
 
-Primary text:
+> Low RTT does not automatically mean low physical speaker latency.
 
+---
 
+# 28. Capture-to-Output Timing
 
-```text
-
-\#F5F7FA
-
-```
-
-
-
-Secondary text:
-
-
-
-```text
-
-\#A7AFB9
-
-```
-
-
-
-Primary accent:
-
-
-
-```text
-
-\#5B8CFF
-
-```
-
-
-
-Success:
-
-
-
-```text
-
-\#39D98A
-
-```
-
-
-
-Warning:
-
-
-
-```text
-
-\#FFB84D
-
-```
-
-
-
-Error:
-
-
-
-```text
-
-\#FF5C6C
-
-```
-
-
-
-The detailed visual system is defined in `ui-ux.md`.
-
-
-
-\---
-
-
-
-\# 45. Visual Anti-Patterns
-
-
-
-Avoid:
-
-
-
-\* excessive neon
-
-\* gamer RGB styling
-
-\* arbitrary gradients
-
-\* excessive glassmorphism
-
-\* excessive animation
-
-\* emoji as primary icons
-
-\* random colors
-
-\* giant typography
-
-\* fake technical dashboards
-
-
-
-SoundMesh should look like a serious modern product.
-
-
-
-\---
-
-
-
-\# 46. Accessibility
-
-
-
-Accessibility is a required part of the product.
-
-
-
-Important requirements:
-
-
-
-\* sufficient contrast
-
-\* touch targets
-
-\* dynamic text
-
-\* screen-reader semantics
-
-\* reduced motion
-
-\* status information that does not rely solely on color
-
-
-
-\---
-
-
-
-\# 47. Performance Priority
-
-
-
-The priority order is:
-
-
-
-```text
-
-Audio stability
-
-&#x20;↓
-
-Synchronization
-
-&#x20;↓
-
-Networking
-
-&#x20;↓
-
-Application responsiveness
-
-&#x20;↓
-
-Visual effects
-
-```
-
-
-
-A visual optimization must never compromise realtime audio.
-
-
-
-\---
-
-
-
-\# 48. Testing Philosophy
-
-
-
-The project does not consider:
-
-
-
-> “The app launched.”
-
-
-
-to be proof of correctness.
-
-
-
-Testing must progressively validate:
-
-
-
-```text
-
-Unit
-
-&#x20;↓
-
-Component
-
-&#x20;↓
-
-Integration
-
-&#x20;↓
-
-Physical devices
-
-&#x20;↓
-
-System
-
-&#x20;↓
-
-Synchronization
-
-&#x20;↓
-
-Stress
-
-&#x20;↓
-
-Physical acoustic output
-
-```
-
-
-
-\---
-
-
-
-\# 49. Real Devices Are Required
-
-
-
-Emulators and simulators are useful for:
-
-
-
-\* UI
-
-\* application logic
-
-\* basic flows
-
-
-
-They cannot prove:
-
-
-
-\* real speaker timing
-
-\* real audio latency
-
-\* Wi-Fi behavior
-
-\* device-specific audio behavior
-
-\* physical synchronization
-
-
-
-Core synchronization must be tested on real hardware.
-
-
-
-\---
-
-
-
-\# 50. Device Scaling
-
-
-
-Initial testing progression:
-
-
-
-```text
-
-2 devices
-
-&#x20;↓
-
-3 devices
-
-&#x20;↓
-
-5 devices
-
-&#x20;↓
-
-larger groups
-
-```
-
-
-
-Do not assume success with two devices automatically means success with ten.
-
-
-
-\---
-
-
-
-\# 51. Device Heterogeneity
-
-
-
-The system must eventually be tested across:
-
-
-
-\* different Android devices
-
-\* different iOS devices
-
-\* different manufacturers
-
-\* different OS versions
-
-\* different speaker hardware
-
-
-
-Android + iOS testing is particularly important.
-
-
-
-\---
-
-
-
-\# 52. Physical Synchronization Validation
-
-
-
-Strong synchronization validation should use external measurement.
-
-
+For synchronized live audio, the system must understand the complete timing path.
 
 Conceptually:
 
-
-
 ```text
-
-Phone A ─┐
-
-Phone B ─┤
-
-Phone C ─┼──→ simultaneous recording
-
-Phone D ─┤
-
-Phone E ─┘
-
+Capture
+  ↓
+Timestamp
+  ↓
+Network
+  ↓
+Buffer
+  ↓
+Schedule
+  ↓
+Native Output
+  ↓
+Speaker
 ```
 
+The system should expose enough timing information to determine where delay exists.
 
+Important measurements may include:
 
-Use controlled signals where possible.
+* capture-to-network delay
+* network-to-buffer delay
+* buffer depth
+* network-to-output delay
+* output timestamp
+* host output timing
+* participant output timing
 
+---
 
+# 29. Calibration
 
-Measure actual waveform onset differences.
+Before synchronized output, devices should establish the timing relationships required by the session.
 
-
-
-\---
-
-
-
-\# 53. Do Not Fake Metrics
-
-
-
-AI agents must never invent:
-
-
-
-\* synchronization numbers
-
-\* benchmark results
-
-\* device compatibility
-
-\* test results
-
-\* battery measurements
-
-\* latency measurements
-
-
-
-If something has not been measured:
-
-
+Conceptually:
 
 ```text
-
-NOT MEASURED
-
+Connect
+   ↓
+Measure
+   ↓
+Estimate
+   ↓
+Reject outliers
+   ↓
+Estimate uncertainty
+   ↓
+Calibrated
 ```
 
+Calibration should produce a quality/confidence assessment where practical.
 
+Calibration is not the same thing as network connection.
 
-is the correct result.
+---
 
+# 30. Shared Live-Audio Timeline
 
+SoundMesh uses a shared logical timeline for live audio.
 
-\---
+Participants receive audio frames before their intended output time whenever possible.
 
-
-
-\# 54. Existing Documentation
-
-
-
-Before modifying SoundMesh, AI agents should understand the following:
-
-
+Conceptually:
 
 ```text
-
-DOCS/blueprint.md
-
+Current Timeline
+       +
+Future Output Target
+       ↓
+Jitter Buffer
+       ↓
+Native Scheduled Output
 ```
 
+This provides room for network variation while maintaining coordinated output.
 
+---
 
-Product definition and scope.
-
-
-
-```text
-
-DOCS/architecture.md
-
-```
-
-
-
-System architecture and platform boundaries.
-
-
-
-```text
-
-DOCS/networking.md
-
-```
-
-
-
-Local networking and protocol design.
-
-
-
-```text
-
-DOCS/synchronization.md
-
-```
-
-
-
-Timing and synchronization system.
-
-
-
-```text
-
-DOCS/audio.md
-
-```
-
-
-
-Audio architecture and playback behavior.
-
-
-
-```text
-
-DOCS/ui-ux.md
-
-```
-
-
-
-Visual and interaction system.
-
-
-
-```text
-
-DOCS/decisions.md
-
-```
-
-
-
-Settled and open engineering decisions.
-
-
-
-```text
-
-DOCS/testing.md
-
-```
-
-
-
-Testing and validation requirements.
-
-
-
-```text
-
-DOCS/roadmap.md
-
-```
-
-
-
-Development order and milestones.
-
-
-
-```text
-
-DOCS/AI/rules.md
-
-```
-
-
-
-Rules for AI-assisted development.
-
-
-
-```text
-
-DOCS/AI/task-protocol.md
-
-```
-
-
-
-How AI agents should execute tasks.
-
-
-
-```text
-
-AGENTS.md
-
-```
-
-
-
-Repository-wide agent instructions.
-
-
-
-\---
-
-
-
-\# 55. Documentation Hierarchy
-
-
-
-An AI agent should think of the documentation as layers:
-
-
-
-```text
-
-Product
-
-&#x20; ↓
-
-Blueprint
-
-&#x20; ↓
-
-Architecture
-
-&#x20; ↓
-
-Subsystem specifications
-
-&#x20; ↓
-
-Decisions
-
-&#x20; ↓
-
-Testing
-
-&#x20; ↓
-
-Roadmap
-
-&#x20; ↓
-
-AI execution rules
-
-```
-
-
-
-Each document answers a different question.
-
-
-
-\---
-
-
-
-\# 56. Decision Awareness
-
-
-
-Before making an architectural change, inspect:
-
-
-
-```text
-
-DOCS/decisions.md
-
-```
-
-
-
-Look for:
-
-
-
-\* `DECIDED`
-
-\* `PREFERRED`
-
-\* `EXPERIMENTAL`
-
-\* `UNDECIDED`
-
-\* `REJECTED`
-
-\* `SUPERSEDED`
-
-
-
-Do not silently turn an `UNDECIDED` item into a permanent decision.
-
-
-
-\---
-
-
-
-\# 57. Important Decided Constraints
-
-
-
-The following are currently strong project constraints:
-
-
-
-```text
-
-Flutter is the primary application framework.
-
-
-
-Android and iOS are the target mobile platforms.
-
-
-
-Flutter owns UI and high-level orchestration.
-
-
-
-Native layers own timing-critical audio/network functionality.
-
-
-
-SoundMesh is local-first.
-
-
-
-QR is the preferred joining mechanism.
-
-
-
-The host coordinates the room.
-
-
-
-Audio should preferably be distributed before synchronized playback.
-
-
-
-Playback should be scheduled against a future target.
-
-
-
-Monotonic timing should be used for synchronization calculations.
-
-
-
-Synchronization must be measured.
-
-
-
-Drift must be monitored.
-
-
-
-Physical synchronization must eventually be validated.
-
-
-
-Real devices are required for synchronization testing.
-
-```
-
-
-
-\---
-
-
-
-\# 58. Important Experimental Areas
-
-
-
-The following must remain open to evidence:
-
-
-
-```text
-
-Exact Android audio engine
-
-Exact iOS audio engine
-
-Supported audio formats
-
-Sample-rate strategy
-
-Channel strategy
-
-Resampling
-
-Bluetooth behavior
-
-Wi-Fi Direct/P2P
-
-UDP timing transport
-
-Exact buffering strategy
-
-Exact audio latency measurement
-
-Background playback behavior
-
-Maximum practical device count
-
-Advanced host recovery
-
-```
-
-
-
-An AI agent must not present these as settled facts.
-
-
-
-\---
-
-
-
-\# 59. Rejected MVP Directions
-
-
-
-Do not introduce the following without a new architectural decision:
-
-
-
-```text
-
-Mandatory cloud backend
-
-Mandatory Internet connectivity
-
-Continuous host audio streaming
-
-Manual IP onboarding
-
-PLAY NOW as primary synchronization
-
-Premature microservices
-
-Premature account systems
-
-Large social features
-
-Music-discovery features
-
-Unnecessary infrastructure
-
-```
-
-
-
-\---
-
-
-
-\# 60. Repository Philosophy
-
-
-
-SoundMesh should remain understandable.
-
-
+# 31. Scheduled Output
 
 Avoid:
 
+```text
+PLAY NOW
+```
 
+as the primary synchronization mechanism.
 
-\* speculative abstractions
+Commands received at different times cannot guarantee simultaneous physical output.
 
-\* duplicate systems
+Prefer:
 
-\* unnecessary dependencies
+```text
+Current synchronized timeline
+        +
+Future target timestamp
+        ↓
+Native scheduled output
+```
 
-\* unused infrastructure
+The exact scheduler implementation must be determined experimentally.
 
-\* premature generalization
+---
 
+# 32. Preparation and Buffering
 
+A participant joining a live session must not immediately emit audio merely because it has connected.
+
+Expected flow:
+
+```text
+Join
+ ↓
+Receive current stream information
+ ↓
+Establish timing
+ ↓
+Fill bounded jitter buffer
+ ↓
+Determine future output target
+ ↓
+Schedule native output
+ ↓
+Join synchronized output
+```
+
+Unlike a file-based architecture, a late participant cannot simply download the complete media asset and seek to a known position.
+
+It joins the current live stream.
+
+---
+
+# 33. Late Joining
+
+Late joiners need:
+
+* current session generation
+* current stream configuration
+* current timeline information
+* current capture state
+* timing calibration
+* enough live audio buffering
+* a future synchronization target
+
+The participant may need to wait briefly before becoming active.
+
+This is preferable to producing unsynchronized audio immediately.
+
+---
+
+# 34. Drift
+
+Even devices that start synchronized can gradually diverge.
+
+Possible causes include:
+
+* oscillator differences
+* audio hardware differences
+* resampling
+* operating-system behavior
+* output-clock differences
+
+SoundMesh must monitor timing over the lifetime of the session.
+
+---
+
+# 35. Drift Correction
+
+A conceptual correction hierarchy is:
+
+```text
+Measure
+   ↓
+Estimate drift
+   ↓
+Apply tiny correction
+   ↓
+Re-measure
+   ↓
+Apply small position correction if required
+   ↓
+Controlled resynchronization if necessary
+```
+
+Corrections should prioritize:
+
+* stability
+* inaudibility
+* avoiding oscillation
+* avoiding unnecessary disruption
+
+Do not build an unstable feedback loop.
+
+---
+
+# 36. Generations
+
+Session generation numbers remain important.
+
+They prevent stale session state from affecting a newer session.
+
+For example:
+
+```text
+Generation 10
+       ↓
+Old stream/session state
+
+Generation 11
+       ↓
+Current stream/session state
+```
+
+A packet or command belonging to an older generation should not corrupt the current session.
+
+Generations are for session/state freshness.
+
+They must not be used to recreate old media-player `PLAY`, `PAUSE`, or `SEEK` semantics.
+
+---
+
+# 37. External Media Playback Ownership
+
+The external media application controls:
+
+* play
+* pause
+* seek
+* next
+* previous
+* media position
+* playback speed
+* media selection
+
+SoundMesh controls:
+
+* room
+* connection
+* capture session
+* live audio stream
+* synchronization
+* participant output
+* recovery
+
+This separation is fundamental.
+
+---
+
+# 38. Capture and External-App Handoff
+
+The user should be able to:
+
+```text
+Allow audio capture
+        ↓
+Open media app
+        ↓
+Play normally
+        ↓
+SoundMesh captures eligible audio
+```
+
+SoundMesh may remain active in the background when Android permits it and when the required foreground-service lifecycle is correctly implemented.
+
+A persistent notification may be required.
+
+The UI must clearly communicate when capture is active, stopped, interrupted, or unavailable.
+
+---
+
+# 39. Source-App Compatibility
+
+Not every external application is guaranteed to allow capture.
+
+The system must distinguish:
+
+```text
+SoundMesh capture unavailable
+```
+
+from:
+
+```text
+This particular source application does not permit capture
+```
+
+where the platform can determine the difference.
+
+Do not claim universal compatibility with:
+
+* YouTube
+* Spotify
+* VLC
+* browsers
+* games
+* other applications
+
+without testing the specific source and Android configuration.
+
+---
+
+# 40. Background and Lifecycle Behavior
+
+Background operation is a real engineering requirement.
+
+The system must consider:
+
+* foreground-service restrictions
+* MediaProjection lifecycle
+* persistent notification requirements
+* application backgrounding
+* device locking
+* audio route changes
+* interruptions
+* network changes
+* process death
+* permission revocation
+
+Do not assume that a background Dart process can safely maintain realtime audio.
+
+Native Android lifecycle handling is required.
+
+---
+
+# 41. Failure Handling
+
+SoundMesh must explicitly handle:
+
+* participant disconnect
+* host disconnect
+* network interruption
+* network change
+* capture permission denial
+* source capture refusal
+* MediaProjection revocation
+* capture interruption
+* unsupported capture format
+* audio route changes
+* output failure
+* stream underrun
+* packet loss
+* packet reordering
+* jitter
+* calibration failure
+* synchronization degradation
+* background lifecycle interruption
+
+Failure behavior should be deterministic and observable.
+
+---
+
+# 42. Host Failure
+
+MVP does not require seamless host migration.
+
+If the host disappears, the system may:
+
+* terminate the room
+* enter controlled recovery
+* require participants to reconnect
+
+Do not introduce host election or migration architecture unless a documented requirement justifies it.
+
+---
+
+# 43. Network Recovery
+
+A disconnected participant should not automatically invalidate the entire room.
+
+Expected recovery may be:
+
+```text
+Disconnect
+   ↓
+Reconnect
+   ↓
+Rejoin current session
+   ↓
+Refresh timing
+   ↓
+Refill jitter buffer
+   ↓
+Schedule future output
+   ↓
+Return to active state
+```
+
+Do not assume that a disconnected participant can resume by retrieving an old audio file.
+
+The active source is a live stream.
+
+---
+
+# 44. Bounded Buffers
+
+Audio buffers must remain bounded.
+
+Unbounded buffering can turn network degradation into increasing latency.
+
+When a participant falls behind significantly, the system may need to:
+
+* drop stale frames
+* refill from a newer live point
+* resynchronize
+* temporarily suppress output
+
+The exact policy is an engineering decision.
+
+The host should not block every participant because one device is slow.
+
+---
+
+# 45. State Machines
+
+Important subsystems should use explicit state machines.
+
+Room/session states may conceptually include:
+
+```text
+CREATED
+   ↓
+DISCOVERABLE
+   ↓
+JOINING
+   ↓
+READY
+   ↓
+CAPTURE_PERMISSION_REQUIRED
+   ↓
+CAPTURING
+   ↓
+STREAMING
+   ↓
+SYNCHRONIZING
+   ↓
+ACTIVE
+   ↓
+DEGRADED
+   ↓
+RECOVERING
+   ↓
+ACTIVE
+   ↓
+ENDING
+   ↓
+CLOSED
+```
+
+Error states may occur from any appropriate point.
+
+Avoid replacing explicit state with large collections of unrelated booleans.
+
+Do not use `PAUSED` as a generic SoundMesh media state because SoundMesh does not own external media playback.
+
+---
+
+# 46. UI Philosophy
+
+SoundMesh should feel:
+
+* dark
+* minimal
+* premium
+* calm
+* audio-focused
+* technically sophisticated without being visually noisy
+
+The UI should hide implementation complexity.
+
+Users should not need to understand:
+
+* clock offsets
+* RTT
+* jitter buffers
+* packet sequence numbers
+* transport protocols
+* calibration algorithms
+
+unless they enter diagnostics.
+
+---
+
+# 47. Primary User Journey
+
+The correct product mental model is:
+
+```text
+Create
+   ↓
+Join
+   ↓
+Connect
+   ↓
+Allow Capture
+   ↓
+Open Media App
+   ↓
+Play Normally
+   ↓
+Everyone Hears Together
+```
+
+The old mental model:
+
+```text
+Create
+Join
+Choose Audio
+Prepare
+Play
+```
+
+is obsolete.
+
+There is no SoundMesh audio picker or SoundMesh-owned media player in the MVP.
+
+---
+
+# 48. UI Anti-Patterns
+
+AI agents must not create:
+
+* song selection screens
+* local audio libraries
+* track lists
+* track artwork
+* media progress bars
+* SoundMesh play/pause controls
+* SoundMesh seek controls
+* next/previous controls
+* audio asset transfer progress
+* audio download states
+* fake media metadata
+* fake playback position
+* fake universal source compatibility
+
+SoundMesh may show:
+
+* capture status
+* streaming status
+* connected devices
+* synchronization quality
+* buffering state
+* recovery state
+* source compatibility state
+* diagnostics
+
+---
+
+# 49. Visual Direction
+
+The primary visual system is defined in `ui-ux.md`.
+
+Current core palette:
+
+```text
+Background:       #0B0D10
+Surface:          #181D23
+Primary Text:     #F5F7FA
+Secondary Text:   #A7AFB9
+Accent:           #5B8CFF
+Success:          #39D98A
+Warning:          #FFB84D
+Error:            #FF5C6C
+```
+
+Avoid:
+
+* excessive neon
+* gamer RGB styling
+* arbitrary gradients
+* excessive glassmorphism
+* excessive animation
+* emoji as primary icons
+* fake technical dashboards
+
+---
+
+# 50. Accessibility
+
+Accessibility is required.
+
+Consider:
+
+* sufficient contrast
+* touch targets
+* dynamic text
+* screen-reader semantics
+* reduced motion
+* status information that does not rely solely on color
+
+---
+
+# 51. Performance Priority
+
+The priority order is:
+
+```text
+Audio Stability
+      ↓
+Synchronization
+      ↓
+Realtime Networking
+      ↓
+Application Responsiveness
+      ↓
+Visual Effects
+```
+
+Visual polish must never compromise realtime audio.
+
+---
+
+# 52. Testing Philosophy
+
+Launching the application is not proof of correctness.
+
+Testing must progressively validate:
+
+```text
+Unit
+ ↓
+Component
+ ↓
+Integration
+ ↓
+Real Android Devices
+ ↓
+Live Audio Pipeline
+ ↓
+Synchronization
+ ↓
+Stress
+ ↓
+Physical Acoustic Output
+```
+
+Core synchronization claims require real hardware.
+
+---
+
+# 53. Real Devices Are Required
+
+Emulators are useful for:
+
+* UI
+* application logic
+* navigation
+* basic protocol tests
+
+They cannot prove:
+
+* real speaker timing
+* physical output latency
+* real capture behavior
+* real Wi-Fi behavior
+* device-specific audio processing
+* acoustic synchronization
+
+Core audio synchronization must be validated on physical Android devices.
+
+---
+
+# 54. Device Scaling
+
+Initial progression:
+
+```text
+2 devices
+   ↓
+3 devices
+   ↓
+5 devices
+   ↓
+larger groups
+```
+
+Two-device success does not automatically prove larger-scale success.
+
+---
+
+# 55. Physical Synchronization Validation
+
+Software metrics are not sufficient proof of physical synchronization.
+
+Strong validation should use external measurement.
+
+Conceptually:
+
+```text
+Phone A ─┐
+Phone B ─┤
+Phone C ─┼──→ External recording / measurement
+Phone D ─┤
+Phone E ─┘
+```
+
+Controlled signals should be used where possible.
+
+Measure actual waveform onset or equivalent acoustic timing differences.
+
+---
+
+# 56. Engineering Targets
+
+Initial engineering targets may include:
+
+```text
+Startup group spread:
+≤ 20 ms
+
+Steady-state group spread:
+≤ 20 ms
+```
+
+These are engineering targets, not guarantees.
+
+They must never be presented as achieved until measured on real hardware.
+
+A software-reported metric must not be confused with measured acoustic output.
+
+---
+
+# 57. Do Not Fake Metrics
+
+AI agents must never invent:
+
+* synchronization measurements
+* latency
+* jitter
+* packet-loss results
+* device compatibility
+* benchmark results
+* battery measurements
+* thermal results
+* acoustic measurements
+
+If something has not been measured:
+
+```text
+NOT MEASURED
+```
+
+is the correct result.
+
+---
+
+# 58. Existing Documentation
+
+Before modifying SoundMesh, agents should understand the relevant specifications.
+
+```text
+DOCS/blueprint.md
+```
+
+Product definition and scope.
+
+```text
+DOCS/architecture.md
+```
+
+System architecture and platform boundaries.
+
+```text
+DOCS/networking.md
+```
+
+Local networking, protocol, and live audio transport.
+
+```text
+DOCS/synchronization.md
+```
+
+Clock synchronization, timing, calibration, scheduling, and drift.
+
+```text
+DOCS/audio.md
+```
+
+External audio capture, live audio pipeline, native output, and audio lifecycle.
+
+```text
+DOCS/ui-ux.md
+```
+
+Visual and interaction system.
+
+```text
+DOCS/decisions.md
+```
+
+Settled and open engineering decisions.
+
+```text
+DOCS/testing.md
+```
+
+Testing and validation requirements.
+
+```text
+DOCS/roadmap.md
+```
+
+Development order and milestones.
+
+```text
+DOCS/AI/rules.md
+```
+
+Rules for AI-assisted development.
+
+```text
+DOCS/AI/task-protocol.md
+```
+
+How AI agents should execute tasks.
+
+```text
+AGENTS.md
+```
+
+Repository-wide agent instructions.
+
+---
+
+# 59. Documentation Hierarchy
+
+Think of the documentation as layers:
+
+```text
+Product
+   ↓
+Blueprint
+   ↓
+Architecture
+   ↓
+Subsystem Specifications
+   ↓
+Decisions
+   ↓
+Testing
+   ↓
+Roadmap
+   ↓
+AI Execution Rules
+```
+
+Each document answers a different question.
+
+An AI agent should read the smallest relevant set of documents before making a change.
+
+---
+
+# 60. Decision Awareness
+
+Before making an architectural change, inspect:
+
+```text
+DOCS/decisions.md
+```
+
+Look for statuses such as:
+
+* `DECIDED`
+* `PREFERRED`
+* `EXPERIMENTAL`
+* `UNDECIDED`
+* `REJECTED`
+* `SUPERSEDED`
+
+Do not silently turn an `UNDECIDED` item into a permanent architecture decision.
+
+If a decision must be made, document the evidence and update the appropriate decision record.
+
+---
+
+# 61. Important Decided Constraints
+
+The current high-level constraints are:
+
+```text
+Flutter is the primary application framework.
+
+Android is the MVP platform.
+
+SoundMesh is local-first.
+
+The external media application remains the source of truth for media playback.
+
+SoundMesh captures eligible host external audio.
+
+Live captured audio is the active audio distribution mechanism.
+
+The host coordinates the room.
+
+QR is the preferred joining mechanism.
+
+Flutter owns UI and high-level orchestration.
+
+Native Android owns timing-critical audio and networking.
+
+High-frequency audio data stays outside Flutter.
+
+Synchronization uses monotonic timing.
+
+Playback/output is scheduled against future timing targets.
+
+Synchronization must be measured.
+
+Drift must be monitored.
+
+Physical synchronization must eventually be validated.
+
+Real devices are required for synchronization testing.
+
+SoundMesh does not own external media playback.
+
+File-based audio distribution is not the MVP architecture.
+```
+
+---
+
+# 62. Important Experimental Areas
+
+The following remain evidence-driven:
+
+```text
+Exact live audio transport
+Codec vs PCM
+Audio packet format
+Packet size
+Sample-rate strategy
+Channel strategy
+Resampling strategy
+Jitter-buffer policy
+Packet-loss recovery policy
+Exact clock synchronization algorithm
+Exact audio latency measurement method
+Host direct-output synchronization strategy
+Background-service implementation details
+Maximum practical device count
+Automatic discovery
+Wi-Fi Direct / P2P
+Advanced host recovery
+Source-application compatibility
+```
+
+An AI agent must not present these as settled facts unless the decision has been documented.
+
+---
+
+# 63. Rejected or Out-of-Scope MVP Directions
+
+Do not introduce these without a new architectural decision:
+
+```text
+Mandatory cloud backend
+Mandatory Internet connectivity
+SoundMesh-owned media player
+SoundMesh-owned media library
+Audio file distribution as the primary session architecture
+Manual IP onboarding
+PLAY NOW as the primary synchronization mechanism
+Premature microservices
+Premature account systems
+Music discovery
+Social features unrelated to the core problem
+Unnecessary infrastructure
+Mandatory iOS MVP support
+```
+
+---
+
+# 64. Repository Philosophy
+
+SoundMesh should remain understandable.
+
+Avoid:
+
+* speculative abstractions
+* duplicate systems
+* unnecessary dependencies
+* unused infrastructure
+* premature generalization
+* compatibility layers for unsupported platforms without a requirement
 
 Prefer the smallest architecture that satisfies measured requirements.
 
+---
 
-
-\---
-
-
-
-\# 61. AI Implementation Philosophy
-
-
+# 65. AI Implementation Philosophy
 
 AI-generated code is not automatically correct.
 
-
-
 An agent should:
 
+1. read the relevant specification
+2. identify the applicable decision state
+3. understand existing code
+4. identify the smallest required change
+5. implement it
+6. test it
+7. inspect failures
+8. verify behavior
+9. update documentation when necessary
+10. report limitations honestly
 
+---
 
-1\. understand the relevant specification
-
-2\. identify the smallest required change
-
-3\. implement it
-
-4\. test it
-
-5\. inspect failures
-
-6\. verify behavior
-
-7\. update documentation when necessary
-
-8\. report limitations
-
-
-
-\---
-
-
-
-\# 62. Small Changes Are Preferred
-
-
+# 66. Small Changes Are Preferred
 
 Do not combine unrelated changes.
 
-
-
 Bad:
 
-
-
 ```text
-
 Implement networking
-
-\+
-
++
 Redesign UI
-
-\+
-
-Change audio architecture
-
-\+
-
++
+Rewrite audio architecture
++
 Refactor state management
-
 ```
-
-
 
 Good:
 
-
-
 ```text
-
 Implement participant handshake.
-
 ```
-
-
 
 Then test it independently.
 
+---
 
-
-\---
-
-
-
-\# 63. Avoid Architecture by Vibes
-
-
+# 67. Avoid Architecture by Vibes
 
 Do not choose technology because:
 
+* it is popular
+* another project uses it
+* an AI model recommends it
+* it seems modern
+* it has a convenient API
 
+Choose technology because:
 
-\* it is popular
+* it satisfies the requirement
+* it works on the target platform
+* testing supports it
+* it fits the architecture
+* it has acceptable maintenance cost
 
-\* another project uses it
+---
 
-\* an AI model recommends it
-
-\* it seems modern
-
-\* it has a nice API
-
-
-
-Choose it because:
-
-
-
-\* it satisfies the requirement
-
-\* it works on target platforms
-
-\* testing supports it
-
-\* it fits the architecture
-
-\* it has acceptable maintenance cost
-
-
-
-\---
-
-
-
-\# 64. When Documentation and Code Conflict
-
-
+# 68. When Documentation and Code Conflict
 
 If implementation differs from documentation:
 
-
-
-1\. do not silently assume either is correct
-
-2\. identify the discrepancy
-
-3\. determine which reflects the intended architecture
-
-4\. test if necessary
-
-5\. update documentation or implementation accordingly
-
-
+1. do not silently assume either is correct
+2. identify the discrepancy
+3. determine which reflects the intended architecture
+4. inspect `decisions.md`
+5. test if necessary
+6. update documentation or implementation accordingly
 
 Documentation drift is a defect.
 
+---
 
+# 69. When an AI Agent Gets Blocked
 
-\---
+Classify the blocker.
 
+### Missing dependency
 
+Investigate project configuration and dependency requirements.
 
-\# 65. When an AI Agent Gets Blocked
-
-
-
-An AI agent should classify the blocker.
-
-
-
-Examples:
-
-
-
-\### Missing dependency
-
-
-
-Investigate dependency and project configuration.
-
-
-
-\### Platform limitation
-
-
+### Platform limitation
 
 Document the limitation and evaluate alternatives.
 
+### Architectural contradiction
 
+Consult `decisions.md` and the relevant subsystem specification.
 
-\### Architectural contradiction
+### Undefined behavior
 
+Find the corresponding `UNDECIDED` item.
 
+Do not silently invent a permanent behavior.
 
-Consult `decisions.md`.
-
-
-
-\### Undefined behavior
-
-
-
-Consult `UNDECIDED` items and avoid silently deciding.
-
-
-
-\### Test failure
-
-
+### Test failure
 
 Investigate the actual failure before changing architecture.
 
+### Capture failure
 
+Determine whether the problem is:
 
-\---
+* permission
+* MediaProjection lifecycle
+* source-app capture restriction
+* unsupported format
+* foreground-service lifecycle
+* route/interruption issue
+* implementation defect
 
+Do not immediately redesign the system.
 
+---
 
-\# 66. What an AI Agent Must Never Do
-
-
+# 70. What an AI Agent Must Never Do
 
 Never:
 
+* fabricate test results
+* claim untested compatibility
+* silently change architecture
+* delete requirements to make implementation easier
+* weaken tests merely to make them pass
+* introduce cloud infrastructure without justification
+* introduce iOS MVP requirements without evidence
+* expose unnecessary technical internals in UX
+* treat experimental code as production truth
+* treat an IP address as device identity
+* use wall-clock time as the only synchronization mechanism
+* use `PLAY NOW` as the primary sync mechanism
+* claim perfect synchronization
+* assume two-device success proves large-scale success
+* assume low RTT proves synchronized speakers
+* assume host output latency equals participant output latency
+* assume every Android source application allows capture
+* route every audio frame through Flutter
+* rebuild the old audio-file distribution architecture
+* create a SoundMesh media player
+* add SoundMesh-owned play/pause/seek controls for external media
+* invent acoustic measurements
 
+---
 
-\* fabricate test results
-
-\* claim untested compatibility
-
-\* silently change architecture
-
-\* delete requirements to make implementation easier
-
-\* weaken tests merely to make them pass
-
-\* introduce cloud infrastructure without justification
-
-\* expose technical internals unnecessarily in UX
-
-\* treat experimental code as production truth
-
-\* treat an IP address as device identity
-
-\* use wall-clock time as the only synchronization mechanism
-
-\* use “PLAY NOW” as the primary sync mechanism
-
-\* claim perfect synchronization
-
-\* assume two-device success proves large-scale success
-
-
-
-\---
-
-
-
-\# 67. Core Terminology
-
-
+# 71. Core Terminology
 
 Use these terms consistently.
 
-
-
-\### Host
-
-
+### Host
 
 The device coordinating a SoundMesh room.
 
+### Participant
 
+A device participating in synchronized audio output.
 
-\### Participant
+### Room
 
+The logical collection of devices participating together.
 
+### Session
 
-A device participating in playback.
+A specific active audio-session instance within a room.
 
+### Device ID
 
+Stable logical identity for a participating device.
 
-\### Room
+### Participant ID
 
+Identity of a device within a particular room/session.
 
+### Capture Session
 
-The logical collection of devices participating in a session.
+The host-side external-audio capture lifecycle.
 
+### Audio Stream
 
+The live sequence of captured audio frames distributed to participants.
 
-\### Session
+### Audio Frame
 
+A timestamped, sequenced unit of captured audio data.
 
+### Shared Timeline
 
-A specific active room instance.
+The logical timing reference used to coordinate output.
 
+### Clock Offset
 
+Estimated timing relationship between clocks.
 
-\### Participant ID
-
-
-
-Logical identity assigned to a device within the session.
-
-
-
-\### Shared Timeline
-
-
-
-The logical time reference used to coordinate playback.
-
-
-
-\### Clock Offset
-
-
-
-Estimated timing relationship between two clocks.
-
-
-
-\### RTT
-
-
+### RTT
 
 Round-trip network time.
 
+### Jitter
 
+Variation in packet arrival timing.
 
-\### Drift
+### Buffer Fill
 
+The amount of audio currently available in a participant's jitter buffer.
 
+### Drift
 
-Gradual timing divergence between devices.
+Gradual divergence in audio timing between devices.
 
+### Calibration
 
+The process of estimating timing and latency relationships.
 
-\### Calibration
+### Startup Spread
 
+Difference between actual output start times across devices.
 
+### Steady-State Spread
 
-The process of estimating timing relationships.
+Difference between device output positions over continued playback.
 
+### Session Generation
 
+Version identifier used to reject stale session state.
 
-\### Startup Spread
+---
 
+# 72. Product Vocabulary
 
-
-Difference between actual playback start times across devices.
-
-
-
-\### Steady-State Spread
-
-
-
-Difference between playback positions during continued playback.
-
-
-
-\### Playback Generation
-
-
-
-Version identifier used to prevent stale playback commands from affecting current state.
-
-
-
-\---
-
-
-
-\# 68. Preferred Product Vocabulary
-
-
-
-User-facing language should prefer:
-
-
+Prefer simple user-facing language such as:
 
 ```text
+Connecting…
+
+Allow audio capture
+
+Open your media app
+
+SoundMesh is listening
+
+Streaming
 
 Getting everyone in sync…
 
-Everyone is ready.
+Everyone is ready
 
 Synchronized
 
-Connecting…
+Audio capture unavailable
 
-Preparing audio…
+This app doesn't allow audio capture
 
-Recovering…
+Reconnecting…
 
+Resynchronizing…
 ```
 
-
-
-Avoid exposing:
-
-
+Avoid exposing technical language such as:
 
 ```text
-
 Clock offset calibration phase 2
-
 TCP handshake failure 104
-
 RTT variance exceeded
-
+Jitter buffer underrun
 ```
 
+unless the user is viewing diagnostics.
 
+---
 
-unless inside diagnostics.
-
-
-
-\---
-
-
-
-\# 69. Technical Vocabulary Rules
-
-
+# 73. Technical Vocabulary Rules
 
 Engineers may use technical terminology in:
 
-
-
-\* code
-
-\* logs
-
-\* diagnostics
-
-\* engineering documentation
-
-
+* code
+* logs
+* diagnostics
+* engineering documentation
+* protocol definitions
 
 User-facing UI should translate technical state into understandable language.
 
+---
 
+# 74. Core User Journey
 
-\---
-
-
-
-\# 70. Core User Journey
-
-
-
-The intended experience is:
-
-
+The authoritative journey is:
 
 ```text
-
 Open SoundMesh
-
-&#x20;     ↓
-
+      ↓
 Create Room
-
-&#x20;     ↓
-
-Show QR
-
-&#x20;     ↓
-
-Friends scan QR
-
-&#x20;     ↓
-
-Devices connect
-
-&#x20;     ↓
-
-Choose audio
-
-&#x20;     ↓
-
-Prepare
-
-&#x20;     ↓
-
-Synchronize
-
-&#x20;     ↓
-
-Play
-
+      ↓
+Display QR
+      ↓
+Friends Scan QR
+      ↓
+Devices Connect
+      ↓
+Allow Audio Capture
+      ↓
+Open External Media App
+      ↓
+Play Normally
+      ↓
+SoundMesh Captures Audio
+      ↓
+Live Audio Streams
+      ↓
+Devices Synchronize
+      ↓
+Everyone Hears Together
 ```
 
+The complexity underneath this flow should remain mostly invisible.
 
+---
 
-The complexity beneath this flow should remain mostly invisible.
+# 75. MVP Definition
 
-
-
-\---
-
-
-
-\# 71. MVP Definition
-
-
-
-The MVP is fundamentally:
-
-
+The MVP fundamentally consists of:
 
 ```text
-
-Local room
-
-\+
-
-Device joining
-
-\+
-
-Audio distribution
-
-\+
-
-Audio preparation
-
-\+
-
-Clock calibration
-
-\+
-
-Scheduled playback
-
-\+
-
-Synchronized playback
-
-\+
-
-Monitoring
-
-\+
-
+Android application
++
+Local room creation
++
+QR-based joining
++
+Local device networking
++
+External-app audio capture
++
+Live audio transport
++
+Native participant audio output
++
+Clock synchronization
++
+Timing calibration
++
+Future-target scheduling
++
+Two-device synchronization
++
+Basic drift handling
++
 Basic recovery
-
++
+Diagnostics
 ```
 
+The MVP does not fundamentally require:
 
+```text
+Audio file distribution
++
+Media library
++
+SoundMesh media player
++
+Cloud backend
++
+Internet access
++
+iOS
+```
 
-Everything else should be evaluated against this core.
+---
 
-
-
-\---
-
-
-
-\# 72. First Technical Milestone
-
-
+# 76. First Technical Milestone
 
 The first major technical milestone is:
 
+> **Two real Android phones receive the same live external-app audio through SoundMesh and produce measured, repeatable, perceptually coherent synchronized output.**
 
+This milestone is more important than completing a large feature set.
 
-> \*\*Two real phones successfully playing the same local audio through a shared future timeline with measured synchronization.\*\*
+---
 
-
-
-This is more important than completing a large feature set.
-
-
-
-\---
-
-
-
-\# 73. Second Technical Milestone
-
-
+# 77. Scaling Milestone
 
 After two-device synchronization works:
 
-
-
 ```text
-
 2 devices
-
-&#x20;↓
-
+   ↓
 3 devices
-
-&#x20;↓
-
+   ↓
 5 devices
-
 ```
 
+Synchronization quality must be measured at each stage.
 
+Do not infer scalability from two-device success.
 
-The system should demonstrate that synchronization quality remains acceptable as participant count increases.
+---
 
+# 78. Competition-Readiness Milestone
 
+SoundMesh approaches competition readiness when:
 
-\---
+* the core room flow is reliable
+* external audio capture works on tested sources
+* live audio transport is stable
+* synchronization is repeatable
+* drift is controlled
+* recovery is predictable
+* multiple devices work
+* physical measurements support synchronization claims
+* UI is polished
+* diagnostics exist
+* documentation is coherent
+* builds are stable
+* the demonstration is repeatable
 
+---
 
-
-\# 74. Final Product Milestone
-
-
-
-The product is approaching competition readiness when:
-
-
-
-\* the core room flow is reliable
-
-\* synchronization is repeatable
-
-\* drift is controlled
-
-\* failures recover predictably
-
-\* multiple devices work
-
-\* physical measurements support synchronization claims
-
-\* UI is polished
-
-\* diagnostics exist
-
-\* documentation is complete
-
-\* builds are stable
-
-\* the demonstration is reliable
-
-
-
-\---
-
-
-
-\# 75. AI Mental Model
-
-
+# 79. AI Mental Model
 
 Before changing code, an AI agent should be able to answer:
 
-
-
-\### What are we building?
-
-
+### What are we building?
 
 A synchronized multi-phone speaker system.
 
+### What is the hardest part?
 
+Synchronizing actual physical audio output across heterogeneous Android devices.
 
-\### What is the hardest part?
+### What platform?
 
+Android for the MVP.
 
+### What framework?
 
-Reliable synchronization across heterogeneous physical devices.
+Flutter plus native Android integrations.
 
+### Does it require cloud?
 
+No.
 
-\### What platform?
+### Does it require Internet?
 
+No for normal MVP operation.
 
-
-Android and iOS.
-
-
-
-\### What framework?
-
-
-
-Flutter plus native platform integrations.
-
-
-
-\### Does it require cloud?
-
-
-
-No for normal MVP playback.
-
-
-
-\### How do devices join?
-
-
+### How do devices join?
 
 QR-first.
 
+### Where does the audio come from?
 
+The host's eligible external media application.
 
-\### Does the host continuously stream audio?
+### Does SoundMesh own media playback?
 
+No.
 
+### How does audio reach participants?
 
-Preferably no.
+Live capture → timestamped frames → local network → jitter buffer → scheduled native output.
 
+### How is synchronization achieved?
 
+Measured clock relationships + timing calibration + shared timeline + future scheduled output + drift monitoring/correction.
 
-\### How does synchronized playback work?
+### Does the host's speaker automatically have the same latency as participants?
 
+No assumption may be made. It must be measured or otherwise accounted for.
 
+### How do we know synchronization works?
 
-Local audio + shared timeline + measured clock relationship + future scheduled playback.
+Measure it on real physical devices, including acoustic output where possible.
 
+### What happens if an external app refuses capture?
 
+Surface the incompatibility clearly. Do not pretend capture succeeded.
 
-\### How do we know it works?
+### What happens if a decision is unclear?
 
+Read `decisions.md` and the relevant specification. Do not silently decide.
 
+---
 
-Measure it on real devices.
-
-
-
-\### What happens if a decision is unclear?
-
-
-
-Do not silently decide; consult the documented decision state.
-
-
-
-\---
-
-
-
-\# 76. The Most Important Mental Model
-
-
+# 80. The Most Important Mental Model
 
 Think of SoundMesh as:
 
-
-
 ```text
-
-&#x20;            CONTROL
-
-&#x20;               │
-
-&#x20;               ▼
-
-&#x20;       ┌───────────────┐
-
-&#x20;       │  SoundMesh    │
-
-&#x20;       │     Room      │
-
-&#x20;       └───────┬───────┘
-
-&#x20;               │
-
-&#x20;       Shared timeline
-
-&#x20;               │
-
-&#x20;      ┌────────┼────────┐
-
-&#x20;      ▼        ▼        ▼
-
-&#x20;    Phone A  Phone B  Phone C
-
-&#x20;      │        │        │
-
-&#x20;    Clock    Clock    Clock
-
-&#x20;      │        │        │
-
-&#x20;    Audio    Audio    Audio
-
-&#x20;      │        │        │
-
-&#x20;    Speaker  Speaker  Speaker
-
+                 EXTERNAL MEDIA APP
+                         │
+                         ▼
+                AUDIOPLAYBACKCAPTURE
+                         │
+                         ▼
+                  CAPTURED AUDIO
+                         │
+                Timestamp + Sequence
+                         │
+                         ▼
+                  LIVE AUDIO STREAM
+                         │
+             ┌───────────┼───────────┐
+             ▼           ▼           ▼
+         Phone A      Phone B      Phone C
+             │           │           │
+       Jitter Buffer Jitter Buffer Jitter Buffer
+             │           │           │
+        Shared Timeline / Timing Model
+             │           │           │
+      Scheduled Native Audio Output
+             │           │           │
+          Speaker      Speaker      Speaker
 ```
 
+Above this realtime path is:
 
+```text
+Room Control
+Device State
+Capture State
+Session State
+Diagnostics
+Recovery
+```
 
-The central engineering problem is coordinating those independent clocks and audio systems well enough that the resulting physical sound behaves like one system.
+The central engineering problem is coordinating independent clocks, network paths, capture timing, buffering, and audio output well enough that the resulting physical sound behaves like one system.
 
+---
 
+# 81. Evidence-Driven Development
 
-\---
+SoundMesh development should follow:
 
+```text
+Unknown
+   ↓
+Experiment
+   ↓
+Measurement
+   ↓
+Evidence
+   ↓
+Decision
+   ↓
+Implementation
+   ↓
+Test
+   ↓
+Reliable Feature
+```
 
+An AI agent should not jump directly from:
 
-\# 77. Final AI Principle
+```text
+Unknown
+   ↓
+Implementation
+```
 
+especially for timing-critical architecture.
 
+---
+
+# 82. Final AI Principle
 
 The AI developer's job is not simply:
 
-
-
-> \*\*Write code that works.\*\*
-
-
+> **Write code that works.**
 
 It is:
 
-
-
-> \*\*Write code that fits the architecture, satisfies the documented requirements, survives testing, and produces measurable evidence that the system behaves as intended.\*\*
-
-
+> **Write code that fits the architecture, satisfies documented requirements, survives testing, and produces measurable evidence that the system behaves as intended.**
 
 When uncertain:
 
-
-
-> \*\*Measure.\*\*
-
-
+> **Measure.**
 
 When architecture is unclear:
 
-
-
-> \*\*Read the decisions.\*\*
-
-
+> **Read the decisions.**
 
 When requirements are unclear:
 
+> **Read the specifications.**
 
+When a feature is unnecessary:
 
-> \*\*Read the specifications.\*\*
-
-
-
-When a feature is not necessary:
-
-
-
-> \*\*Do not build it.\*\*
-
-
+> **Do not build it.**
 
 When something has not been tested:
 
+> **Do not claim that it works.**
 
+When an external application may reject capture:
 
-> \*\*Do not claim that it works.\*\*
+> **Handle the failure explicitly.**
 
+When a timing assumption has not been measured:
 
+> **Do not assume it.**
 
-\---
+---
 
-
-
-\# 78. Final SoundMesh Principle
-
-
+# 83. Final SoundMesh Principle
 
 SoundMesh should feel extremely simple to the person using it:
 
-
-
 ```text
-
 Create
-
 Join
-
-Choose
-
+Connect
+Allow Capture
+Open Media App
 Play
-
+Everyone Hears Together
 ```
 
-
-
-But underneath that simplicity, the system must carefully coordinate:
-
-
+Underneath that simplicity, the system must carefully coordinate:
 
 ```text
-
+External Audio Capture
++
 Networking
-
-\+
-
++
 Identity
-
-\+
-
-Audio
-
-\+
-
-Clock relationships
-
-\+
-
++
+Live Audio Transport
++
+Buffering
++
+Clock Relationships
++
 Scheduling
-
-\+
-
++
 Drift
-
-\+
-
++
 Recovery
-
-\+
-
-Physical hardware
-
++
+Physical Hardware
 ```
 
+The user should not have to understand that complexity.
 
+The engineering must.
 
-The user's experience should hide the complexity.
+> **Complexity belongs underneath the product, not inside the user's head.**
 
+---
 
-
-The engineering must solve it.
-
-
-
-> \*\*Complexity belongs underneath the product, not inside the user's head.\*\*
-
-
-
-\*\*End of AI Engineering Context.\*\*
-
-
-
+**End of AI Engineering Context.**
