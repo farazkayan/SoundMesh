@@ -640,8 +640,8 @@ interface NetworkHostPlatform {
   fun sendProtocolMessage(message: String): Boolean
   fun disconnect()
   fun getLocalIpAddress(): String
-  fun setHeartbeatConfig(intervalMs: Long, timeoutMs: Long)
-  fun reconnectToHost(ipAddress: String, port: Long): Boolean
+  suspend fun setHeartbeatConfig(intervalMs: Long, timeoutMs: Long)
+  suspend fun reconnectToHost(ipAddress: String, port: Long): Boolean
 
   companion object {
     /** The codec used by NetworkHostPlatform. */
@@ -776,13 +776,15 @@ interface NetworkHostPlatform {
             val args = message as List<Any?>
             val intervalMsArg = args[0] as Long
             val timeoutMsArg = args[1] as Long
-            val wrapped: List<Any?> = try {
-              api.setHeartbeatConfig(intervalMsArg, timeoutMsArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              SoundMeshMessagesPigeonUtils.wrapError(exception)
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                api.setHeartbeatConfig(intervalMsArg, timeoutMsArg)
+                listOf(null)
+              } catch (exception: Throwable) {
+                SoundMeshMessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -795,12 +797,14 @@ interface NetworkHostPlatform {
             val args = message as List<Any?>
             val ipAddressArg = args[0] as String
             val portArg = args[1] as Long
-            val wrapped: List<Any?> = try {
-              listOf(api.reconnectToHost(ipAddressArg, portArg))
-            } catch (exception: Throwable) {
-              SoundMeshMessagesPigeonUtils.wrapError(exception)
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.reconnectToHost(ipAddressArg, portArg))
+              } catch (exception: Throwable) {
+                SoundMeshMessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)

@@ -86,7 +86,9 @@ abstract class NetworkHostPlatform {
   bool sendProtocolMessage(String message);
   void disconnect();
   String getLocalIpAddress();
+  @async
   void setHeartbeatConfig(int intervalMs, int timeoutMs);
+  @async
   bool reconnectToHost(String ipAddress, int port);
 }
 

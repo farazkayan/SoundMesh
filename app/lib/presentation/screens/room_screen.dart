@@ -541,7 +541,11 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     Color color;
     String label;
 
-    if (isHandshaking) {
+    // Check for reconnecting first since it's a connectionState, not lifecycleState
+    if (connectionState == NetworkConnectionState.reconnecting) {
+      color = SoundMeshColors.warning;
+      label = 'Reconnecting';
+    } else if (isHandshaking) {
       color = SoundMeshColors.accent;
       label = 'Handshaking';
     } else if (isListening) {

@@ -610,8 +610,8 @@ protocol NetworkHostPlatform {
   func sendProtocolMessage(message: String) throws -> Bool
   func disconnect() throws
   func getLocalIpAddress() throws -> String
-  func setHeartbeatConfig(intervalMs: Int64, timeoutMs: Int64) throws
-  func reconnectToHost(ipAddress: String, port: Int64) throws -> Bool
+  func setHeartbeatConfig(intervalMs: Int64, timeoutMs: Int64) async throws
+  func reconnectToHost(ipAddress: String, port: Int64) async throws -> Bool
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -728,11 +728,13 @@ class NetworkHostPlatformSetup {
         let args = message as! [Any?]
         let intervalMsArg = args[0] as! Int64
         let timeoutMsArg = args[1] as! Int64
-        do {
-          try api.setHeartbeatConfig(intervalMs: intervalMsArg, timeoutMs: timeoutMsArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        Task { @MainActor in
+          do {
+            try await api.setHeartbeatConfig(intervalMs: intervalMsArg, timeoutMs: timeoutMsArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -744,11 +746,13 @@ class NetworkHostPlatformSetup {
         let args = message as! [Any?]
         let ipAddressArg = args[0] as! String
         let portArg = args[1] as! Int64
-        do {
-          let result = try api.reconnectToHost(ipAddress: ipAddressArg, port: portArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        Task { @MainActor in
+          do {
+            let result = try await api.reconnectToHost(ipAddress: ipAddressArg, port: portArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
         }
       }
     } else {

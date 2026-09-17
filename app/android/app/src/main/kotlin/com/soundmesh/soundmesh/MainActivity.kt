@@ -634,7 +634,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
     }
 
-    override fun setHeartbeatConfig(intervalMs: Long, timeoutMs: Long) {
+    override suspend fun setHeartbeatConfig(intervalMs: Long, timeoutMs: Long) {
         Log.d(TAG, "[Heartbeat] Configuring heartbeat: intervalMs=$intervalMs, timeoutMs=$timeoutMs")
         heartbeatIntervalMs = intervalMs
         heartbeatTimeoutMs = timeoutMs
@@ -644,27 +644,42 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
     }
 
-    override fun reconnectToHost(ipAddress: String, port: Long): Boolean {
+    override suspend fun reconnectToHost(ipAddress: String, port: Long): Boolean {
         Log.d(TAG, "[Reconnection] reconnectToHost called: $ipAddress:$port")
         if (isHosting) {
             Log.w(TAG, "[Reconnection] Cannot reconnect while hosting")
             return false
         }
-        lastKnownHostIp = ipAddress
-        lastKnownHostPort = port.toInt()
-        isReconnecting = true
-        reconnectAttempts = 0
+        synchronized(hostingLock) {
+            lastKnownHostIp = ipAddress
+            lastKnownHostPort = port.toInt()
+            isReconnecting = true
+            reconnectAttempts = 0
+        }
         scope.launch {
             attemptReconnect()
         }
         return true
     }
 
-    private fun attemptReconnect() {
-        val ip = lastKnownHostIp ?: return
-        val port = lastKnownHostPort
-        while (isReconnecting && reconnectAttempts < maxReconnectAttempts) {
-            reconnectAttempts++
+    private suspend fun attemptReconnect() {
+        val ip: String
+        val port: Int
+        synchronized(hostingLock) {
+            ip = lastKnownHostIp ?: return
+            port = lastKnownHostPort
+        }
+        while (true) {
+            var shouldContinue = false
+            synchronized(hostingLock) {
+                if (!isReconnecting || reconnectAttempts >= maxReconnectAttempts) {
+                    return
+                }
+                reconnectAttempts++
+                shouldContinue = true
+            }
+            if (!shouldContinue) return
+
             Log.d(TAG, "[Reconnection] Attempt $reconnectAttempts/$maxReconnectAttempts to $ip:$port")
             notifyState("reconnecting")
             val socket = Socket()
@@ -673,64 +688,78 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             } catch (e: Exception) {
                 Log.w(TAG, "[Reconnection] Attempt $reconnectAttempts failed: ${e.javaClass.simpleName}: ${e.message}")
                 runCatching { socket.close() }
-                if (!isReconnecting) return
+                var shouldRetry = false
+                synchronized(hostingLock) {
+                    if (isReconnecting && reconnectAttempts < maxReconnectAttempts) {
+                        shouldRetry = true
+                    }
+                }
+                if (!shouldRetry) return
                 // Wait before retry with exponential backoff (capped)
                 val delayMs = minOf(1000L * (1 shl (reconnectAttempts - 1)), 10000L)
                 try {
-                    Thread.sleep(delayMs)
-                } catch (ie: InterruptedException) {
+                    delay(delayMs)
+                } catch (e: CancellationException) {
+                    return
+                } catch (e: Exception) {
+                    Log.e(TAG, "[Reconnection] Delay interrupted", e)
                     return
                 }
                 continue
             }
 
+            var shouldProceed = false
             synchronized(hostingLock) {
-                if (!isReconnecting) {
-                    runCatching { socket.close() }
-                    return
+                if (isReconnecting) {
+                    clientSocket = socket
+                    connectionSocket = socket
+                    shouldProceed = true
                 }
-                clientSocket = socket
-                connectionSocket = socket
+            }
+            if (!shouldProceed) {
+                runCatching { socket.close() }
+                return
             }
 
             Log.d(TAG, "[Reconnection] TCP reconnected to $ip:$port")
             notifyState("connected")
             startReading(socket)
             startHeartbeat()
-            isReconnecting = false
-            reconnectAttempts = 0
+            synchronized(hostingLock) {
+                isReconnecting = false
+                reconnectAttempts = 0
+            }
             return
-        }
-
-        if (isReconnecting) {
-            Log.e(TAG, "[Reconnection] Max attempts ($maxReconnectAttempts) reached, giving up")
-            isReconnecting = false
-            notifyConnectionError("RECONNECTION_FAILED", "Failed to reconnect after $maxReconnectAttempts attempts")
-            notifyState("failed")
         }
     }
 
     private fun startHeartbeat() {
         heartbeatJob?.cancel()
-        lastHeartbeatReceivedMs = System.currentTimeMillis()
+        lastHeartbeatReceivedMs = 0L // Initialize to 0 - will be set when first heartbeat received
         heartbeatJob = scope.launch {
             Log.d(TAG, "[Heartbeat] Starting heartbeat with interval=${heartbeatIntervalMs}ms, timeout=${heartbeatTimeoutMs}ms")
             while (connectionSocket != null && connectionSocket!!.isConnected && !connectionSocket!!.isClosed) {
+                // Check timeout at the START of each iteration
                 val now = System.currentTimeMillis()
-                val timeSinceLastHeartbeat = now - lastHeartbeatReceivedMs
-                if (timeSinceLastHeartbeat > heartbeatTimeoutMs) {
-                    Log.w(TAG, "[Heartbeat] Timeout: no heartbeat for ${timeSinceLastHeartbeat}ms (threshold=${heartbeatTimeoutMs}ms)")
-                    handleHeartbeatTimeout()
-                    return@launch
+                if (lastHeartbeatReceivedMs > 0) {
+                    val timeSinceLastHeartbeat = now - lastHeartbeatReceivedMs
+                    if (timeSinceLastHeartbeat > heartbeatTimeoutMs) {
+                        Log.w(TAG, "[Heartbeat] Timeout: no heartbeat for ${timeSinceLastHeartbeat}ms (threshold=${heartbeatTimeoutMs}ms)")
+                        handleHeartbeatTimeout()
+                        return@launch
+                    }
                 }
 
                 // Send PING
                 sendPing()
 
-                // Wait for next interval
+                // Wait for next interval using coroutine delay
                 try {
-                    Thread.sleep(heartbeatIntervalMs)
-                } catch (e: InterruptedException) {
+                    delay(heartbeatIntervalMs)
+                } catch (e: CancellationException) {
+                    return@launch
+                } catch (e: Exception) {
+                    Log.e(TAG, "[Heartbeat] Delay interrupted", e)
                     return@launch
                 }
             }
@@ -740,10 +769,18 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
 
     private fun sendPing() {
         val socket = connectionSocket ?: return
+        val participantId = currentParticipantId ?: getFallbackDeviceId()
         scope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val pingJson = """{"protocolVersion":1,"messageId":"${java.util.UUID.randomUUID()}","messageType":"PING","senderId":"${getDeviceId()}","generation":0,"timestamp":${System.currentTimeMillis()} }""".trimIndent()
+                    val pingJson = JSONObject().apply {
+                        put("protocolVersion", 1)
+                        put("messageId", java.util.UUID.randomUUID().toString())
+                        put("messageType", "PING")
+                        put("senderId", participantId)
+                        put("generation", 0)
+                        put("timestamp", System.currentTimeMillis())
+                    }.toString()
                     val payload = pingJson.toByteArray(Charsets.UTF_8)
                     val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
                     frame[0] = (payload.size shr 24).toByte()
@@ -762,12 +799,15 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
     }
 
-    private fun handleHeartbeatTimeout() {
+    private suspend fun handleHeartbeatTimeout() {
         Log.w(TAG, "[Heartbeat] Handling heartbeat timeout")
         heartbeatJob?.cancel()
+        readerJob?.cancel()
+        readerJob = null
         if (isHosting) {
             // Host: notify about participant timeout
             notifyConnectionError("HEARTBEAT_TIMEOUT", "Participant heartbeat timeout")
+            notifyState("disconnected")
         } else {
             // Participant: initiate reconnection
             if (!isReconnecting) {
@@ -791,43 +831,54 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         onHeartbeatReceived()
     }
 
-    private fun getDeviceId(): String {
+    private fun getFallbackDeviceId(): String {
         // Use a stable device identifier - in practice this would be the participantId
         // For now, generate a simple identifier based on the device
-        return "android-${Build.MODEL}-${Build.FINGERPRINT.hashCode()}"
+        return "android-${Build.MODEL}-${Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)}"
     }
 
     private fun isHeartbeatMessage(message: String): Boolean {
-        return message.contains("\"messageType\":\"PING\"") || message.contains("\"messageType\":\"PONG\"")
-    }
-
-    private fun handleHeartbeatMessage(message: String) {
-        if (message.contains("\"messageType\":\"PING\"")) {
-            Log.d(TAG, "[Heartbeat] Received PING, sending PONG")
-            sendPong(message)
-        } else if (message.contains("\"messageType\":\"PONG\"")) {
-            Log.d(TAG, "[Heartbeat] Received PONG")
-            onHeartbeatReceived()
+        try {
+            val json = JSONObject(message)
+            val messageType = json.optString("messageType", "")
+            return messageType == "PING" || messageType == "PONG"
+        } catch (e: Exception) {
+            return false
         }
     }
 
-    private fun sendPong(pingMessage: String) {
+    private fun handleHeartbeatMessage(message: String) {
+        try {
+            val json = JSONObject(message)
+            val messageType = json.optString("messageType", "")
+            if (messageType == "PING") {
+                Log.d(TAG, "[Heartbeat] Received PING, sending PONG")
+                sendPong(json)
+            } else if (messageType == "PONG") {
+                Log.d(TAG, "[Heartbeat] Received PONG")
+                onHeartbeatReceived()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "[Heartbeat] Failed to parse heartbeat message", e)
+        }
+    }
+
+    private fun sendPong(pingJson: JSONObject) {
         val socket = connectionSocket ?: return
+        val participantId = currentParticipantId ?: getFallbackDeviceId()
+        val originalMessageId = pingJson.optString("messageId", "")
         scope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    // Extract messageId from ping to echo back
-                    var originalMessageId = ""
-                    try {
-                        val startIdx = pingMessage.indexOf("\"messageId\":\"") + 13
-                        val endIdx = pingMessage.indexOf("\"", startIdx)
-                        if (startIdx > 12 && endIdx > startIdx) {
-                            originalMessageId = pingMessage.substring(startIdx, endIdx)
-                        }
-                    } catch (e: Exception) {
-                        // Ignore parsing errors
-                    }
-                    val pongJson = """{"protocolVersion":1,"messageId":"${java.util.UUID.randomUUID()}","messageType":"PONG","senderId":"${getDeviceId()}","generation":0,"timestamp":${System.currentTimeMillis()},"payload":{"originalMessageId":"$originalMessageId"}}""".trimIndent()
+                    val pongJson = JSONObject().apply {
+                        put("protocolVersion", 1)
+                        put("messageId", java.util.UUID.randomUUID().toString())
+                        put("messageType", "PONG")
+                        put("senderId", participantId)
+                        put("generation", 0)
+                        put("timestamp", System.currentTimeMillis())
+                        put("payload", JSONObject().put("originalMessageId", originalMessageId))
+                    }.toString()
                     val payload = pongJson.toByteArray(Charsets.UTF_8)
                     val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
                     frame[0] = (payload.size shr 24).toByte()
@@ -937,6 +988,9 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             ++hostingGeneration
             ++connectionGeneration
             isHosting = false
+            lastKnownHostIp = null
+            lastKnownHostPort = 8765
+            currentParticipantId = null
             Log.d(TAG, "[HostLifecycle] stopAll: incremented hostingGeneration to $hostingGeneration, connectionGeneration to $connectionGeneration")
         }
         job?.cancel()

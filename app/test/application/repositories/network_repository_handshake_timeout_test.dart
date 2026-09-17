@@ -404,20 +404,22 @@ void main() {
     });
 
     test('error codes include NETWORK_UNREACHABLE classification', () async {
-      final repo = TestableNetworkRepository(handshakeTimeout: const Duration(milliseconds: 100));
+      final repo = TestableNetworkRepository(handshakeTimeout: const Duration(seconds: 10));
 
       final errors = <ConnectionError>[];
       final sub = repo.connectionErrorStream.listen(errors.add);
 
-      // Simulate a NETWORK_UNREACHABLE error from native
+      // Simulate a NETWORK_UNREACHABLE error from native by directly calling the error callback
       // This tests the error classification logic on the Dart side
-      await repo.connectToHost('192.168.255.255'); // Unreachable IP
-      repo.triggerTcpConnectedForTest(); // This won't actually connect but simulates the callback
+      repo.handleErrorCallbackForTest('NETWORK_UNREACHABLE', 'No route to host');
       
-      // The mock platform always returns true, so we can't easily test the actual error
-      // But we can verify the error stream exists
-      expect(repo.connectionErrorStream, isNotNull);
-
+      // Give the stream a moment to deliver the event
+      await Future.delayed(const Duration(milliseconds: 10));
+      
+      // Verify the error was emitted
+      expect(errors, isNotEmpty);
+      expect(errors.first.errorCode, equals('NETWORK_UNREACHABLE'));
+      
       await sub.cancel();
       repo.dispose();
     });

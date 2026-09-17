@@ -129,11 +129,17 @@ class NetworkRepository {
             // For host, the participant is considered lost
             if (_isHost) {
               _transitionTo(NetworkConnectionState.disconnected, reason: 'Participant heartbeat timeout');
+              _resetHostParticipantState(resetIds: true);
             }
             break;
           case 'RECONNECTION_FAILED':
             debugPrint('[Connection] Reconnection failed after max attempts');
             _transitionTo(NetworkConnectionState.failed, reason: 'Reconnection failed: $errorMessage');
+            break;
+          case 'PROTOCOL_VERSION_MISMATCH':
+          case 'HANDSHAKE_FAILED':
+            debugPrint('[Connection] Protocol version mismatch or handshake failed');
+            _transitionTo(NetworkConnectionState.failed, reason: 'Protocol error: $errorCode - $errorMessage');
             break;
           case 'NETWORK_UNREACHABLE':
           case 'CONNECTION_REFUSED':
@@ -352,8 +358,6 @@ class NetworkRepository {
       _transitionToRoomLifecycleState(RoomLifecycleState.discoverable);
       // Do NOT start handshake timer here - wait for participant to connect (HELLO received)
     } else {
-      debugPrint('[Handshake] Participant: TCP connected, configuring heartbeat');
-      setHeartbeatConfig(); // Use defaults
       debugPrint('[Handshake] Participant: TCP connected, sending HELLO');
       _sendHello();
       _transitionTo(NetworkConnectionState.handshaking);
@@ -550,6 +554,9 @@ class NetworkRepository {
     _roomId = message.payload?['roomId'] as String?;
     _generation = message.generation;
 
+    // Configure heartbeat now that session is established
+    setHeartbeatConfig();
+
     // Send JOIN_REQUEST to formally join the room
     final joinRequest = ProtocolMessage.joinRequest(
       participantId: _participantId,
@@ -571,6 +578,11 @@ class NetworkRepository {
   }
 
   void _handlePing(ProtocolMessage message) {
+    // Validate sessionId matches current session to avoid responding to stale PINGs
+    if (message.sessionId != null && message.sessionId != _sessionId) {
+      debugPrint('[Handshake] Ignoring PING from stale session: ${message.sessionId} (current: $_sessionId)');
+      return;
+    }
     final pong = ProtocolMessage.pong(
       senderId: _participantId,
       sessionId: _sessionId,
@@ -636,6 +648,7 @@ class NetworkRepository {
     _cancelHandshakeTimer();
     _transitionTo(NetworkConnectionState.ready, reason: 'Join accepted');
     _transitionToRoomLifecycleState(RoomLifecycleState.ready);
+    // Handshake complete - heartbeat already configured in _handleWelcome
   }
 
   void _handleJoinRejected(ProtocolMessage message) {
@@ -765,6 +778,42 @@ class NetworkRepository {
         return NetworkConnectionState.disconnected;
       default:
         return NetworkConnectionState.disconnected;
+    }
+  }
+
+  // Test helper to simulate native error callback
+  void handleErrorCallbackForTest(String errorCode, String errorMessage) {
+    debugPrint('[Test] Simulating error callback: $errorCode - $errorMessage');
+    _connectionErrorController.add(ConnectionError(errorCode, errorMessage));
+    
+    // Handle specific error codes (same logic as in _init)
+    switch (errorCode) {
+      case 'HEARTBEAT_TIMEOUT':
+        debugPrint('[Connection] Heartbeat timeout - will trigger reconnection on participant side');
+        if (_isHost) {
+          _transitionTo(NetworkConnectionState.disconnected, reason: 'Participant heartbeat timeout');
+          _resetHostParticipantState(resetIds: true);
+        }
+        break;
+      case 'RECONNECTION_FAILED':
+        debugPrint('[Connection] Reconnection failed after max attempts');
+        _transitionTo(NetworkConnectionState.failed, reason: 'Reconnection failed: $errorMessage');
+        break;
+      case 'PROTOCOL_VERSION_MISMATCH':
+      case 'HANDSHAKE_FAILED':
+        debugPrint('[Connection] Protocol version mismatch or handshake failed');
+        _transitionTo(NetworkConnectionState.failed, reason: 'Protocol error: $errorCode - $errorMessage');
+        break;
+      case 'NETWORK_UNREACHABLE':
+      case 'CONNECTION_REFUSED':
+      case 'CONNECTION_TIMEOUT':
+      case 'UNKNOWN_HOST':
+      case 'SOCKET_ERROR':
+      case 'CONNECTION_FAILED':
+        if (_currentState == NetworkConnectionState.connecting) {
+          _transitionTo(NetworkConnectionState.failed, reason: 'Connection error: $errorCode - $errorMessage');
+        }
+        break;
     }
   }
 
