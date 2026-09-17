@@ -357,7 +357,6 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
       case CaptureUiState.stopped:
         return theme.colorScheme.onSurfaceVariant;
       case CaptureUiState.idle:
-      default:
         return theme.colorScheme.onSurfaceVariant;
     }
   }
