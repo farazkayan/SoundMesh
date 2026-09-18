@@ -1,0 +1,201 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../src/soundmesh_messages.g.dart';
+import '../repositories/capture_repository.dart';
+
+enum CaptureUiState {
+  idle,
+  requestingPermission,
+  permissionGranted,
+  permissionDenied,
+  capturing,
+  stopped,
+  failed,
+}
+
+class CaptureUiStateData {
+  final CaptureUiState state;
+  final CaptureMetadata? metadata;
+  final CaptureError? error;
+
+  const CaptureUiStateData({
+    this.state = CaptureUiState.idle,
+    this.metadata,
+    this.error,
+  });
+
+  CaptureUiStateData copyWith({
+    CaptureUiState? state,
+    CaptureMetadata? metadata,
+    CaptureError? error,
+  }) {
+    return CaptureUiStateData(
+      state: state ?? this.state,
+      metadata: metadata ?? this.metadata,
+      error: error ?? this.error,
+    );
+  }
+}
+
+class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
+  final CaptureRepository _repository;
+  bool _isListening = false;
+
+  CaptureStateNotifier(this._repository) : super(const CaptureUiStateData()) {
+    _startListening();
+    _refreshState();
+  }
+
+  void _startListening() {
+    if (_isListening) return;
+    _isListening = true;
+
+    AudioCaptureFlutterApi.setUp(_CaptureFlutterApiImpl(this));
+  }
+
+  void _refreshState() async {
+    try {
+      final result = await _repository.getCaptureState();
+      _mapState(result);
+    } catch (e) {
+      debugPrint('[Capture] Failed to get initial state: $e');
+    }
+  }
+
+  void _mapState(CaptureStateResult result) {
+    final uiState = parseState(result.state.state);
+    state = state.copyWith(
+      state: uiState,
+      metadata: result.metadata,
+      error: null,
+    );
+  }
+
+  // Public methods for FlutterApi callbacks
+  void handleStateChanged(String stateStr, CaptureMetadata? metadata) {
+    final uiState = parseState(stateStr);
+    state = state.copyWith(
+      state: uiState,
+      metadata: metadata,
+      error: null,
+    );
+  }
+
+  void handleError(String code, String message) {
+    state = state.copyWith(
+      state: CaptureUiState.failed,
+      error: CaptureError(code: code, message: message),
+    );
+  }
+
+  CaptureUiState parseState(String state) {
+    switch (state) {
+      case 'IDLE':
+        return CaptureUiState.idle;
+      case 'REQUESTING_PERMISSION':
+        return CaptureUiState.requestingPermission;
+      case 'PERMISSION_GRANTED':
+        return CaptureUiState.permissionGranted;
+      case 'PERMISSION_DENIED':
+        return CaptureUiState.permissionDenied;
+      case 'CAPTURING':
+        return CaptureUiState.capturing;
+      case 'STOPPED':
+        return CaptureUiState.stopped;
+      case 'FAILED':
+        return CaptureUiState.failed;
+      default:
+        return CaptureUiState.idle;
+    }
+  }
+
+  Future<void> requestPermission() async {
+    state = state.copyWith(state: CaptureUiState.requestingPermission, error: null);
+    try {
+      final result = await _repository.requestCapturePermission();
+      if (result.result == 'GRANTED') {
+        // State will be updated via native callback
+        debugPrint('[Capture] Permission granted');
+      } else {
+        state = state.copyWith(
+          state: CaptureUiState.permissionDenied,
+          error: result.error,
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(
+        state: CaptureUiState.failed,
+        error: CaptureError(code: 'ERROR', message: e.toString()),
+      );
+    }
+  }
+
+  Future<void> start() async {
+    try {
+      final result = await _repository.startCapture();
+      if (!result.success) {
+        state = state.copyWith(
+          state: CaptureUiState.failed,
+          error: result.error,
+        );
+      }
+      // Success state updated via native callback
+    } catch (e) {
+      state = state.copyWith(
+        state: CaptureUiState.failed,
+        error: CaptureError(code: 'ERROR', message: e.toString()),
+      );
+    }
+  }
+
+  Future<void> stop() async {
+    try {
+      await _repository.stopCapture();
+      // State updated via native callback
+    } catch (e) {
+      state = state.copyWith(
+        state: CaptureUiState.failed,
+        error: CaptureError(code: 'ERROR', message: e.toString()),
+      );
+    }
+  }
+
+  Future<void> refresh() async {
+    _refreshState();
+  }
+
+  @override
+  void dispose() {
+    AudioCaptureFlutterApi.setUp(null);
+    _isListening = false;
+    super.dispose();
+  }
+}
+
+class _CaptureFlutterApiImpl implements AudioCaptureFlutterApi {
+  final CaptureStateNotifier _notifier;
+
+  _CaptureFlutterApiImpl(this._notifier);
+
+  @override
+  void onCaptureStateChanged(String state, CaptureMetadata? metadata) {
+    debugPrint('[Capture] Native state change: $state');
+    _notifier.handleStateChanged(state, metadata);
+  }
+
+  @override
+  void onCaptureError(String errorCode, String errorMessage) {
+    debugPrint('[Capture] Native error: $errorCode - $errorMessage');
+    _notifier.handleError(errorCode, errorMessage);
+  }
+}
+
+final captureRepositoryProvider = Provider<CaptureRepository>((ref) {
+  return LiveCaptureRepository();
+});
+
+final captureStateProvider = StateNotifierProvider<CaptureStateNotifier, CaptureUiStateData>((ref) {
+  final repo = ref.watch(captureRepositoryProvider);
+  return CaptureStateNotifier(repo);
+});

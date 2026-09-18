@@ -1,0 +1,63 @@
+import 'package:flutter/material.dart';
+import '../../core/design_system/index.dart';
+
+class SoundMeshTextField extends StatelessWidget {
+  const SoundMeshTextField({
+    super.key,
+    this.hintText,
+    this.labelText,
+    this.errorText,
+    this.helperText,
+    this.controller,
+    this.obscureText = false,
+    this.validator,
+    this.onChanged,
+    this.onSubmitted,
+    this.enabled = true,
+    this.maxLines = 1,
+    this.keyboardType,
+    this.textInputAction,
+    this.prefixIcon,
+    this.suffixIcon,
+  });
+
+  final String? hintText;
+  final String? labelText;
+  final String? errorText;
+  final String? helperText;
+  final TextEditingController? controller;
+  final bool obscureText;
+  final FormFieldValidator<String>? validator;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final bool enabled;
+  final int? maxLines;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final Widget? prefixIcon;
+  final Widget? suffixIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      enabled: enabled,
+      maxLines: maxLines,
+      validator: validator,
+      onFieldSubmitted: onSubmitted,
+      onChanged: onChanged,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      style: SMTypography.body.copyWith(color: SMColors.primaryText),
+      decoration: InputDecoration(
+        hintText: hintText,
+        labelText: labelText,
+        errorText: errorText,
+        helperText: helperText,
+        prefixIcon: prefixIcon,
+        suffixIcon: suffixIcon,
+      ),
+    );
+  }
+}
