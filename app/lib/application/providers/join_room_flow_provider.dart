@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:developer' as developer;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../repositories/network_repository.dart';
 import '../protocol.dart';
 import '../room/room_lifecycle.dart';
-
 enum JoinRoomFlowStatus {
   idle,
   connecting,
@@ -253,7 +255,19 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
   }
 
   Future<void> joinRoom() async {
+    developer.log(
+      '[JOIN_TRACE] JoinRoomFlowNotifier: joinRoom ENTERED',
+      name: 'SoundMesh.JoinRoomFlow',
+    );
+    developer.log(
+      '[JOIN_TRACE] JoinRoomFlowNotifier: joinRoom called with hostIpAddress=${state.hostIpAddress}, hostPort=${state.hostPort}',
+      name: 'SoundMesh.JoinRoomFlow',
+    );
     if (state.hostIpAddress.trim().isEmpty) {
+      developer.log(
+        '[JOIN_TRACE] JoinRoomFlowNotifier: hostIpAddress is empty - returning error',
+        name: 'SoundMesh.JoinRoomFlow',
+      );
       state = state.copyWith(
         errorMessage: 'Please enter the host IP address',
         status: JoinRoomFlowStatus.idle,
@@ -262,6 +276,10 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
     }
 
     if (state.hostPort < 1 || state.hostPort > 65535) {
+      developer.log(
+        '[JOIN_TRACE] JoinRoomFlowNotifier: hostPort invalid - returning error',
+        name: 'SoundMesh.JoinRoomFlow',
+      );
       state = state.copyWith(
         errorMessage: 'Port must be between 1 and 65535',
         status: JoinRoomFlowStatus.idle,
@@ -269,17 +287,40 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
       return;
     }
 
+    developer.log(
+      '[JOIN_TRACE] JoinRoomFlowNotifier: Setting status to connecting',
+      name: 'SoundMesh.JoinRoomFlow',
+    );
     state = state.copyWith(status: JoinRoomFlowStatus.connecting);
+
+    developer.log(
+      '[JOIN_TRACE] JoinRoomFlowNotifier: Calling _networkRepository.connectToHost',
+      name: 'SoundMesh.JoinRoomFlow',
+    );
 
     final success = await _networkRepository.connectToHost(
       state.hostIpAddress,
       port: state.hostPort,
     );
 
+    developer.log(
+      '[JOIN_TRACE] JoinRoomFlowNotifier: connectToHost returned: $success',
+      name: 'SoundMesh.JoinRoomFlow',
+    );
+
     if (!success) {
+      developer.log(
+        '[JOIN_TRACE] JoinRoomFlowNotifier: connectToHost failed - setting failed status',
+        name: 'SoundMesh.JoinRoomFlow',
+      );
       state = state.copyWith(
         status: JoinRoomFlowStatus.failed,
         errorMessage: 'Failed to initiate connection',
+      );
+    } else {
+      developer.log(
+        '[JOIN_TRACE] JoinRoomFlowNotifier: connectToHost succeeded',
+        name: 'SoundMesh.JoinRoomFlow',
       );
     }
   }

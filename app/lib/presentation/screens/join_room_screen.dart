@@ -372,9 +372,21 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
   }
 
   Future<void> _handleJoin() async {
+    developer.log(
+      '[JOIN_TRACE] 01 UI Join Room onPressed ENTERED',
+      name: 'SoundMesh.JoinRoomScreen',
+    );
     final code = _codeController.text.trim();
+    developer.log(
+      '[JOIN_TRACE] 02 room code received: length=${code.length}, valid=${isValidRoomCode(code)}',
+      name: 'SoundMesh.JoinRoomScreen',
+    );
     
     if (!isValidRoomCode(code)) {
+      developer.log(
+        '[JOIN_TRACE] 03 VALIDATION FAILED: code not 6 digits',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Please enter a valid 6-digit code'),
@@ -383,16 +395,16 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
       );
       return;
     }
+    developer.log(
+      '[JOIN_TRACE] 03 validation passed',
+      name: 'SoundMesh.JoinRoomScreen',
+    );
 
     setState(() => _isJoining = true);
 
     try {
       developer.log(
-        'JoinRoomScreen: ===== STARTING JOIN FLOW =====',
-        name: 'SoundMesh.JoinRoomScreen',
-      );
-      developer.log(
-        'JoinRoomScreen: Code entered: "$code" (length: ${code.length}, valid: ${isValidRoomCode(code)})',
+        '[JOIN_TRACE] 04 JoinRoomFlow.join ENTERED',
         name: 'SoundMesh.JoinRoomScreen',
       );
 
@@ -402,21 +414,21 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
       );
 
       developer.log(
-        'JoinRoomScreen: Calling scanForRoom() with code: $code',
+        '[JOIN_TRACE] 05 JoinRoomFlow invoking discovery scanForRoom',
         name: 'SoundMesh.JoinRoomScreen',
       );
 
       final announcement = await discoveryManager.participantService.scanForRoom(code);
       
       developer.log(
-        'JoinRoomScreen: scanForRoom() returned: ${announcement != null ? "FOUND" : "NULL (timeout/not found)"}',
+        '[JOIN_TRACE] 06 discovery result received: ${announcement != null ? "FOUND (${announcement.hostIp}:${announcement.hostPort})" : "NULL (timeout/not found)"}',
         name: 'SoundMesh.JoinRoomScreen',
       );
       
       if (announcement == null) {
         if (!mounted) return;
         developer.log(
-          'JoinRoomScreen: No announcement found - showing "Code not found" error',
+          '[JOIN_TRACE] 07 NO ANNOUNCEMENT - showing "Code not found" error',
           name: 'SoundMesh.JoinRoomScreen',
         );
         ScaffoldMessenger.of(context).showSnackBar(
@@ -430,15 +442,15 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
       }
 
       developer.log(
-        'JoinRoomScreen: ===== ROOM DISCOVERED =====',
+        '[JOIN_TRACE] 08 ===== ROOM DISCOVERED =====',
         name: 'SoundMesh.JoinRoomScreen',
       );
       developer.log(
-        'JoinRoomScreen: Discovered room at ${announcement.hostIp}:${announcement.hostPort}',
+        '[JOIN_TRACE] 09 Discovered room at ${announcement.hostIp}:${announcement.hostPort}',
         name: 'SoundMesh.JoinRoomScreen',
       );
       developer.log(
-        'JoinRoomScreen: Room details - code: ${announcement.code}, roomId: ${announcement.roomId}, hostName: ${announcement.hostName}',
+        '[JOIN_TRACE] 10 Room details - code: ${announcement.code}, roomId: ${announcement.roomId}, hostName: ${announcement.hostName}',
         name: 'SoundMesh.JoinRoomScreen',
       );
 
@@ -447,16 +459,20 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
       ref.read(joinRoomFlowProvider.notifier).setHostPort(announcement.hostPort);
 
       developer.log(
-        'JoinRoomScreen: Set host IP/port on joinRoomFlowProvider, calling joinRoom()',
+        '[JOIN_TRACE] 11 Set host IP/port on joinRoomFlowProvider, calling joinRoom()',
         name: 'SoundMesh.JoinRoomScreen',
       );
 
       // Trigger the actual connection
       await ref.read(joinRoomFlowProvider.notifier).joinRoom();
+      developer.log(
+        '[JOIN_TRACE] 12 joinRoom() completed',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
 
     } catch (e, stackTrace) {
       developer.log(
-        'JoinRoomScreen: ❌ EXCEPTION during join: $e\n$stackTrace',
+        '[JOIN_TRACE] EXCEPTION at join flow: $e\n$stackTrace',
         name: 'SoundMesh.JoinRoomScreen',
       );
       if (mounted) {

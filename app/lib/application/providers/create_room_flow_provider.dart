@@ -8,6 +8,8 @@ import '../repositories/network_repository.dart';
 import '../protocol.dart';
 import '../room/room_lifecycle.dart';
 import '../../infrastructure/discovery/discovery_types.dart';
+import '../../infrastructure/discovery/discovery_manager.dart';
+import '../providers/discovery_provider.dart';
 
 enum CreateRoomFlowStatus {
   idle,
@@ -73,14 +75,15 @@ class CreateRoomFlowState {
 
 class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
   final NetworkRepository _networkRepository;
+  final DiscoveryManager _discoveryManager;
   StreamSubscription? _stateSubscription;
   StreamSubscription? _protocolMessageSubscription;
   StreamSubscription? _connectionErrorSubscription;
   StreamSubscription? _roomLifecycleSubscription;
   bool _createRoomInProgress = false;
 
-  CreateRoomFlowNotifier(this._networkRepository)
-    : super(const CreateRoomFlowState()) {
+  CreateRoomFlowNotifier(this._networkRepository, this._discoveryManager)
+      : super(const CreateRoomFlowState()) {
     _stateSubscription = _networkRepository.connectionStateStream.listen((
       connState,
     ) {
@@ -345,10 +348,28 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
       );
 
       developer.log(
+        'CreateRoomFlow: Starting UDP broadcast for code: $joinCode',
+        name: 'SoundMesh.CreateRoomFlow',
+      );
+      final broadcastSuccess = await _discoveryManager.hostService.startBroadcast(
+        code: joinCode,
+        roomId: state.roomId ?? 'room-${DateTime.now().millisecondsSinceEpoch}',
+        port: state.port ?? 8765,
+      );
+      developer.log(
+        'CreateRoomFlow: UDP broadcast started: $broadcastSuccess',
+        name: 'SoundMesh.CreateRoomFlow',
+      );
+
+      developer.log(
         'CreateRoomFlow: Starting hosting on port ${state.port ?? 8765}',
         name: 'SoundMesh.CreateRoomFlow',
       );
-      await _networkRepository.startHosting(port: state.port ?? 8765);
+      final hostingSuccess = await _networkRepository.startHosting(port: state.port ?? 8765);
+      developer.log(
+        'CreateRoomFlow: startHosting returned: $hostingSuccess',
+        name: 'SoundMesh.CreateRoomFlow',
+      );
       
       developer.log(
         'CreateRoomFlow: startHosting completed',
@@ -378,5 +399,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
 final createRoomFlowProvider =
     StateNotifierProvider<CreateRoomFlowNotifier, CreateRoomFlowState>((ref) {
   final networkRepo = ref.watch(networkRepositoryProvider);
-  return CreateRoomFlowNotifier(networkRepo);
+  final discoveryManager = ref.watch(discoveryManagerProvider);
+  return CreateRoomFlowNotifier(networkRepo, discoveryManager);
 });

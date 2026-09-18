@@ -8,6 +8,8 @@ import 'package:soundmesh/application/providers/join_room_flow_provider.dart';
 import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
 import 'package:soundmesh/application/repositories/network_repository.dart';
 import 'package:soundmesh/application/room/room_lifecycle.dart';
+import 'package:soundmesh/infrastructure/discovery/discovery_manager.dart';
+import 'package:soundmesh/infrastructure/discovery/mock_discovery_platform.dart';
 import 'package:soundmesh/presentation/screens/room_screen.dart';
 
 class MockNetworkRepository extends NetworkRepository {
@@ -130,9 +132,30 @@ class MockNetworkRepository extends NetworkRepository {
   }
 }
 
+class MockDiscoveryManager extends DiscoveryManager {
+  MockDiscoveryManager() : super(platform: MockDiscoveryPlatform());
+
+  @override
+  HostDiscoveryService get hostService => MockHostDiscoveryService();
+}
+
+class MockHostDiscoveryService extends HostDiscoveryService {
+  MockHostDiscoveryService() : super(platform: MockDiscoveryPlatform());
+
+  @override
+  Future<bool> startBroadcast({
+    required String code,
+    required String roomId,
+    required int port,
+    String? hostName,
+  }) async {
+    return true;
+  }
+}
+
 class MockCreateRoomFlowNotifier extends CreateRoomFlowNotifier {
   MockCreateRoomFlowNotifier(CreateRoomFlowState state, NetworkRepository networkRepo)
-      : super(networkRepo) {
+      : super(networkRepo, MockDiscoveryManager()) {
     this.state = state;
   }
 }

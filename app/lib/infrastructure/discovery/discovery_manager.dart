@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'discovery_platform.dart';
 import 'discovery_types.dart';
+import 'dart:developer' as developer;
 
 /// Service managing host-side room announcement broadcasting.
 class HostDiscoveryService {
@@ -26,12 +27,24 @@ class HostDiscoveryService {
     required int port,
     String? hostName,
   }) async {
+    developer.log(
+      '[JOIN_TRACE] HostDiscoveryService: startBroadcast called for code: $code, roomId: $roomId, port: $port',
+      name: 'SoundMesh.HostDiscovery',
+    );
     if (_isBroadcasting) {
       await stopBroadcast();
     }
 
     final ipAddress = await _platform.getLocalIpAddress();
+    developer.log(
+      'HostDiscoveryService: Got local IP for broadcast: $ipAddress',
+      name: 'SoundMesh.HostDiscovery',
+    );
     if (ipAddress == null) {
+      developer.log(
+        'HostDiscoveryService: No local IP available, cannot broadcast',
+        name: 'SoundMesh.HostDiscovery',
+      );
       return false;
     }
 
@@ -41,6 +54,10 @@ class HostDiscoveryService {
       hostPort: port,
       roomId: roomId,
       hostName: hostName,
+    );
+    developer.log(
+      'HostDiscoveryService: Platform startBroadcast returned: ${result.success} (error: ${result.errorMessage})',
+      name: 'SoundMesh.HostDiscovery',
     );
 
     _isBroadcasting = result.success;
@@ -78,6 +95,10 @@ class ParticipantDiscoveryService {
   /// Scans for a room with the given 6-digit code.
   /// Returns the RoomAnnouncement if found, null on timeout/error.
   Future<RoomAnnouncement?> scanForRoom(String code) async {
+    developer.log(
+      '[JOIN_TRACE] ParticipantDiscoveryService: scanForRoom ENTERED for code: $code',
+      name: 'SoundMesh.ParticipantDiscovery',
+    );
     if (!isValidRoomCode(code)) {
       throw ArgumentError('Invalid room code format: $code');
     }
@@ -89,17 +110,30 @@ class ParticipantDiscoveryService {
     _isScanning = true;
     _scanCompleter = Completer<RoomAnnouncement?>();
 
+    developer.log(
+      '[JOIN_TRACE] ParticipantDiscoveryService: Calling platform.startScan()',
+      name: 'SoundMesh.ParticipantDiscovery',
+    );
+
     final stream = _platform.startScan(code: code);
     
     _scanSubscription = stream.listen(
       (event) {
         if (event.isTimeout) {
+          developer.log(
+            '[JOIN_TRACE] ParticipantDiscoveryService: TIMEOUT received',
+            name: 'SoundMesh.ParticipantDiscovery',
+          );
           if (_scanCompleter != null && !_scanCompleter!.isCompleted) {
             _scanCompleter!.complete(null);
           }
           _isScanning = false;
         } else if (event.announcement.code == code) {
           // Found matching room!
+          developer.log(
+            '[JOIN_TRACE] ParticipantDiscoveryService: MATCH FOUND for code: $code',
+            name: 'SoundMesh.ParticipantDiscovery',
+          );
           if (_scanCompleter != null && !_scanCompleter!.isCompleted) {
             _scanCompleter!.complete(event.announcement);
           }
@@ -108,12 +142,20 @@ class ParticipantDiscoveryService {
         // Ignore non-matching codes
       },
       onError: (error) {
+        developer.log(
+          '[JOIN_TRACE] ParticipantDiscoveryService: ERROR in stream: $error',
+          name: 'SoundMesh.ParticipantDiscovery',
+        );
         if (_scanCompleter != null && !_scanCompleter!.isCompleted) {
           _scanCompleter!.completeError(error);
         }
         _isScanning = false;
       },
       onDone: () {
+        developer.log(
+          '[JOIN_TRACE] ParticipantDiscoveryService: Stream onDone (closed)',
+          name: 'SoundMesh.ParticipantDiscovery',
+        );
         if (_scanCompleter != null && !_scanCompleter!.isCompleted) {
           _scanCompleter!.complete(null);
         }
@@ -123,6 +165,10 @@ class ParticipantDiscoveryService {
 
     try {
       final announcement = await _scanCompleter!.future;
+      developer.log(
+        '[JOIN_TRACE] ParticipantDiscoveryService: scanForRoom completed with: ${announcement != null ? "FOUND" : "NULL"}',
+        name: 'SoundMesh.ParticipantDiscovery',
+      );
       return announcement;
     } finally {
       await stopScan();

@@ -209,7 +209,7 @@ class NetworkRepository {
 
   Future<bool> connectToHost(String ipAddress, {int port = 8765}) async {
     developer.log(
-      'connectToHost called, ip=$ipAddress, port=$port',
+      '[JOIN_TRACE] NetworkRepository: connectToHost ENTERED ip=$ipAddress port=$port',
       name: 'SoundMesh.NetworkRepository',
     );
     _isHost = false;
@@ -218,14 +218,19 @@ class NetworkRepository {
     _roomClosedReason = null;
     _transitionToRoomLifecycleState(RoomLifecycleState.created);
     developer.log(
-      'Initiating TCP connect to $ipAddress:$port',
+      '[JOIN_TRACE] NetworkRepository: Initiating TCP connect to $ipAddress:$port',
       name: 'SoundMesh.NetworkRepository',
     );
     try {
-      return await _platform.connectToHost(ipAddress, port);
+      final result = await _platform.connectToHost(ipAddress, port);
+      developer.log(
+        '[JOIN_TRACE] NetworkRepository: connectToHost returned: $result',
+        name: 'SoundMesh.NetworkRepository',
+      );
+      return result;
     } catch (e) {
       developer.log(
-        'TCP connect threw exception: $e',
+        '[JOIN_TRACE] NetworkRepository: TCP connect threw exception: $e',
         name: 'SoundMesh.NetworkRepository',
       );
       return false;

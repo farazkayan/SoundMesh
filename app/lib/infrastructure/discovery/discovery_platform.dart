@@ -62,7 +62,7 @@ class MethodChannelDiscoveryPlatform extends DiscoveryPlatform {
     int intervalSeconds = kDiscoveryBroadcastIntervalSeconds,
   }) async {
     developer.log(
-      'MethodChannelDiscoveryPlatform: startBroadcast called for code: $code (fallback - not implemented)',
+      '[JOIN_TRACE] MethodChannelDiscoveryPlatform: startBroadcast called for code: $code (fallback - not implemented)',
       name: 'SoundMesh.DiscoveryPlatform',
     );
     return StartBroadcastResult(success: false, errorMessage: 'Native implementation required');
@@ -71,7 +71,7 @@ class MethodChannelDiscoveryPlatform extends DiscoveryPlatform {
   @override
   Future<StopBroadcastResult> stopBroadcast() async {
     developer.log(
-      'MethodChannelDiscoveryPlatform: stopBroadcast called',
+      '[JOIN_TRACE] MethodChannelDiscoveryPlatform: stopBroadcast called',
       name: 'SoundMesh.DiscoveryPlatform',
     );
     return const StopBroadcastResult(success: true);
@@ -83,7 +83,7 @@ class MethodChannelDiscoveryPlatform extends DiscoveryPlatform {
     int timeoutSeconds = kDiscoveryScanTimeoutSeconds,
   }) async* {
     developer.log(
-      'MethodChannelDiscoveryPlatform: startScan called for code: $code (fallback - not implemented)',
+      '[JOIN_TRACE] MethodChannelDiscoveryPlatform: startScan called for code: $code (fallback - not implemented)',
       name: 'SoundMesh.DiscoveryPlatform',
     );
     if (_isScanning) {
@@ -96,7 +96,7 @@ class MethodChannelDiscoveryPlatform extends DiscoveryPlatform {
   @override
   Future<void> stopScan() async {
     developer.log(
-      'MethodChannelDiscoveryPlatform: stopScan called',
+      '[JOIN_TRACE] MethodChannelDiscoveryPlatform: stopScan called',
       name: 'SoundMesh.DiscoveryPlatform',
     );
     _isScanning = false;
@@ -120,7 +120,7 @@ class MethodChannelDiscoveryPlatform extends DiscoveryPlatform {
   /// Handles incoming discovery events from native side.
   void handleDiscoveryEvent(DiscoveryEvent event) {
     developer.log(
-      'MethodChannelDiscoveryPlatform: handleDiscoveryEvent: ${event.isTimeout ? "TIMEOUT" : "ANNOUNCEMENT(${event.announcement.code})"}',
+      '[JOIN_TRACE] MethodChannelDiscoveryPlatform: handleDiscoveryEvent: ${event.isTimeout ? "TIMEOUT" : "ANNOUNCEMENT(${event.announcement.code})"}',
       name: 'SoundMesh.DiscoveryPlatform',
     );
     if (!_scanController.isClosed) {

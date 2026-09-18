@@ -170,8 +170,9 @@ class DiscoveryService(private val context: Context) {
         onAnnouncement: (RoomAnnouncement) -> Unit,
         onTimeout: () -> Unit
     ): Boolean {
+        Log.i(TAG, "[JOIN_TRACE] DiscoveryService: startScan ENTERED for targetCode: $targetCode (timeout: ${timeoutSeconds}s)")
         if (isScanning.get()) {
-            Log.w(TAG, "⚠️ Already scanning, stopping previous scan")
+            Log.w(TAG, "[JOIN_TRACE] DiscoveryService: Already scanning, stopping previous scan")
             stopScan()
         }
 
@@ -179,10 +180,10 @@ class DiscoveryService(private val context: Context) {
             scanSocket = DatagramSocket(DISCOVERY_PORT).apply {
                 setReuseAddress(true)
                 setSoTimeout(1000) // 1 second timeout for receive
-                Log.d(TAG, "📡 Scan socket created on port $DISCOVERY_PORT, reuseAddr=true, soTimeout=1000ms")
+                Log.d(TAG, "[JOIN_TRACE] DiscoveryService: Scan socket created on port $DISCOVERY_PORT, reuseAddr=true, soTimeout=1000ms")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to create scan socket", e)
+            Log.e(TAG, "[JOIN_TRACE] DiscoveryService: Failed to create scan socket", e)
             return false
         }
 
@@ -194,7 +195,7 @@ class DiscoveryService(private val context: Context) {
         // Timeout task
         scanExecutor!!.schedule({
             if (isScanning.get()) {
-                Log.w(TAG, "⏰ Scan timeout after ${timeoutSeconds}s for code: $targetCode")
+                Log.w(TAG, "[JOIN_TRACE] DiscoveryService: Scan timeout after ${timeoutSeconds}s for code: $targetCode")
                 stopScan()
                 onTimeout()
             }
@@ -206,7 +207,7 @@ class DiscoveryService(private val context: Context) {
             val packet = DatagramPacket(buffer, buffer.size)
             var packetCount = 0
             
-            Log.i(TAG, "🔍 Started scanning for room code: $targetCode (timeout: ${timeoutSeconds}s)")
+            Log.i(TAG, "[JOIN_TRACE] DiscoveryService: Started scanning for room code: $targetCode (timeout: ${timeoutSeconds}s)")
             
             while (isScanning.get()) {
                 try {
@@ -216,36 +217,36 @@ class DiscoveryService(private val context: Context) {
                     val senderIp = packet.address.hostAddress
                     val senderPort = packet.port
                     
-                    Log.d(TAG, "📥 UDP PACKET #$packetCount from $senderIp:$senderPort (${packet.length} bytes): $json")
+                    Log.d(TAG, "[JOIN_TRACE] DiscoveryService: UDP PACKET #$packetCount from $senderIp:$senderPort (${packet.length} bytes): $json")
                     
                     parseAnnouncement(json)?.let { announcement ->
-                        Log.d(TAG, "✅ PARSED announcement: code=${announcement.code} hostIp=${announcement.hostIp} hostPort=${announcement.hostPort} roomId=${announcement.roomId} hostName=${announcement.hostName}")
+                        Log.d(TAG, "[JOIN_TRACE] DiscoveryService: PARSED announcement: code=${announcement.code} hostIp=${announcement.hostIp} hostPort=${announcement.hostPort} roomId=${announcement.roomId} hostName=${announcement.hostName}")
                         if (announcement.code == targetCode) {
-                            Log.i(TAG, "🎯 MATCH FOUND! code=$targetCode from $senderIp:$senderPort")
+                            Log.i(TAG, "[JOIN_TRACE] DiscoveryService: MATCH FOUND! code=$targetCode from $senderIp:$senderPort")
                             scanListener.get()?.invoke(announcement)
                             stopScan()
                             break
                         } else {
-                            Log.d(TAG, "⏭️ Ignored non-matching code: ${announcement.code} (want $targetCode)")
+                            Log.d(TAG, "[JOIN_TRACE] DiscoveryService: Ignored non-matching code: ${announcement.code} (want $targetCode)")
                         }
                     } ?: run {
-                        Log.w(TAG, "⚠️ Failed to parse announcement from $senderIp:$senderPort")
+                        Log.w(TAG, "[JOIN_TRACE] DiscoveryService: Failed to parse announcement from $senderIp:$senderPort")
                     }
                 } catch (e: java.net.SocketTimeoutException) {
                     // Timeout is expected, continue scanning
                     if (packetCount % 10 == 0) {
-                        Log.d(TAG, "⏳ Still scanning... (${packetCount} packets received so far)")
+                        Log.d(TAG, "[JOIN_TRACE] DiscoveryService: Still scanning... (${packetCount} packets received so far)")
                     }
                 } catch (e: Exception) {
                     if (isScanning.get()) {
-                        Log.e(TAG, "❌ Error receiving broadcast", e)
+                        Log.e(TAG, "[JOIN_TRACE] DiscoveryService: Error receiving broadcast", e)
                     }
                 }
             }
-            Log.i(TAG, "🛑 Scan loop ended. Total packets received: $packetCount")
+            Log.i(TAG, "[JOIN_TRACE] DiscoveryService: Scan loop ended. Total packets received: $packetCount")
         }
 
-        Log.i(TAG, "🔍 Started scanning for room code: $targetCode (timeout: ${timeoutSeconds}s)")
+        Log.i(TAG, "[JOIN_TRACE] DiscoveryService: Started scanning for room code: $targetCode (timeout: ${timeoutSeconds}s)")
         return true
     }
 
@@ -253,6 +254,7 @@ class DiscoveryService(private val context: Context) {
      * Stops scanning for room announcements.
      */
     fun stopScan() {
+        Log.i(TAG, "[JOIN_TRACE] DiscoveryService: stopScan called")
         isScanning.set(false)
         scanExecutor?.shutdownNow()
         scanExecutor = null
