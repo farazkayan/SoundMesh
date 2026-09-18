@@ -42,11 +42,6 @@ abstract class DiscoveryPlatform {
   Future<bool> requestLocalNetworkPermission();
 }
 
-/// Method channel names for discovery.
-class _DiscoveryMethodChannels {
-  static const String scan = 'soundmesh/discovery_scan';
-}
-
 /// Default implementation using method channels (fallback before Pigeon).
 class MethodChannelDiscoveryPlatform extends DiscoveryPlatform {
   final _scanController = StreamController<DiscoveryEvent>.broadcast();

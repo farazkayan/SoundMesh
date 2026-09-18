@@ -6,14 +6,14 @@ enum SMEmptyStateKind { empty, error }
 
 class SMEmptyState extends StatelessWidget {
   const SMEmptyState._({
-    Key? key,
+    super.key,
     required this.title,
     this.message,
     this.icon,
     this.onRetry,
     this.retryLabel = 'Try again',
     required this.kind,
-  }) : super(key: key);
+  });
 
   const SMEmptyState.empty({
     Key? key,
