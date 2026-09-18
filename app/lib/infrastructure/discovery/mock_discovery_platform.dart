@@ -17,7 +17,6 @@ class MockDiscoveryPlatform extends DiscoveryPlatform {
   bool _isScanning = false;
   Timer? _broadcastTimer;
   Timer? _scanTimer;
-  String? _currentCode;
   RoomAnnouncement? _mockAnnouncement;
 
   void _initializeMockData() {
@@ -54,7 +53,6 @@ class MockDiscoveryPlatform extends DiscoveryPlatform {
     }
     
     _isBroadcasting = true;
-    _currentCode = code;
     
     // Simulate periodic broadcasts
     _broadcastTimer = Timer.periodic(
@@ -83,7 +81,6 @@ class MockDiscoveryPlatform extends DiscoveryPlatform {
     _isBroadcasting = false;
     _broadcastTimer?.cancel();
     _broadcastTimer = null;
-    _currentCode = null;
     return const StopBroadcastResult(success: true);
   }
 

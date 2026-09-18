@@ -11,8 +11,8 @@ import 'dart:developer' as developer;
 /// Service managing host-side room announcement broadcasting.
 class HostDiscoveryService {
   HostDiscoveryService({
-    required DiscoveryPlatform platform,
-  }) : _platform = platform;
+    required this._platform,
+  });
 
   final DiscoveryPlatform _platform;
   
@@ -81,8 +81,8 @@ class HostDiscoveryService {
 /// Service managing participant-side room code scanning.
 class ParticipantDiscoveryService {
   ParticipantDiscoveryService({
-    required DiscoveryPlatform platform,
-  }) : _platform = platform;
+    required this._platform,
+  });
 
   final DiscoveryPlatform _platform;
   
