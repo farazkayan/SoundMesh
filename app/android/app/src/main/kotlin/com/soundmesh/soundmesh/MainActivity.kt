@@ -11,6 +11,7 @@ import com.soundmesh.soundmesh.capture.CaptureSessionState
 import com.soundmesh.soundmesh.capture.CaptureStateMachine
 import com.soundmesh.soundmesh.capture.MediaProjectionHelper
 import com.soundmesh.soundmesh.capture.CaptureDiagnostics
+import com.soundmesh.soundmesh.discovery.DiscoveryService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import kotlinx.coroutines.CoroutineScope
@@ -70,6 +71,11 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private var captureEngine: AudioCaptureEngine? = null
     private var captureFlutterApi: AudioCaptureFlutterApi? = null
 
+    // ---- Discovery ----
+    private lateinit var discoveryService: DiscoveryService
+    private val discoveryChannelName = "soundmesh/discovery"
+    private var discoveryScanCallback: ((DiscoveryService.RoomAnnouncement?) -> Unit)? = null
+
     companion object {
         private const val FRAME_LENGTH_BYTES = 4
         private const val CONNECT_TIMEOUT_MS = 10_000
@@ -83,6 +89,85 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         flutterApi = NetworkFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
         AudioCapturePlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
         captureFlutterApi = AudioCaptureFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
+        
+        // ---- Discovery ----
+        discoveryService = DiscoveryService(this)
+        val discoveryChannel = io.flutter.plugin.common.MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "soundmesh/discovery")
+        discoveryChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "startBroadcast" -> {
+                    val code = call.argument<String>("code") ?: ""
+                    val hostIp = call.argument<String>("hostIp") ?: ""
+                    val hostPort = call.argument<Int>("hostPort") ?: 0
+                    val roomId = call.argument<String>("roomId") ?: ""
+                    val hostName = call.argument<String>("hostName")
+                    val intervalSeconds = call.argument<Int>("intervalSeconds") ?: 2
+                    
+                    val success = discoveryService.startBroadcast(
+                        code = code,
+                        hostIp = hostIp,
+                        hostPort = hostPort,
+                        roomId = roomId,
+                        hostName = hostName,
+                        intervalSeconds = intervalSeconds
+                    )
+                    result.success(success)
+                }
+                "stopBroadcast" -> {
+                    discoveryService.stopBroadcast()
+                    result.success(true)
+                }
+                "getLocalIpAddress" -> {
+                    val ip = discoveryService.getLocalIpAddress()
+                    result.success(ip)
+                }
+                "hasLocalNetworkPermission" -> {
+                    val hasPermission = discoveryService.hasLocalNetworkPermission()
+                    result.success(hasPermission)
+                }
+                "requestLocalNetworkPermission" -> {
+                    val hasPermission = discoveryService.hasLocalNetworkPermission()
+                    result.success(hasPermission)
+                }
+                "startScan" -> {
+                    val targetCode = call.argument<String>("code") ?: ""
+                    val timeoutSeconds = call.argument<Int>("timeoutSeconds") ?: 15
+                    
+                    discoveryService.startScan(
+                        targetCode = targetCode,
+                        timeoutSeconds = timeoutSeconds,
+                        onAnnouncement = { announcement ->
+                            discoveryChannel.invokeMethod("onDiscoveryEvent", mapOf(
+                                "code" to announcement.code,
+                                "hostIp" to announcement.hostIp,
+                                "hostPort" to announcement.hostPort,
+                                "protocolVersion" to announcement.protocolVersion,
+                                "roomId" to announcement.roomId,
+                                "hostName" to announcement.hostName,
+                                "isTimeout" to false
+                            ))
+                        },
+                        onTimeout = {
+                            discoveryChannel.invokeMethod("onDiscoveryEvent", mapOf(
+                                "code" to "",
+                                "hostIp" to "",
+                                "hostPort" to 0,
+                                "protocolVersion" to 0,
+                                "roomId" to "",
+                                "hostName" to "",
+                                "isTimeout" to true
+                            ))
+                        }
+                    )
+                    result.success(true)
+                }
+                "stopScan" -> {
+                    discoveryService.stopScan()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     override fun getDeviceInfo(): DeviceInfo {
@@ -1056,5 +1141,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 Log.e(TAG, "Failed to notify connection error", e)
             }
         }
+    }
+
+    override fun onDestroy() {
+        discoveryService.dispose()
+        super.onDestroy()
     }
 }

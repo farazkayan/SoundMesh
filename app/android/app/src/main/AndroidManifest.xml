@@ -1,4 +1,6 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
     <!-- Required for local network sockets (host listening + participant
          connection). The debug/profile manifests only grant INTERNET for the
          Flutter tool; without it here, release builds fail all networking. -->
@@ -10,8 +12,19 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Required for UDP broadcast discovery (6-digit room code) -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- Android 13+ nearby device permissions for local network discovery -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="33" />
+    <!-- For Android 12 and below -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="32" />
     <application
-        android:label="soundmesh"
+        android:label="SoundMesh"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

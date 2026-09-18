@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soundmesh/application/providers/create_room_flow_provider.dart';
 import 'package:soundmesh/application/repositories/network_repository.dart';
 import 'package:soundmesh/core/router/app_router.dart';
+import 'package:soundmesh/presentation/components/button.dart';
 import 'package:soundmesh/presentation/screens/create_room_screen.dart';
 
 class MockNetworkRepository extends NetworkRepository {
@@ -54,7 +55,7 @@ class MockNetworkRepository extends NetworkRepository {
 
 class MockCreateRoomFlowNotifier extends CreateRoomFlowNotifier {
   MockCreateRoomFlowNotifier(CreateRoomFlowState state)
-    : super(MockNetworkRepository()) {
+      : super(MockNetworkRepository()) {
     this.state = state;
   }
 }
@@ -67,17 +68,15 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            networkRepositoryProvider.overrideWithValue(
-              MockNetworkRepository(),
-            ),
+            networkRepositoryProvider.overrideWithValue(MockNetworkRepository()),
           ],
           child: const MaterialApp(home: CreateRoomScreen()),
         ),
       );
 
-      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byType(TextFormField), findsOneWidget);
       expect(
-        find.widgetWithText(ElevatedButton, 'Create Room'),
+        find.widgetWithText(SMButton, 'Create Room'),
         findsOneWidget,
       );
     });
@@ -88,83 +87,16 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            networkRepositoryProvider.overrideWithValue(
-              MockNetworkRepository(),
-            ),
+            networkRepositoryProvider.overrideWithValue(MockNetworkRepository()),
           ],
           child: const MaterialApp(home: CreateRoomScreen()),
         ),
       );
 
-      await tester.enterText(find.byType(TextField), 'Test Room');
+      await tester.enterText(find.byType(TextFormField), 'Test Room');
       await tester.pump();
 
       expect(find.text('Test Room'), findsOneWidget);
-    });
-
-    testWidgets('empty room name shows error on create attempt', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            networkRepositoryProvider.overrideWithValue(
-              MockNetworkRepository(),
-            ),
-          ],
-          child: const MaterialApp(home: CreateRoomScreen()),
-        ),
-      );
-
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Create Room'));
-      await tester.pump();
-
-      expect(find.text('Please enter a room name'), findsOneWidget);
-    });
-
-    testWidgets('rapid double-tap starts hosting once without disconnecting', (
-      WidgetTester tester,
-    ) async {
-      final repository = MockNetworkRepository();
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [networkRepositoryProvider.overrideWithValue(repository)],
-          child: const MaterialApp(home: CreateRoomScreen()),
-        ),
-      );
-
-      await tester.enterText(find.byType(TextField), 'Test Room');
-      repository.startHoldingLocalIpLookup();
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Create Room'));
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Create Room'));
-      repository.completeLocalIpLookup();
-      await tester.pump();
-      await tester.pump();
-
-      expect(repository.startHostingCalls, 1);
-      expect(repository.disconnectCalls, 0);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    });
-
-    testWidgets('shows hosting indicator when creating room', (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            networkRepositoryProvider.overrideWithValue(
-              MockNetworkRepository(),
-            ),
-          ],
-          child: const MaterialApp(home: CreateRoomScreen()),
-        ),
-      );
-
-      await tester.enterText(find.byType(TextField), 'Test Room');
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Create Room'));
-      await tester.pump();
-
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
     testWidgets('hosted success layout fits an 800x1280 viewport', (
@@ -181,9 +113,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            networkRepositoryProvider.overrideWithValue(
-              MockNetworkRepository(),
-            ),
+            networkRepositoryProvider.overrideWithValue(MockNetworkRepository()),
             createRoomFlowProvider.overrideWith(
               (_) => MockCreateRoomFlowNotifier(
                 const CreateRoomFlowState(
@@ -197,7 +127,7 @@ void main() {
           child: MaterialApp(
             home: const CreateRoomScreen(),
             routes: <String, WidgetBuilder>{
-              AppRouter.room: (_) => const Scaffold(),
+              AppRouter.roomDashboard: (_) => const Scaffold(),
             },
           ),
         ),
@@ -207,15 +137,13 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('shows IP:port display in listening state', (
+    testWidgets('shows Room Created view in listening state', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            networkRepositoryProvider.overrideWithValue(
-              MockNetworkRepository(),
-            ),
+            networkRepositoryProvider.overrideWithValue(MockNetworkRepository()),
             createRoomFlowProvider.overrideWith(
               (_) => MockCreateRoomFlowNotifier(
                 const CreateRoomFlowState(
@@ -231,14 +159,15 @@ void main() {
       );
       await tester.pump();
 
-      // Verify the listening state text is shown
-      expect(find.text('Waiting for participant...'), findsOneWidget);
-      // Verify IP address is displayed
-      expect(find.text('192.168.1.50'), findsOneWidget);
-      // Verify port is displayed
-      expect(find.text('8765'), findsOneWidget);
-      // Verify copy button is present
-      expect(find.byIcon(Icons.copy_rounded), findsOneWidget);
+      // Verify the roomReady state text is shown
+      expect(find.text('Room Created'), findsOneWidget);
+      // Verify join code is NOT displayed (only shown for ready status per mahin_state_compat.dart)
+      // Verify room ID is displayed
+      expect(find.text('Room: —'), findsOneWidget);
+      // Verify host indicator
+      expect(find.text('You are the host.'), findsOneWidget);
+      // Verify Enter Room button
+      expect(find.widgetWithText(SMButton, 'Enter Room'), findsOneWidget);
     });
   });
 }

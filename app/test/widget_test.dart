@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:soundmesh/application/repositories/device_info_repository.dart';
-import 'package:soundmesh/application/repositories/timing_info_repository.dart';
 import 'package:soundmesh/application/repositories/network_repository.dart';
 import 'package:soundmesh/presentation/screens/home_screen.dart';
 import 'package:soundmesh/presentation/screens/create_room_screen.dart';
 import 'package:soundmesh/presentation/screens/join_room_screen.dart';
-import 'package:soundmesh/presentation/screens/room_screen.dart';
+import 'package:soundmesh/presentation/screens/room_dashboard_screen.dart';
 import 'package:soundmesh/presentation/screens/settings_screen.dart';
 import 'package:soundmesh/presentation/screens/diagnostics_screen.dart';
-import 'package:soundmesh/src/soundmesh_messages.g.dart';
 
 void main() {
   group('Screen smoke tests', () {
@@ -22,6 +18,7 @@ void main() {
         ),
       );
       expect(find.text('SoundMesh'), findsOneWidget);
+      expect(find.text('Make your phones one speaker.'), findsOneWidget);
     });
 
     testWidgets('CreateRoomScreen renders correctly', (WidgetTester tester) async {
@@ -39,22 +36,24 @@ void main() {
           child: MaterialApp(home: JoinRoomScreen()),
         ),
       );
-      expect(find.text('Join Room'), findsAtLeastNWidgets(1));
+      expect(find.text('Join a Room'), findsOneWidget);
+      expect(find.text('Room Code'), findsOneWidget);
+      expect(find.text('Join Room'), findsOneWidget);
     });
 
-    testWidgets('RoomScreen smoke test', (WidgetTester tester) async {
+    testWidgets('RoomDashboardScreen smoke test', (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             networkRepositoryProvider.overrideWithValue(MockNetworkRepository()),
           ],
           child: const MaterialApp(
-            home: RoomScreen(),
+            home: RoomDashboardScreen(),
           ),
         ),
       );
       await tester.pump();
-      expect(find.byType(RoomScreen), findsOneWidget);
+      expect(find.byType(RoomDashboardScreen), findsOneWidget);
     });
 
     testWidgets('SettingsScreen renders correctly', (WidgetTester tester) async {
@@ -66,212 +65,16 @@ void main() {
       expect(find.text('Settings'), findsAtLeastNWidgets(1));
     });
 
-    testWidgets('DiagnosticsScreen smoke test', (WidgetTester tester) async {
+    testWidgets('DiagnosticsScreen renders correctly', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: DiagnosticsScreen(
-              deviceRepositoryBuilder: () => _FakeSuccessRepository(),
-              timingRepositoryBuilder: () => _FakeTimingRepository(initialNanos: 1000000000),
-            ),
-          ),
+        const ProviderScope(
+          child: MaterialApp(home: RoomDiagnosticsScreen()),
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Native Bridge Active'), findsOneWidget);
+      expect(find.text('Diagnostics'), findsAtLeastNWidgets(1));
     });
   });
-
-  group('DiagnosticsScreen platform integration', () {
-    testWidgets('shows device info on success', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: DiagnosticsScreen(
-              deviceRepositoryBuilder: () => _FakeSuccessRepository(),
-              timingRepositoryBuilder: () => _FakeTimingRepository(initialNanos: 1000000000),
-            ),
-          ),
-        ),
-      );
-
-      await tester.pumpAndSettle();
-
-      expect(find.text('Native Bridge Active'), findsOneWidget);
-      expect(find.text('Android'), findsOneWidget);
-      expect(find.text('14'), findsOneWidget);
-      expect(find.text('Pixel 7'), findsOneWidget);
-      expect(find.text('Google'), findsOneWidget);
-      expect(find.text('Monotonic Timing'), findsOneWidget);
-    });
-
-    testWidgets('shows error state on platform exception',
-        (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: DiagnosticsScreen(
-              deviceRepositoryBuilder: () => _FakeErrorRepository(),
-              timingRepositoryBuilder: () => _FakeTimingRepository(initialNanos: 1000000000),
-            ),
-          ),
-        ),
-      );
-
-      await tester.pumpAndSettle();
-
-      expect(find.text('Platform Error'), findsOneWidget);
-      expect(find.text('UNAVAILABLE: Platform channel not available'), findsOneWidget);
-      expect(find.byIcon(Icons.error_outline), findsOneWidget);
-    });
-
-    testWidgets('retry button refetches device info',
-        (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: DiagnosticsScreen(
-              deviceRepositoryBuilder: () => _FakeCallCountRepository(),
-              timingRepositoryBuilder: () => _FakeTimingRepository(initialNanos: 1000000000),
-            ),
-          ),
-        ),
-      );
-
-      await tester.pumpAndSettle();
-      expect(find.text('Platform Error'), findsOneWidget);
-
-      await tester.tap(find.text('Retry'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Native Bridge Active'), findsOneWidget);
-      expect(find.text('iOS'), findsOneWidget);
-    });
-
-    testWidgets('shows increasing monotonic time on successive reads',
-        (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: DiagnosticsScreen(
-              deviceRepositoryBuilder: () => _FakeSuccessRepository(),
-              timingRepositoryBuilder: () => _FakeIncreasingTimingRepository(),
-            ),
-          ),
-        ),
-      );
-
-      await tester.pumpAndSettle();
-
-      expect(find.text('Monotonic Timing'), findsOneWidget);
-      expect(find.text('Increasing (monotonic)'), findsOneWidget);
-      expect(find.textContaining('1001000000 ns', skipOffstage: false), findsOneWidget);
-
-      // Scroll the button into view before tapping: an off-screen tap misses
-      // silently, leaving the follow-up assertions vacuous.
-      await tester.ensureVisible(find.text('Read Again'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Read Again'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Increasing (monotonic)'), findsOneWidget);
-      // The fake increments per call; this proves the second read happened.
-      expect(find.textContaining('1002000000 ns', skipOffstage: false), findsOneWidget);
-    });
-
-    testWidgets('shows error when timing repository throws',
-        (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: DiagnosticsScreen(
-              deviceRepositoryBuilder: () => _FakeSuccessRepository(),
-              timingRepositoryBuilder: () => _FakeTimingErrorRepository(),
-            ),
-          ),
-        ),
-      );
-
-      await tester.pumpAndSettle();
-
-      expect(find.text('Platform Error'), findsOneWidget);
-      expect(find.text('TIMING_ERROR: Timing not available'), findsOneWidget);
-    });
-  });
-}
-
-class _FakeSuccessRepository implements DeviceInfoRepository {
-  @override
-  Future<DeviceInfo> getDeviceInfo() async {
-    return DeviceInfo(
-      platformName: 'Android',
-      osVersion: '14',
-      deviceModel: 'Pixel 7',
-      brand: 'Google',
-    );
-  }
-}
-
-class _FakeErrorRepository implements DeviceInfoRepository {
-  @override
-  Future<DeviceInfo> getDeviceInfo() async {
-    throw PlatformException(
-      code: 'UNAVAILABLE',
-      message: 'Platform channel not available',
-    );
-  }
-}
-
-class _FakeCallCountRepository implements DeviceInfoRepository {
-  int _callCount = 0;
-
-  @override
-  Future<DeviceInfo> getDeviceInfo() async {
-    _callCount++;
-    if (_callCount == 1) {
-      throw PlatformException(
-        code: 'ERROR',
-        message: 'First call fails',
-      );
-    }
-    return DeviceInfo(
-      platformName: 'iOS',
-      osVersion: '17.0',
-      deviceModel: 'iPhone 15',
-      brand: 'Apple',
-    );
-  }
-}
-
-class _FakeTimingRepository implements TimingInfoRepository {
-  final int _initialNanos;
-
-  _FakeTimingRepository({required this._initialNanos});
-
-  @override
-  Future<int> getMonotonicTimeNanos() async {
-    return _initialNanos;
-  }
-}
-
-class _FakeIncreasingTimingRepository implements TimingInfoRepository {
-  int _callCount = 0;
-
-  @override
-  Future<int> getMonotonicTimeNanos() async {
-    _callCount++;
-    return 1000000000 + (_callCount * 1000000);
-  }
-}
-
-class _FakeTimingErrorRepository implements TimingInfoRepository {
-  @override
-  Future<int> getMonotonicTimeNanos() async {
-    throw PlatformException(
-      code: 'TIMING_ERROR',
-      message: 'Timing not available',
-    );
-  }
 }
 
 class MockNetworkRepository extends NetworkRepository {

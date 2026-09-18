@@ -1,361 +1,483 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/theme/soundmesh_theme.dart';
-import '../../core/router/app_router.dart';
-import '../../application/providers/join_room_flow_provider.dart';
+import 'package:soundmesh/core/design_system/index.dart';
+import 'package:soundmesh/core/router/app_router.dart';
+import 'package:soundmesh/presentation/components/button.dart';
+import 'package:soundmesh/presentation/components/empty_state.dart';
+import 'package:soundmesh/presentation/components/loading_indicator.dart';
+import 'package:soundmesh/presentation/components/surface.dart';
+import 'package:soundmesh/presentation/components/text_input.dart';
+import 'package:soundmesh/presentation/state_compat.dart';
+import 'package:soundmesh/application/providers/join_room_flow_provider.dart';
+import 'package:soundmesh/application/providers/discovery_provider.dart';
+import 'package:soundmesh/infrastructure/discovery/discovery_types.dart';
+import 'package:soundmesh/infrastructure/discovery/discovery_manager.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
+import 'dart:developer' as developer;
 
-class JoinRoomScreen extends ConsumerStatefulWidget {
+class JoinRoomScreen extends ConsumerWidget {
   const JoinRoomScreen({super.key});
 
   @override
-  ConsumerState<JoinRoomScreen> createState() => _JoinRoomScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StateBuilder(
+      builder: (context, appState) {
+        return Scaffold(
+          body: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: _buildContent(context, appState, ref),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildContent(BuildContext context, ApplicationState appState, WidgetRef ref) {
+    final state = appState.state;
+
+    // Error → full-screen error state.
+    if (state == SMAppState.error) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SMEmptyState.error(
+            title: 'Failed to Join Room',
+            message: appState.message ?? 'Code not found on this network.',
+            icon: Icons.error_outline,
+            onRetry: () => StateProvider.of(context).leaveRoom(),
+          ),
+          SizedBox(height: SMSpacing.xxl),
+        ],
+      );
+    }
+
+    // Room ready → joined successfully, show code confirmation.
+    if (state == SMAppState.roomReady) {
+      final joinCode = appState.joinCode ?? '';
+      final isValidCode = isValidRoomCode(joinCode);
+      
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: SMSpacing.xl,
+          vertical: SMSpacing.xl,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTitle('Joined Room'),
+            SizedBox(height: SMSpacing.md),
+            Text(
+              'You\'ve joined the room. The code is confirmed below.',
+              style: SMTypography.body.copyWith(color: SMColors.secondaryText),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: SMSpacing.xxl),
+            SMCard(
+              elevated: true,
+              padding: EdgeInsets.all(SMSpacing.xl),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.check_circle,
+                    size: SMDimensions.emptyIconSize,
+                    color: SMColors.success,
+                  ),
+                  SizedBox(height: SMSpacing.lg),
+                  Text(
+                    'Room Code Confirmed',
+                    style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                  ),
+                  SizedBox(height: SMSpacing.md),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SMSpacing.xl,
+                      vertical: SMSpacing.lg,
+                    ),
+                    decoration: BoxDecoration(
+                      color: SMColors.surfaceHigh,
+                      borderRadius: BorderRadius.circular(SMRadius.large),
+                      border: Border.all(
+                        color: SMColors.success.withValues(alpha: 0.5),
+                        width: 2,
+                      ),
+                    ),
+                    child: Text(
+                      isValidCode ? _formatCode(joinCode) : joinCode,
+                      style: SMTypography.display.copyWith(
+                        color: SMColors.primaryText,
+                        letterSpacing: 8,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: SMSpacing.md),
+                  Text(
+                    'Both devices show the same code',
+                    style: SMTypography.caption.copyWith(color: SMColors.mutedText),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: SMSpacing.lg),
+                  Text(
+                    'Room: ${appState.roomId ?? "—"}',
+                    style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: SMSpacing.xl),
+            SMButton(
+              text: 'Enter Room',
+              icon: Icons.arrow_forward,
+              variant: SMButtonVariant.primary,
+              onPressed: () => Navigator.pushReplacementNamed(context, AppRouter.roomDashboard),
+            ),
+            SizedBox(height: SMSpacing.lg),
+            SMButton(
+              text: 'Back',
+              variant: SMButtonVariant.secondary,
+              onPressed: () => Navigator.pushNamedAndRemoveUntil(context, AppRouter.home, (route) => false),
+            ),
+            SizedBox(height: SMSpacing.xxl),
+          ],
+        ),
+      );
+    }
+
+    // Joining room → honest in-progress UI.
+    if (state == SMAppState.joiningRoom) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: SMSpacing.xl,
+          vertical: SMSpacing.xl,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SMLoadingIndicator(size: SMDimensions.emptyIconSize * 0.8),
+            SizedBox(height: SMSpacing.lg),
+            Text(
+              appState.message ?? 'Joining room…',
+              textAlign: TextAlign.center,
+              style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+            ),
+            SizedBox(height: SMSpacing.md),
+            Text(
+              'Scanning local network for room code…',
+              textAlign: TextAlign.center,
+              style: SMTypography.body.copyWith(color: SMColors.secondaryText),
+            ),
+            SizedBox(height: SMSpacing.xl),
+            SMButton(
+              text: 'Cancel',
+              variant: SMButtonVariant.secondary,
+              onPressed: () => Navigator.pushNamedAndRemoveUntil(context, AppRouter.home, (route) => false),
+            ),
+            SizedBox(height: SMSpacing.xxl),
+          ],
+        ),
+      );
+    }
+
+    // idle → show the form.
+    return _JoinRoomForm();
+  }
+
+  String _formatCode(String code) {
+    if (code.length == 6) {
+      return '${code.substring(0, 3)}-${code.substring(3, 6)}';
+    }
+    return code;
+  }
+
+  Widget _buildTitle(String title) {
+    return Text(
+      title,
+      style: SMTypography.largeTitle.copyWith(color: SMColors.primaryText),
+    );
+  }
 }
 
-class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
-  final _ipController = TextEditingController();
-  final _portController = TextEditingController(text: '8765');
+class _JoinRoomForm extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_JoinRoomForm> createState() => _JoinRoomFormState();
+}
+
+class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
+  final _codeController = TextEditingController();
+  bool _isJoining = false;
 
   @override
   void dispose() {
-    _ipController.dispose();
-    _portController.dispose();
+    _codeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final flowState = ref.watch(joinRoomFlowProvider);
-
-    ref.listen<JoinRoomFlowState>(joinRoomFlowProvider, (previous, next) {
-      if (next.status == JoinRoomFlowStatus.ready) {
-        Navigator.pushReplacementNamed(context, AppRouter.room);
-      }
-    });
-
-    return Scaffold(
-      backgroundColor: SoundMeshColors.background,
-      appBar: AppBar(
-        backgroundColor: SoundMeshColors.surface,
-        title: const Text(
-          'Join Room',
-          style: TextStyle(
-            color: SoundMeshColors.primaryText,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
-          color: SoundMeshColors.primaryText,
-          onPressed: () {
-            // Cancel in-flight connecting so no orphaned connection is left
-            // running in the background, matching RoomScreen's back.
-            ref.read(joinRoomFlowProvider.notifier).reset();
-            Navigator.pop(context);
-          },
-        ),
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: SMSpacing.xl,
+        vertical: SMSpacing.xl,
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Intro eyebrow per the Stitch export (accent dot + label).
+          Row(
             children: [
-              _buildHeader(),
-              const SizedBox(height: 32),
-              _buildHostInput(flowState),
-              const SizedBox(height: 16),
-              _buildPortInput(flowState),
-              const SizedBox(height: 24),
-              if (flowState.status == JoinRoomFlowStatus.idle)
-                _buildJoinButton(flowState),
-              if (flowState.status == JoinRoomFlowStatus.connecting)
-                _buildConnectingIndicator(flowState),
-              if (flowState.status == JoinRoomFlowStatus.failed)
-                _buildError(flowState),
-              const SizedBox(height: 32),
-              _buildInstructions(flowState),
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: SMColors.soundmeshBlue,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              SizedBox(width: SMSpacing.sm),
+              Text(
+                'SOUNDMESH CONNECT',
+                style: SMTypography.smallMetadata.copyWith(
+                  color: SMColors.secondaryText,
+                  letterSpacing: 1.2,
+                ),
+              ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Host Address',
-          style: TextStyle(
-            color: SoundMeshColors.primaryText,
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
+          SizedBox(height: SMSpacing.sm),
+          _buildTitle('Join a Room'),
+          SizedBox(height: SMSpacing.md),
+          Text(
+            'Enter the 6-digit code shown on the host\'s screen.',
+            style: SMTypography.body.copyWith(color: SMColors.secondaryText),
           ),
-        ),
-        SizedBox(height: 8),
-        Text(
-          'Enter the IP address and port from the host device',
-          style: TextStyle(
-            color: SoundMeshColors.secondaryText,
-            fontSize: 14,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHostInput(JoinRoomFlowState flowState) {
-    final hasError = flowState.errorMessage != null;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: SoundMeshColors.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: hasError
-                  ? SoundMeshColors.error
-                  : SoundMeshColors.elevatedSurface,
-              width: 1,
+          SizedBox(height: SMSpacing.xxl),
+          // QR Scan area (placeholder for future)
+          SMCard(
+            elevated: true,
+            child: InkWell(
+              onTap: () => Navigator.pushNamed(context, AppRouter.qrScan),
+              borderRadius: BorderRadius.circular(SMRadius.medium),
+              child: Padding(
+                padding: EdgeInsets.all(SMSpacing.xl),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: SMColors.surfaceHigh,
+                        borderRadius: BorderRadius.circular(SMRadius.medium),
+                      ),
+                      child: Icon(
+                        Icons.qr_code_scanner,
+                        size: 32,
+                        color: SMColors.soundmeshBlue,
+                      ),
+                    ),
+                    SizedBox(height: SMSpacing.lg),
+                    Text(
+                      'Scan QR Code',
+                      style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                    ),
+                    SizedBox(height: SMSpacing.md),
+                    Text(
+                      'Point your camera at a SoundMesh QR code to join instantly.',
+                      textAlign: TextAlign.center,
+                      style: SMTypography.body.copyWith(color: SMColors.secondaryText),
+                    ),
+                    SizedBox(height: SMSpacing.md),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.qr_code_scanner, color: SMColors.soundmeshBlue, size: 18),
+                        SizedBox(width: SMSpacing.xs),
+                        Text(
+                          'Open Scanner',
+                          style: SMTypography.label.copyWith(color: SMColors.soundmeshBlue),
+                        ),
+                        SizedBox(width: SMSpacing.xs),
+                        Icon(Icons.chevron_right, color: SMColors.soundmeshBlue, size: 16),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          child: TextField(
-            controller: _ipController,
-            enabled: flowState.status == JoinRoomFlowStatus.idle,
-            style: const TextStyle(
-              color: SoundMeshColors.primaryText,
-              fontSize: 16,
-            ),
-            keyboardType: TextInputType.text,
-            decoration: const InputDecoration(
-              hintText: '192.168.1.100',
-              hintStyle: TextStyle(color: SoundMeshColors.mutedText),
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              border: InputBorder.none,
-              labelText: 'IP Address',
-              labelStyle: TextStyle(color: SoundMeshColors.mutedText),
-            ),
-            onChanged: (value) {
-              ref.read(joinRoomFlowProvider.notifier).setHostIpAddress(value);
-            },
+          SizedBox(height: SMSpacing.xl),
+          // Divider
+          Row(
+            children: [
+              Expanded(child: Divider(color: SMColors.divider)),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: SMSpacing.md),
+                child: Text(
+                  'OR',
+                  style: SMTypography.caption.copyWith(color: SMColors.mutedText),
+                ),
+              ),
+              Expanded(child: Divider(color: SMColors.divider)),
+            ],
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPortInput(JoinRoomFlowState flowState) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: SoundMeshColors.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: SoundMeshColors.elevatedSurface,
-              width: 1,
-            ),
-          ),
-          child: TextField(
-            controller: _portController,
-            enabled: flowState.status == JoinRoomFlowStatus.idle,
-            style: const TextStyle(
-              color: SoundMeshColors.primaryText,
-              fontSize: 16,
-            ),
+          SizedBox(height: SMSpacing.xl),
+          // 6-digit code input with controller
+          SMTextField(
+            controller: _codeController,
+            labelText: 'Room Code',
+            hintText: 'Enter 6-digit code',
+            maxLines: 1,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              hintText: '8765',
-              hintStyle: TextStyle(color: SoundMeshColors.mutedText),
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              border: InputBorder.none,
-              labelText: 'Port',
-              labelStyle: TextStyle(color: SoundMeshColors.mutedText),
-            ),
+            textAlign: TextAlign.center,
             onChanged: (value) {
-              final port = int.tryParse(value);
-              // Out-of-range ports are rejected at join time; the platform
-              // layer would crash (iOS) or wrap (Android) on invalid values.
-              if (port != null) {
-                ref.read(joinRoomFlowProvider.notifier).setHostPort(port);
+              // Auto-format: only keep digits, max 6
+              final digits = value.replaceAll(RegExp(r'\D'), '');
+              if (digits.length <= 6) {
+                _codeController.value = _codeController.value.copyWith(
+                  text: digits,
+                  selection: TextSelection.collapsed(offset: digits.length),
+                );
               }
             },
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildJoinButton(JoinRoomFlowState flowState) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: () {
-          ref.read(joinRoomFlowProvider.notifier).joinRoom();
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: SoundMeshColors.accent,
-          foregroundColor: SoundMeshColors.primaryText,
-          disabledBackgroundColor: SoundMeshColors.accent.withValues(alpha: 0.5),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+          SizedBox(height: SMSpacing.xl),
+          // Join button
+          SMButton(
+            text: 'Join Room',
+            icon: Icons.arrow_forward,
+            variant: SMButtonVariant.primary,
+            onPressed: _isJoining ? null : _handleJoin,
           ),
-          elevation: 0,
-        ),
-        child: const Text(
-          'Join Room',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+          SizedBox(height: SMSpacing.lg),
+          // Back button
+          SMButton(
+            text: 'Back',
+            variant: SMButtonVariant.secondary,
+            onPressed: () => Navigator.pushNamedAndRemoveUntil(context, AppRouter.home, (route) => false),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildConnectingIndicator(JoinRoomFlowState flowState) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: SoundMeshColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: SoundMeshColors.elevatedSurface,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          const CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(SoundMeshColors.accent),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Connecting to ${flowState.hostIpAddress}:${flowState.hostPort}...',
-            style: const TextStyle(
-              color: SoundMeshColors.primaryText,
-              fontSize: 14,
-            ),
-          ),
+          SizedBox(height: SMSpacing.xxl),
         ],
       ),
     );
   }
 
-  Widget _buildError(JoinRoomFlowState flowState) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: SoundMeshColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: SoundMeshColors.error,
-          width: 1,
+  Future<void> _handleJoin() async {
+    final code = _codeController.text.trim();
+    
+    if (!isValidRoomCode(code)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please enter a valid 6-digit code'),
+          backgroundColor: SMColors.warning.withValues(alpha: 0.9),
         ),
-      ),
-      child: Column(
-        children: [
-          const Icon(
-            Icons.error_outline_rounded,
-            size: 48,
-            color: SoundMeshColors.error,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            flowState.errorMessage ?? 'Failed to connect',
-            style: const TextStyle(
-              color: SoundMeshColors.error,
-              fontSize: 14,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: OutlinedButton(
-              onPressed: () {
-                ref.read(joinRoomFlowProvider.notifier).reset();
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: SoundMeshColors.accent,
-                side: const BorderSide(color: SoundMeshColors.accent),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text('Try Again'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInstructions(JoinRoomFlowState flowState) {
-    return Expanded(
-      child: SingleChildScrollView(
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: SoundMeshColors.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: SoundMeshColors.elevatedSurface,
-              width: 1,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                flowState.status == JoinRoomFlowStatus.ready
-                    ? Icons.check_circle_rounded
-                    : Icons.info_outline_rounded,
-                size: 48,
-                color: flowState.status == JoinRoomFlowStatus.ready
-                    ? SoundMeshColors.success
-                    : SoundMeshColors.mutedText,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                _getInstructionsText(flowState.status),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: SoundMeshColors.secondaryText,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _getInstructionsText(JoinRoomFlowStatus status) {
-    switch (status) {
-      case JoinRoomFlowStatus.idle:
-        return 'Enter the host IP address and port\nfrom the Create Room screen';
-      case JoinRoomFlowStatus.connecting:
-        return 'Establishing connection...';
-      case JoinRoomFlowStatus.handshaking:
-        return 'Handshaking with host...\nExchanging protocol info';
-      case JoinRoomFlowStatus.ready:
-        return 'Connected!\nReady to send messages';
-      case JoinRoomFlowStatus.failed:
-        return 'Could not connect to host\nCheck the IP address and port';
+      );
+      return;
     }
+
+    setState(() => _isJoining = true);
+
+    try {
+      developer.log(
+        'JoinRoomScreen: ===== STARTING JOIN FLOW =====',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+      developer.log(
+        'JoinRoomScreen: Code entered: "$code" (length: ${code.length}, valid: ${isValidRoomCode(code)})',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+
+      // Use DiscoveryManager to scan for the room via UDP broadcast
+      final discoveryManager = DiscoveryManager(
+        platform: ref.read(discoveryPlatformProvider),
+      );
+
+      developer.log(
+        'JoinRoomScreen: Calling scanForRoom() with code: $code',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+
+      final announcement = await discoveryManager.participantService.scanForRoom(code);
+      
+      developer.log(
+        'JoinRoomScreen: scanForRoom() returned: ${announcement != null ? "FOUND" : "NULL (timeout/not found)"}',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+      
+      if (announcement == null) {
+        if (!mounted) return;
+        developer.log(
+          'JoinRoomScreen: No announcement found - showing "Code not found" error',
+          name: 'SoundMesh.JoinRoomScreen',
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Code not found on this network'),
+            backgroundColor: SMColors.error.withValues(alpha: 0.9),
+          ),
+        );
+        setState(() => _isJoining = false);
+        return;
+      }
+
+      developer.log(
+        'JoinRoomScreen: ===== ROOM DISCOVERED =====',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+      developer.log(
+        'JoinRoomScreen: Discovered room at ${announcement.hostIp}:${announcement.hostPort}',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+      developer.log(
+        'JoinRoomScreen: Room details - code: ${announcement.code}, roomId: ${announcement.roomId}, hostName: ${announcement.hostName}',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+
+      // Set the discovered IP/port on joinRoomFlowProvider
+      ref.read(joinRoomFlowProvider.notifier).setHostIpAddress(announcement.hostIp);
+      ref.read(joinRoomFlowProvider.notifier).setHostPort(announcement.hostPort);
+
+      developer.log(
+        'JoinRoomScreen: Set host IP/port on joinRoomFlowProvider, calling joinRoom()',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+
+      // Trigger the actual connection
+      await ref.read(joinRoomFlowProvider.notifier).joinRoom();
+
+    } catch (e, stackTrace) {
+      developer.log(
+        'JoinRoomScreen: ❌ EXCEPTION during join: $e\n$stackTrace',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join room: $e'),
+            backgroundColor: SMColors.error.withValues(alpha: 0.9),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isJoining = false);
+      }
+    }
+  }
+
+  Widget _buildTitle(String title) {
+    return Text(
+      title,
+      style: SMTypography.largeTitle.copyWith(color: SMColors.primaryText),
+    );
   }
 }

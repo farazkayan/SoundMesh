@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soundmesh/core/router/app_router.dart';
+import 'package:soundmesh/presentation/components/button.dart';
 import 'package:soundmesh/presentation/screens/home_screen.dart';
+import 'package:soundmesh/presentation/screens/create_room_screen.dart';
+import 'package:soundmesh/presentation/screens/join_room_screen.dart';
 
 void main() {
   group('HomeScreen widget tests', () {
@@ -16,8 +19,8 @@ void main() {
         ),
       );
 
-      expect(find.widgetWithText(ElevatedButton, 'Create Room'), findsOneWidget);
-      expect(find.widgetWithText(OutlinedButton, 'Join Room'), findsOneWidget);
+      expect(find.widgetWithText(SMButton, 'Create Room'), findsOneWidget);
+      expect(find.widgetWithText(SMButton, 'Join Room'), findsOneWidget);
     });
 
     testWidgets('tapping Create Room navigates to create room route',
@@ -31,11 +34,13 @@ void main() {
         ),
       );
 
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Create Room'));
+      await tester.tap(find.widgetWithText(SMButton, 'Create Room'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(HomeScreen), findsNothing);
-      expect(find.text('Room Name'), findsOneWidget);
+      expect(find.byType(CreateRoomScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing); // HomeScreen should not be visible (covered)
+      // The title "Create Room" should be visible in CreateRoomScreen
+      expect(find.text('Create Room'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('tapping Join Room navigates to join room route',
@@ -49,11 +54,13 @@ void main() {
         ),
       );
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Join Room'));
+      await tester.tap(find.widgetWithText(SMButton, 'Join Room'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(HomeScreen), findsNothing);
-      expect(find.text('Host Address'), findsOneWidget);
+      expect(find.byType(JoinRoomScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing); // HomeScreen should not be visible (covered)
+      // The title "Join a Room" should be visible in JoinRoomScreen
+      expect(find.text('Join a Room'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('renders SoundMesh branding', (WidgetTester tester) async {
@@ -66,8 +73,7 @@ void main() {
       );
 
       expect(find.text('SoundMesh'), findsOneWidget);
-      expect(find.text('Synchronized audio, multiple devices'),
-          findsOneWidget);
+      expect(find.text('Make your phones one speaker.'), findsOneWidget);
     });
   });
 }

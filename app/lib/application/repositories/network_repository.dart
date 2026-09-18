@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:soundmesh/src/soundmesh_messages.g.dart';
@@ -186,7 +187,10 @@ class NetworkRepository {
   NetworkConnectionState get currentState => _currentState;
 
   Future<bool> startHosting({int port = 8765}) async {
-    debugPrint('[DartLifecycle] startHosting called, port=$port');
+    developer.log(
+      'startHosting called, port=$port',
+      name: 'SoundMesh.NetworkRepository',
+    );
     _isHost = true;
     _roomRole = RoomRole.host;
     _handshakeInitiated = false;
@@ -195,23 +199,35 @@ class NetworkRepository {
     try {
       return await _platform.startHosting(port);
     } catch (e) {
-      debugPrint('[DartLifecycle] startHosting threw exception: $e');
+      developer.log(
+        'startHosting threw exception: $e',
+        name: 'SoundMesh.NetworkRepository',
+      );
       return false;
     }
   }
 
   Future<bool> connectToHost(String ipAddress, {int port = 8765}) async {
-    debugPrint('[DartLifecycle] connectToHost called, ip=$ipAddress, port=$port');
+    developer.log(
+      'connectToHost called, ip=$ipAddress, port=$port',
+      name: 'SoundMesh.NetworkRepository',
+    );
     _isHost = false;
     _roomRole = RoomRole.participant;
     _handshakeInitiated = false;
     _roomClosedReason = null;
     _transitionToRoomLifecycleState(RoomLifecycleState.created);
-    debugPrint('[Connection] Dart: Initiating TCP connect to $ipAddress:$port');
+    developer.log(
+      'Initiating TCP connect to $ipAddress:$port',
+      name: 'SoundMesh.NetworkRepository',
+    );
     try {
       return await _platform.connectToHost(ipAddress, port);
     } catch (e) {
-      debugPrint('[Connection] Dart: TCP connect threw exception: $e');
+      developer.log(
+        'TCP connect threw exception: $e',
+        name: 'SoundMesh.NetworkRepository',
+      );
       return false;
     }
   }
@@ -345,7 +361,10 @@ class NetworkRepository {
 
   void _transitionToRoomLifecycleState(RoomLifecycleState newState) {
     if (_roomLifecycleState == newState) return;
-    debugPrint('[DartLifecycle] RoomLifecycle transition: ${_roomLifecycleState.name} -> $newState (caller: ${StackTrace.current.toString().split('\n')[1].trim()})');
+    developer.log(
+      'RoomLifecycleState transition: ${_roomLifecycleState.name} → ${newState.name}',
+      name: 'SoundMesh.NetworkRepository',
+    );
     _roomLifecycleState = newState;
     _roomLifecycleStateController.add(_roomLifecycleState);
   }
@@ -353,12 +372,18 @@ class NetworkRepository {
   void _onTcpConnected() {
     _cancelHandshakeTimer();
     if (_isHost) {
-      debugPrint('[Handshake] Host: TCP listener ready, entering listening state (caller: ${StackTrace.current.toString().split('\n')[1].trim()})');
+      developer.log(
+        'Host: TCP listener ready, emitting discoverable',
+        name: 'SoundMesh.NetworkRepository',
+      );
       _transitionTo(NetworkConnectionState.listening);
       _transitionToRoomLifecycleState(RoomLifecycleState.discoverable);
       // Do NOT start handshake timer here - wait for participant to connect (HELLO received)
     } else {
-      debugPrint('[Handshake] Participant: TCP connected, sending HELLO');
+      developer.log(
+        'Participant: TCP connected, sending HELLO',
+        name: 'SoundMesh.NetworkRepository',
+      );
       _sendHello();
       _transitionTo(NetworkConnectionState.handshaking);
       _transitionToRoomLifecycleState(RoomLifecycleState.joining);

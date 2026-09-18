@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:soundmesh/presentation/screens/join_room_screen.dart';
 import 'package:soundmesh/application/repositories/network_repository.dart';
+import 'package:soundmesh/presentation/components/button.dart';
+import 'package:soundmesh/presentation/screens/join_room_screen.dart';
 
 class MockNetworkRepository extends NetworkRepository {
   @override
@@ -21,7 +22,7 @@ class MockNetworkRepository extends NetworkRepository {
 
 void main() {
   group('JoinRoomScreen widget tests', () {
-    testWidgets('renders IP input, port input and Join button',
+    testWidgets('renders Room Code input and Join Room button',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -34,11 +35,12 @@ void main() {
         ),
       );
 
-      expect(find.byType(TextField), findsNWidgets(2));
-      expect(find.widgetWithText(ElevatedButton, 'Join Room'), findsOneWidget);
+      // One text field: Room Code
+      expect(find.byType(TextFormField), findsOneWidget);
+      expect(find.widgetWithText(SMButton, 'Join Room'), findsOneWidget);
     });
 
-    testWidgets('renders Join Room title',
+    testWidgets('renders Join a Room title',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -51,7 +53,61 @@ void main() {
         ),
       );
 
-      expect(find.text('Join Room'), findsNWidgets(2));
+      expect(find.text('Join a Room'), findsOneWidget);
+    });
+
+    testWidgets('renders QR Scan card and divider',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            networkRepositoryProvider.overrideWithValue(MockNetworkRepository()),
+          ],
+          child: const MaterialApp(
+            home: JoinRoomScreen(),
+          ),
+        ),
+      );
+
+      expect(find.text('Scan QR Code'), findsOneWidget);
+      expect(find.text('OR'), findsOneWidget);
+    });
+
+    testWidgets('Room Code field accepts digits only',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            networkRepositoryProvider.overrideWithValue(MockNetworkRepository()),
+          ],
+          child: const MaterialApp(
+            home: JoinRoomScreen(),
+          ),
+        ),
+      );
+
+      // Enter room code digits
+      await tester.enterText(find.byType(TextFormField), '123456');
+      await tester.pump();
+
+      // Verify text field shows entered value
+      expect(find.text('123456'), findsOneWidget);
+    });
+
+    testWidgets('Does not show manual entry fallback',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            networkRepositoryProvider.overrideWithValue(MockNetworkRepository()),
+          ],
+          child: const MaterialApp(
+            home: JoinRoomScreen(),
+          ),
+        ),
+      );
+
+      expect(find.text('Enter IP/Port manually'), findsNothing);
     });
   });
 }
