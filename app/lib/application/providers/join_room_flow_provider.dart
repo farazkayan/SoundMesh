@@ -271,6 +271,18 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
       '[JOIN_TRACE] JoinRoomFlowNotifier: joinRoom called with hostIpAddress=${state.hostIpAddress}, hostPort=${state.hostPort}',
       name: 'SoundMesh.JoinRoomFlow',
     );
+
+    // Guard: already in a room (ready) or actively joining — don't start another attempt
+    if (state.status == JoinRoomFlowStatus.ready ||
+        state.status == JoinRoomFlowStatus.connecting ||
+        state.status == JoinRoomFlowStatus.handshaking) {
+      developer.log(
+        '[JOIN_TRACE] JoinRoomFlowNotifier: joinRoom blocked — already in state ${state.status}',
+        name: 'SoundMesh.JoinRoomFlow',
+      );
+      return;
+    }
+
     if (state.hostIpAddress.trim().isEmpty) {
       developer.log(
         '[JOIN_TRACE] JoinRoomFlowNotifier: hostIpAddress is empty - returning error',

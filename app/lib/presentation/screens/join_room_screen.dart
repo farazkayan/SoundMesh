@@ -411,6 +411,16 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
       '[JOIN_TRACE] 01 UI Join Room onPressed ENTERED',
       name: 'SoundMesh.JoinRoomScreen',
     );
+
+    // Guard: prevent double-tap while already joining
+    if (_isJoining) {
+      developer.log(
+        '[JOIN_TRACE] _handleJoin blocked — already joining',
+        name: 'SoundMesh.JoinRoomScreen',
+      );
+      return;
+    }
+
     final code = _codeController.text.trim();
     developer.log(
       '[JOIN_TRACE] 02 room code received: length=${code.length}, valid=${isValidRoomCode(code)}',
@@ -463,12 +473,12 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
       if (announcement == null) {
         if (!mounted) return;
         developer.log(
-          '[JOIN_TRACE] 07 NO ANNOUNCEMENT - showing "Code not found" error',
+          '[JOIN_TRACE] 07 NO ANNOUNCEMENT - showing timeout/unavailable error',
           name: 'SoundMesh.JoinRoomScreen',
         );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Code not found on this network'),
+            content: Text('No response — check the code and that both devices are on the same network'),
             backgroundColor: SMColors.error.withValues(alpha: 0.9),
           ),
         );

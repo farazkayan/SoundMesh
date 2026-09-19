@@ -9,7 +9,6 @@ import '../protocol.dart';
 import '../room/room_lifecycle.dart';
 import '../../infrastructure/discovery/discovery_types.dart';
 import '../../infrastructure/discovery/discovery_manager.dart';
-import '../../infrastructure/discovery/join_payload.dart';
 import '../providers/discovery_provider.dart';
 
 enum CreateRoomFlowStatus {
