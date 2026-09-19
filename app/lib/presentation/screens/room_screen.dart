@@ -383,18 +383,22 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            QrImageView(
-              data: uriString,
-              version: QrVersions.auto,
-              size: 240.0,
-              backgroundColor: Colors.white,
-              eyeStyle: QrEyeStyle(
-                eyeShape: QrEyeShape.square,
-                color: SoundMeshColors.background,
-              ),
-              dataModuleStyle: QrDataModuleStyle(
-                dataModuleShape: QrDataModuleShape.square,
-                color: SoundMeshColors.background,
+            SizedBox(
+              width: 240.0,
+              height: 240.0,
+              child: QrImageView(
+                data: uriString,
+                version: QrVersions.auto,
+                size: 240.0,
+                backgroundColor: Colors.white,
+                eyeStyle: QrEyeStyle(
+                  eyeShape: QrEyeShape.square,
+                  color: SoundMeshColors.background,
+                ),
+                dataModuleStyle: QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.square,
+                  color: SoundMeshColors.background,
+                ),
               ),
             ),
             const SizedBox(height: 12),
