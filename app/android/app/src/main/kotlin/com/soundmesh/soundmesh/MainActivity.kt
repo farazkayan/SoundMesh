@@ -2,6 +2,8 @@ package com.soundmesh.soundmesh
 
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -101,6 +103,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                     val hostPort = call.argument<Int>("hostPort") ?: 0
                     val roomId = call.argument<String>("roomId") ?: ""
                     val hostName = call.argument<String>("hostName")
+                    val expiresAt = (call.argument<Number>("expiresAt"))?.toLong()
                     val intervalSeconds = call.argument<Int>("intervalSeconds") ?: 2
                     
                     val success = discoveryService.startBroadcast(
@@ -109,6 +112,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         hostPort = hostPort,
                         roomId = roomId,
                         hostName = hostName,
+                        expiresAt = expiresAt,
                         intervalSeconds = intervalSeconds
                     )
                     result.success(success)
@@ -132,23 +136,40 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 "startScan" -> {
                     val targetCode = call.argument<String>("code") ?: ""
                     val timeoutSeconds = call.argument<Int>("timeoutSeconds") ?: 15
-                    
+
+                    // Native→Flutter discovery events arrive from
+                    // DiscoveryService's background scan/timeout threads.
+                    // MethodChannel.invokeMethod is @UiThread and throws
+                    // ("Methods marked with @UiThread must be executed on the
+                    // main thread") when called off-main — this previously
+                    // crashed right after MATCH FOUND. Always hop to the main
+                    // looper before calling into Flutter, mirroring the
+                    // audited notifyMessage/notifyState pattern.
+                    fun invokeDiscoveryEventOnMainThread(event: Map<String, Any?>) {
+                        Log.i(TAG, "[JOIN_TRACE] MainActivity: Dispatching discovery event to Android main thread (from thread=${Thread.currentThread().name})")
+                        Handler(Looper.getMainLooper()).post {
+                            Log.d(TAG, "[JOIN_TRACE] MainActivity: Invoking Flutter MethodChannel on main thread (thread=${Thread.currentThread().name})")
+                            discoveryChannel.invokeMethod("onDiscoveryEvent", event)
+                        }
+                    }
+
                     discoveryService.startScan(
                         targetCode = targetCode,
                         timeoutSeconds = timeoutSeconds,
                         onAnnouncement = { announcement ->
-                            discoveryChannel.invokeMethod("onDiscoveryEvent", mapOf(
+                            invokeDiscoveryEventOnMainThread(mapOf(
                                 "code" to announcement.code,
                                 "hostIp" to announcement.hostIp,
                                 "hostPort" to announcement.hostPort,
                                 "protocolVersion" to announcement.protocolVersion,
                                 "roomId" to announcement.roomId,
                                 "hostName" to announcement.hostName,
+                                "expiresAt" to announcement.expiresAt,
                                 "isTimeout" to false
                             ))
                         },
                         onTimeout = {
-                            discoveryChannel.invokeMethod("onDiscoveryEvent", mapOf(
+                            invokeDiscoveryEventOnMainThread(mapOf(
                                 "code" to "",
                                 "hostIp" to "",
                                 "hostPort" to 0,

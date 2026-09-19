@@ -72,6 +72,12 @@ class NetworkRepository {
   final String _participantId = _generateParticipantId();
   String? _sessionId;
   String? _roomId;
+
+  /// Room identifier pre-assigned by the host at room creation. When set, the
+  /// WELCOME handshake advertises this ID instead of generating a new one, so
+  /// the discovery announcement and the actual room identity agree.
+  String? _hostRoomId;
+
   int _generation = 0;
   bool _isHost = false;
   bool _handshakeInitiated = false;
@@ -186,12 +192,13 @@ class NetworkRepository {
 
   NetworkConnectionState get currentState => _currentState;
 
-  Future<bool> startHosting({int port = 8765}) async {
+  Future<bool> startHosting({int port = 8765, String? roomId}) async {
     developer.log(
-      'startHosting called, port=$port',
+      'startHosting called, port=$port, roomId=$roomId',
       name: 'SoundMesh.NetworkRepository',
     );
     _isHost = true;
+    _hostRoomId = roomId;
     _roomRole = RoomRole.host;
     _handshakeInitiated = false;
     _roomClosedReason = null;
@@ -541,9 +548,10 @@ class NetworkRepository {
 
     // Session/room IDs are created once per hosting session. A duplicate HELLO
     // (e.g. a retried connection) must not rotate IDs that a participant may
-    // already have received in a WELCOME.
+    // already have received in a WELCOME. The room ID is pre-assigned by the
+    // host at room creation so it matches the discovery announcement.
     _sessionId ??= generateUuidV4();
-    _roomId ??= generateUuidV4();
+    _roomId ??= _hostRoomId ?? generateUuidV4();
     _generation = 0;
 
     final welcome = ProtocolMessage.welcome(

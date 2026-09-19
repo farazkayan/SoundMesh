@@ -1136,6 +1136,13 @@ The exact final encoding, fields, escaping rules, and security behavior are gove
 
 The Room API MUST NOT independently redefine the networking payload.
 
+The implemented join payload contract (Phase 7) is documented in
+`DOCS/networking.md`, sections 14.1 and 14.2. It defines the exact UDP
+announcement JSON, the QR URI encoding (including the `token` parameter for
+the join credential), the 10-minute join credential lifetime, and the
+structured bootstrap error taxonomy (INVALID\_PAYLOAD, CODE\_EXPIRED,
+PROTOCOL\_VERSION\_UNSUPPORTED, CODE\_NOT\_FOUND, ROOM\_NOT\_FOUND).
+
 
 
 \---

@@ -9,6 +9,7 @@ import '../protocol.dart';
 import '../room/room_lifecycle.dart';
 import '../../infrastructure/discovery/discovery_types.dart';
 import '../../infrastructure/discovery/discovery_manager.dart';
+import '../../infrastructure/discovery/join_payload.dart';
 import '../providers/discovery_provider.dart';
 
 enum CreateRoomFlowStatus {
@@ -340,21 +341,29 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: Generated join code: $joinCode | Setting status to hosting',
         name: 'SoundMesh.CreateRoomFlow',
       );
-      
+
+      // The announcement must advertise the room's actual identifier, not a
+      // separate discovery-time value: the repository uses this roomId for the
+      // WELCOME handshake so participants can verify the room they joined.
+      final roomId = generateUuidV4();
+      final expiresAt = DateTime.now().add(kJoinCodeLifetime);
+
       state = state.copyWith(
         localIpAddress: ip,
         status: CreateRoomFlowStatus.hosting,
         joinCode: joinCode,
+        roomId: roomId,
       );
 
       developer.log(
-        'CreateRoomFlow: Starting UDP broadcast for code: $joinCode',
+        'CreateRoomFlow: Starting UDP broadcast for code: $joinCode (roomId: $roomId)',
         name: 'SoundMesh.CreateRoomFlow',
       );
       final broadcastSuccess = await _discoveryManager.hostService.startBroadcast(
         code: joinCode,
-        roomId: state.roomId ?? 'room-${DateTime.now().millisecondsSinceEpoch}',
+        roomId: roomId,
         port: state.port ?? 8765,
+        expiresAt: expiresAt,
       );
       developer.log(
         'CreateRoomFlow: UDP broadcast started: $broadcastSuccess',
@@ -365,7 +374,10 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: Starting hosting on port ${state.port ?? 8765}',
         name: 'SoundMesh.CreateRoomFlow',
       );
-      final hostingSuccess = await _networkRepository.startHosting(port: state.port ?? 8765);
+      final hostingSuccess = await _networkRepository.startHosting(
+        port: state.port ?? 8765,
+        roomId: roomId,
+      );
       developer.log(
         'CreateRoomFlow: startHosting returned: $hostingSuccess',
         name: 'SoundMesh.CreateRoomFlow',

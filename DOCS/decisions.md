@@ -2238,3 +2238,75 @@ The engineering team should experience:
 > **“We built a distributed synchronization system that makes independent audio devices behave like one.”**
 
 Both statements describe the same product from different sides.
+
+---
+
+# 86. DEC-086 — Join Payload Formalization and Join Code Lifetime
+
+**Status:** DECIDED
+
+**Date:** 2026-09-19 (Phase 7 bootstrap task)
+
+### Context
+
+Phase 6 built raw connection mechanics; the 6-digit code + UDP discovery join
+flow was added as a shortcut during UI integration. Formalizing the bootstrap
+payload against the contract revealed gaps: codes never expired, code
+generation used timestamp-derived randomness (identical codes within the same
+millisecond, predictable values), the announcement advertised a roomId that
+never matched the room ID the host assigned at handshake, and participant
+validation produced no structured errors.
+
+### Decision
+
+1. The bootstrap payload is a transport-independent `JoinPayload` structure
+   (`roomId`, `hostAddress`, `hostPort`, `protocolVersion`, `code`,
+   `issuedAt`, `expiresAt`) shared by both transports: the UDP discovery
+   announcement and the QR `soundmesh://join` URI (per DEC-013, with the
+   credential transmitted in the `token` parameter). Swapping or adding a
+   transport changes only transmission, not the data structure.
+2. Join credential lifetime is 10 minutes from issuance, with a 60-second
+   clock-skew allowance on validation. The effective lifetime is also bounded
+   by the host session (broadcasting stops when the room closes, and the host
+   stops broadcasting automatically when the credential expires).
+3. Room code generation uses cryptographically secure randomness
+   (`Random.secure()`), keeping the 6-digit format.
+4. The host pre-assigns the room ID at room creation and uses it for both the
+   discovery announcement and the WELCOME handshake, so the advertised and
+   actual room identities agree.
+5. Participant-side bootstrap failures raise structured errors
+   (`INVALID_PAYLOAD`, `CODE_EXPIRED`, `PROTOCOL_VERSION_UNSUPPORTED`,
+   `CODE_NOT_FOUND`, `ROOM_NOT_FOUND` — reserved).
+
+### Alternatives considered
+
+* Code lifetime tied only to host session lifetime (no explicit expiry) —
+  rejected: a code seen or overheard could be reused much later.
+* Keeping timestamp-derived code randomness — rejected: same bug class as the
+  UUID collision defect already fixed in the protocol layer.
+* Leaving the announcement roomId as a discovery-time value — rejected: it
+  contradicts the payload contract and would break QR room verification.
+
+### Consequences
+
+* A participant who waits longer than 10 minutes after room creation cannot
+  join with the original code (CODE_NOT_FOUND); the host must recreate the
+  room or re-broadcast a fresh credential in a future iteration.
+* QR payloads (Mahin's Phase 7) can be built against the documented format
+  without backend changes; any adjustment after syncing with Mahin is a
+  payload-level change only.
+
+### Evidence
+
+* 144 automated tests pass (including 17 pre-existing discovery tests
+  unchanged, plus new payload/expiration/validation tests).
+* `flutter analyze` clean.
+* Two-real-device end-to-end validation: NOT TESTED (manual test for the
+  developer).
+
+### Affected Documents
+
+```text
+DOCS/networking.md (sections 14.1, 14.2, 59.1)
+DOCS/interfaces/room-api.md (section 17 cross-reference)
+```

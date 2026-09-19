@@ -34,7 +34,7 @@ class MockNetworkRepository extends NetworkRepository {
   }
 
   @override
-  Future<bool> startHosting({int port = 8765}) async {
+  Future<bool> startHosting({int port = 8765, String? roomId}) async {
     startHostingCalls++;
     return true;
   }
@@ -71,6 +71,7 @@ class MockHostDiscoveryService extends HostDiscoveryService {
     required String roomId,
     required int port,
     String? hostName,
+    DateTime? expiresAt,
   }) async {
     return true;
   }
