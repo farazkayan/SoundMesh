@@ -534,6 +534,8 @@ soundmesh://join?
 
 The exact encoding is implementation-defined.
 
+The implemented encoding is defined in 14.1 below.
+
 The QR code MUST NOT contain:
 
 * permanent credentials;
@@ -568,6 +570,105 @@ The token SHOULD:
 * be scoped to the current room;
 * become invalid when the room closes;
 * preferably become invalid after successful use or after a defined lifetime.
+
+---
+
+## 14.1 Implemented Join Payload Contract (Phase 7)
+
+The bootstrap payload is formalized as a transport-independent `JoinPayload`
+structure shared by both bootstrap transports. The Dart implementation is
+`app/lib/infrastructure/discovery/join_payload.dart`.
+
+### Payload fields
+
+```text
+JoinPayload {
+    roomId            // the room's actual identifier (must match the
+                      //   WELCOME handshake roomId — see below)
+    hostAddress       // host TCP control IP
+    hostPort          // host TCP control port
+    protocolVersion   // application protocol version this payload targets
+    code              // short-lived join credential (6-digit numeric in MVP)
+    issuedAt          // when the credential was issued (optional on the wire)
+    expiresAt         // when the credential expires (optional on the wire)
+}
+```
+
+### Transport forms
+
+**(a) UDP discovery announcement** (live broadcast, 2-second interval):
+
+```text
+{
+  "type": "room_announcement",
+  "version": 1,
+  "code": "123456",
+  "host_ip": "192.168.1.100",
+  "host_port": 8765,
+  "room_id": "<room-id>",
+  "host_name": "<optional display name>",
+  "expires_at": <epoch-millis>
+}
+```
+
+`expires_at` is optional so senders that do not carry expiration remain
+parseable. Participant-side validation of announcements covers message type,
+protocol version, and 6-digit code format; an announcement whose credential
+has expired is ignored (the scan continues and times out).
+
+**(b) QR bootstrap URI** (per DEC-013):
+
+```text
+soundmesh://join?room=<room-id>&host=<addr>&port=<port>&version=<v>
+    &token=<code>&expires=<epoch-millis>
+```
+
+The credential is transmitted in the `token` parameter; `code` is accepted as
+an alias on parse. `expires` is omitted when the payload carries no
+expiration. The same `JoinPayload` structure backs both forms: swapping or
+adding a transport does not change the data structure, only how it is
+transmitted and received.
+
+### Join credential lifetime
+
+* Default lifetime: 10 minutes from issuance (`kJoinCodeLifetime`).
+* The effective lifetime is also bounded by the host session: broadcasting
+  stops when the room closes, and the host stops broadcasting automatically
+  when the credential expires.
+* Validation allows a 60-second clock-skew allowance for wall-clock
+  differences between devices (`kJoinExpiryClockSkewAllowance`).
+* The credential is short-lived and single-purpose: scoped to one room
+  session. It is never a permanent credential.
+
+### Host roomId consistency
+
+The discovery announcement's `roomId` MUST be the host's actual room
+identifier, not a separate discovery-time value. The host pre-assigns the
+room ID at room creation and uses it for the WELCOME handshake, so the
+announcement and the joined room agree. Cross-validating the announced
+`roomId` against the WELCOME `roomId` on the participant side is a follow-up
+(the current HELLO handshake does not yet carry the join credential).
+
+### Participant-side validation
+
+Malformed codes, payload parse failures, and version mismatches raise
+structured errors (see 14.2). A discovery scan timeout surfaces as a null
+result, mapped to `CODE_NOT_FOUND`.
+
+---
+
+## 14.2 Join Payload Error Taxonomy (Phase 7)
+
+| Error Code | Meaning | Where it surfaces |
+|------------|---------|-------------------|
+| `INVALID_PAYLOAD` | Malformed/corrupt payload: unparseable, missing required fields, invalid port or expiration | QR/URI parse; malformed code input |
+| `CODE_EXPIRED` | Join credential expired beyond the 60s clock-skew allowance | QR/URI parse; expired UDP announcements are ignored (scan then times out) |
+| `PROTOCOL_VERSION_UNSUPPORTED` | Payload targets an incompatible protocol version | QR/URI parse; discovery announcements with a wrong version are ignored |
+| `CODE_NOT_FOUND` | Scan completed without finding the requested code | Discovery scan timeout (null result → "Code not found on this network") |
+| `ROOM_NOT_FOUND` | Host-side rejection after a connect attempt | Reserved; currently unreachable because a discovery-resolved connection always targets the advertising host. Host-side rejection uses the `JOIN_REJECTED` taxonomy (`ROOM_FULL` / `VERSION_MISMATCH` / `CLOSED`) |
+
+Dart implementation: `JoinPayloadException` carrying a `JoinPayloadErrorCode`
+in `join_payload.dart`. Raw exceptions must not leak into user-facing state.
 
 ---
 
@@ -1800,6 +1901,10 @@ Audio-specific errors should remain distinguishable from ordinary connection fai
 | `HANDSHAKE_FAILED` | TCP connected, but protocol/version mismatch or handshake protocol failure. |
 | `HEARTBEAT_TIMEOUT` | No heartbeat response within configured timeout threshold. |
 | `PROTOCOL_VERSION_MISMATCH` | Protocol version negotiation failed (major version mismatch). |
+| `INVALID_PAYLOAD` | Bootstrap payload malformed/corrupt (see 14.2). |
+| `CODE_EXPIRED` | Short-lived join credential expired (see 14.2). |
+| `CODE_NOT_FOUND` | Discovery scan timeout: requested room code not found (see 14.2). |
+| `ROOM_NOT_FOUND` | Host-side rejection after a connect attempt (reserved, see 14.2). |
 
 # 60. Permission Errors
 

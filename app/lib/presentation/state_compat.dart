@@ -213,12 +213,15 @@ final applicationStateProvider = Provider<ApplicationState>((ref) {
   final isHost = lifecycleState.role == RoomRole.host;
   final syncStatus = _mapSyncStatus(lifecycleState.lifecycleState, screenState.connectionState);
 
+  // For participants, get joinCode from joinRoomFlowProvider; for hosts, from createRoomFlowProvider
+  final joinCode = isHost ? createState.joinCode : joinState.joinCode;
+
   return ApplicationState(
     state: mappedState,
     message: screenState.errorMessage ?? createState.errorMessage ?? joinState.errorMessage,
     isHost: isHost,
     roomId: lifecycleState.roomId,
-    joinCode: createState.joinCode,
+    joinCode: joinCode,
     sync: SyncInfo(
       syncState: syncStatus,
       offsetMs: null,

@@ -9,8 +9,8 @@ class TestableNetworkRepository extends NetworkRepository {
       : super.test(handshakeTimeout);
 
   @override
-  Future<bool> startHosting({int port = 8765}) async {
-    await super.startHosting(port: port);
+  Future<bool> startHosting({int port = 8765, String? roomId}) async {
+    await super.startHosting(port: port, roomId: roomId);
     return true;
   }
 

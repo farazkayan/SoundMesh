@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'discovery_platform.dart';
 import 'discovery_types.dart';
+import 'join_payload.dart';
 import 'dart:developer' as developer;
 
 /// Mock implementation of DiscoveryPlatform for testing and development.
@@ -20,7 +21,8 @@ class MockDiscoveryPlatform extends DiscoveryPlatform {
   RoomAnnouncement? _mockAnnouncement;
 
   void _initializeMockData() {
-    // Create a mock announcement for testing
+    // Create a mock announcement for testing, with a fresh credential so the
+    // mock behaves like a live host under the expiration contract.
     _mockAnnouncement = RoomAnnouncement(
       code: '123456',
       hostIp: '192.168.1.100',
@@ -28,6 +30,7 @@ class MockDiscoveryPlatform extends DiscoveryPlatform {
       protocolVersion: kDiscoveryProtocolVersion,
       roomId: 'room-test-001',
       hostName: 'Test Host',
+      expiresAt: DateTime.now().add(kJoinCodeLifetime),
     );
     developer.log(
       'MockDiscoveryPlatform: Initialized with mock announcement: ${_mockAnnouncement!.code} at ${_mockAnnouncement!.hostIp}:${_mockAnnouncement!.hostPort}',
@@ -42,6 +45,7 @@ class MockDiscoveryPlatform extends DiscoveryPlatform {
     required int hostPort,
     required String roomId,
     String? hostName,
+    DateTime? expiresAt,
     int intervalSeconds = kDiscoveryBroadcastIntervalSeconds,
   }) async {
     developer.log(

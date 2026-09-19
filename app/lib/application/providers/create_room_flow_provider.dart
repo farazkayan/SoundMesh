@@ -9,6 +9,7 @@ import '../protocol.dart';
 import '../room/room_lifecycle.dart';
 import '../../infrastructure/discovery/discovery_types.dart';
 import '../../infrastructure/discovery/discovery_manager.dart';
+import '../../infrastructure/discovery/join_payload.dart';
 import '../providers/discovery_provider.dart';
 
 enum CreateRoomFlowStatus {
@@ -79,7 +80,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
   StreamSubscription? _stateSubscription;
   StreamSubscription? _protocolMessageSubscription;
   StreamSubscription? _connectionErrorSubscription;
-  StreamSubscription? _roomLifecycleSubscription;
   bool _createRoomInProgress = false;
 
   CreateRoomFlowNotifier(this._networkRepository, this._discoveryManager)
@@ -104,14 +104,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         _handleConnectionError(error);
       },
     );
-
-    _roomLifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((
-      lifecycleState,
-    ) {
-      debugPrint('[UILifecycle] CreateRoomFlow: roomLifecycleState change -> $lifecycleState (current status: ${state.status})');
-      state = state.copyWith(roomLifecycleState: lifecycleState);
-      _handleRoomLifecycleStateChange(lifecycleState);
-    });
   }
 
   void _handleConnectionError(ConnectionError error) {
@@ -187,7 +179,18 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         }
         break;
       case NetworkConnectionState.disconnected:
-        if (state.status != CreateRoomFlowStatus.idle &&
+        if (state.status == CreateRoomFlowStatus.ready) {
+          // Participant left - host returns to listening for new participants
+          developer.log(
+            'CreateRoomFlow: Participant disconnected, returning to listening',
+            name: 'SoundMesh.CreateRoomFlow',
+          );
+          state = state.copyWith(
+            status: CreateRoomFlowStatus.listening,
+            sessionId: null,
+            roomId: null,
+          );
+        } else if (state.status != CreateRoomFlowStatus.idle &&
             state.status != CreateRoomFlowStatus.failed) {
           state = state.copyWith(
             status: CreateRoomFlowStatus.failed,
@@ -196,80 +199,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         }
         break;
       default:
-        break;
-    }
-  }
-
-  void _handleRoomLifecycleStateChange(RoomLifecycleState lifecycleState) {
-    developer.log(
-      'CreateRoomFlow: Received lifecycle state: ${lifecycleState.name} | '
-      'Current status: ${state.status.name} | joinCode: ${state.joinCode ?? "null"}',
-      name: 'SoundMesh.CreateRoomFlow',
-    );
-    
-    switch (lifecycleState) {
-      case RoomLifecycleState.created:
-        if (state.status == CreateRoomFlowStatus.idle) {
-          developer.log(
-            'CreateRoomFlow: Transitioning to creating',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(status: CreateRoomFlowStatus.creating);
-        }
-        break;
-      case RoomLifecycleState.discoverable:
-        if (state.status == CreateRoomFlowStatus.creating ||
-            state.status == CreateRoomFlowStatus.hosting) {
-          // Join code is now generated in createRoom() to avoid race condition
-          // Just update status to listening
-          developer.log(
-            'CreateRoomFlow: Room discoverable, setting status to listening (joinCode already set: ${state.joinCode})',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(
-            status: CreateRoomFlowStatus.listening,
-          );
-        } else {
-          developer.log(
-            'CreateRoomFlow: SKIPPED status update - status not creating/hosting (current: ${state.status.name})',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-        }
-        break;
-      case RoomLifecycleState.joining:
-        if (state.status == CreateRoomFlowStatus.listening) {
-          developer.log(
-            'CreateRoomFlow: Transitioning to handshaking',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(status: CreateRoomFlowStatus.handshaking);
-        }
-        break;
-      case RoomLifecycleState.ready:
-        if (state.status == CreateRoomFlowStatus.handshaking) {
-          developer.log(
-            'CreateRoomFlow: Room ready, setting status to ready',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(
-            status: CreateRoomFlowStatus.ready,
-            sessionId: _networkRepository.sessionId,
-            roomId: _networkRepository.roomId,
-          );
-        }
-        break;
-      case RoomLifecycleState.closed:
-        if (state.status != CreateRoomFlowStatus.idle &&
-            state.status != CreateRoomFlowStatus.failed) {
-          developer.log(
-            'CreateRoomFlow: Room closed, setting failed',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(
-            status: CreateRoomFlowStatus.failed,
-            errorMessage: _networkRepository.roomClosedReason ?? 'Room ended',
-          );
-        }
         break;
     }
   }
@@ -340,21 +269,29 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: Generated join code: $joinCode | Setting status to hosting',
         name: 'SoundMesh.CreateRoomFlow',
       );
-      
+
+      // The announcement must advertise the room's actual identifier, not a
+      // separate discovery-time value: the repository uses this roomId for the
+      // WELCOME handshake so participants can verify the room they joined.
+      final roomId = generateUuidV4();
+      final expiresAt = DateTime.now().add(kJoinCodeLifetime);
+
       state = state.copyWith(
         localIpAddress: ip,
         status: CreateRoomFlowStatus.hosting,
         joinCode: joinCode,
+        roomId: roomId,
       );
 
       developer.log(
-        'CreateRoomFlow: Starting UDP broadcast for code: $joinCode',
+        'CreateRoomFlow: Starting UDP broadcast for code: $joinCode (roomId: $roomId)',
         name: 'SoundMesh.CreateRoomFlow',
       );
       final broadcastSuccess = await _discoveryManager.hostService.startBroadcast(
         code: joinCode,
-        roomId: state.roomId ?? 'room-${DateTime.now().millisecondsSinceEpoch}',
+        roomId: roomId,
         port: state.port ?? 8765,
+        expiresAt: expiresAt,
       );
       developer.log(
         'CreateRoomFlow: UDP broadcast started: $broadcastSuccess',
@@ -365,7 +302,10 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: Starting hosting on port ${state.port ?? 8765}',
         name: 'SoundMesh.CreateRoomFlow',
       );
-      final hostingSuccess = await _networkRepository.startHosting(port: state.port ?? 8765);
+      final hostingSuccess = await _networkRepository.startHosting(
+        port: state.port ?? 8765,
+        roomId: roomId,
+      );
       developer.log(
         'CreateRoomFlow: startHosting returned: $hostingSuccess',
         name: 'SoundMesh.CreateRoomFlow',
@@ -391,7 +331,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
     _stateSubscription?.cancel();
     _protocolMessageSubscription?.cancel();
     _connectionErrorSubscription?.cancel();
-    _roomLifecycleSubscription?.cancel();
     super.dispose();
   }
 }
