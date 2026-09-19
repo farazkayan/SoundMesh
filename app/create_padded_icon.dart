@@ -25,9 +25,9 @@ void main() {
   int contentSize = (canvasSize * safeZoneRatio).round();
   int padding = (canvasSize - contentSize) ~/ 2;
   
-  print("Canvas: ${canvasSize}x${canvasSize}");
-  print("Content size: ${contentSize}x${contentSize}");
-  print("Padding: ${padding}px on each side");
+  print("Canvas: $canvasSize x $canvasSize");
+  print("Content size: $contentSize x $contentSize");
+  print("Padding: $padding px on each side");
   
   // Resize original to fit content size
   var resized = copyResize(rgba, width: contentSize, height: contentSize);

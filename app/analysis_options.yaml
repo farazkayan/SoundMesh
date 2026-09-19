@@ -16,6 +16,10 @@ analyzer:
     - ios/**
     - macos/**
     - linux/**
+    - check_foreground.dart
+    - check_image.dart
+    - check_legacy.dart
+    - create_padded_icon.dart
 
 linter:
   # The lint rules applied to this project can be customized in the
