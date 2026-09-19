@@ -179,7 +179,18 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         }
         break;
       case NetworkConnectionState.disconnected:
-        if (state.status != CreateRoomFlowStatus.idle &&
+        if (state.status == CreateRoomFlowStatus.ready) {
+          // Participant left - host returns to listening for new participants
+          developer.log(
+            'CreateRoomFlow: Participant disconnected, returning to listening',
+            name: 'SoundMesh.CreateRoomFlow',
+          );
+          state = state.copyWith(
+            status: CreateRoomFlowStatus.listening,
+            sessionId: null,
+            roomId: null,
+          );
+        } else if (state.status != CreateRoomFlowStatus.idle &&
             state.status != CreateRoomFlowStatus.failed) {
           state = state.copyWith(
             status: CreateRoomFlowStatus.failed,

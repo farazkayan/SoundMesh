@@ -790,6 +790,11 @@ class NetworkRepository {
                            _currentState == NetworkConnectionState.listening;
       if (wasConnected) {
         _resetHostParticipantState(resetIds: true);
+        // If we were ready (participant was joined), transition back to discoverable
+        // so the host can accept new participants
+        if (_currentState == NetworkConnectionState.ready) {
+          _transitionToRoomLifecycleState(RoomLifecycleState.discoverable);
+        }
       }
     }
     
