@@ -278,21 +278,21 @@ class RoomDashboardScreen extends StatelessWidget {
         _roomIdentityHeader(context, appState),
         SizedBox(height: SMSpacing.xl),
         
-        // Host: keep showing the join code so more participants can join
-        if (isHost && joinCode.isNotEmpty) ...[
+        // Show join code for both host and participant (participant auto-navigates here)
+        if (joinCode.isNotEmpty) ...[
           SMCard(
             elevated: true,
             padding: EdgeInsets.all(SMSpacing.xl),
             child: Column(
               children: [
                 Icon(
-                  Icons.wifi_tethering,
+                  isHost ? Icons.wifi_tethering : Icons.check_circle,
                   size: SMDimensions.emptyIconSize * 0.7,
-                  color: SMColors.soundmeshBlue,
+                  color: isHost ? SMColors.soundmeshBlue : SMColors.success,
                 ),
                 SizedBox(height: SMSpacing.lg),
                 Text(
-                  'Share This Code',
+                  isHost ? 'Share This Code' : 'Code Confirmed',
                   style: SMTypography.heading.copyWith(color: SMColors.primaryText),
                 ),
                 SizedBox(height: SMSpacing.md),
@@ -305,7 +305,7 @@ class RoomDashboardScreen extends StatelessWidget {
                     color: SMColors.surfaceHigh,
                     borderRadius: BorderRadius.circular(SMRadius.large),
                     border: Border.all(
-                      color: SMColors.soundmeshBlue.withValues(alpha: 0.5),
+                      color: (isHost ? SMColors.soundmeshBlue : SMColors.success).withValues(alpha: 0.5),
                       width: 2,
                     ),
                   ),
@@ -320,7 +320,9 @@ class RoomDashboardScreen extends StatelessWidget {
                 ),
                 SizedBox(height: SMSpacing.md),
                 Text(
-                  'Other phones enter this 6-digit code to join',
+                  isHost
+                      ? 'Other phones enter this 6-digit code to join'
+                      : 'Both devices show the same code',
                   style: SMTypography.caption.copyWith(color: SMColors.mutedText),
                   textAlign: TextAlign.center,
                 ),

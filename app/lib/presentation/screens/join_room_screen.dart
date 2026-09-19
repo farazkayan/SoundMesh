@@ -63,7 +63,10 @@ class JoinRoomScreen extends ConsumerWidget {
 
     // Room ready → joined successfully, show code confirmation.
     if (state == SMAppState.roomReady || state == SMAppState.ready) {
-      final joinCode = appState.joinCode ?? '';
+      // Read joinCode directly from joinRoomFlowProvider as primary source
+      // (more reliable than appState.joinCode which goes through applicationStateProvider)
+      final joinFlowState = ref.watch(joinRoomFlowProvider);
+      final joinCode = (appState.joinCode ?? joinFlowState.joinCode ?? '').trim();
       final isValidCode = isValidRoomCode(joinCode);
       
       // For participants, when ready state is reached, auto-navigate to dashboard
@@ -73,6 +76,29 @@ class JoinRoomScreen extends ConsumerWidget {
             Navigator.pushReplacementNamed(context, AppRouter.roomDashboard);
           }
         });
+      }
+      
+      // If code is still empty at render time, show loading state instead of blank
+      if (joinCode.isEmpty) {
+        return Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: SMSpacing.xl,
+            vertical: SMSpacing.xl,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SMLoadingIndicator(size: SMDimensions.emptyIconSize * 0.8),
+              SizedBox(height: SMSpacing.lg),
+              Text(
+                'Finalizing connection…',
+                textAlign: TextAlign.center,
+                style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+              ),
+              SizedBox(height: SMSpacing.xxl),
+            ],
+          ),
+        );
       }
       
       return Padding(
