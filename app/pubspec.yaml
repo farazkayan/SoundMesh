@@ -44,6 +44,9 @@ dependencies:
   # QR code scanning for participant side
   mobile_scanner: ^7.4.2
 
+  # RevenueCat for in-app purchases
+  purchases_flutter: ^10.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
