@@ -13,19 +13,19 @@ class RoomShell extends StatelessWidget {
   // is a label/icon/style change only.
   static const List<_RoomTab> _tabs = [
     _RoomTab(
-      routeName: AppRouter.roomDashboardRoute,
+      routeName: AppRouter.roomDashboardPath,
       path: AppRouter.roomDashboardPath,
       label: 'Room',
       icon: Icons.surround_sound_outlined,
     ),
     _RoomTab(
-      routeName: AppRouter.roomDevicesRoute,
+      routeName: AppRouter.roomDevicesPath,
       path: AppRouter.roomDevicesPath,
       label: 'Devices',
       icon: Icons.router_outlined,
     ),
     _RoomTab(
-      routeName: AppRouter.roomSessionRoute,
+      routeName: AppRouter.roomSessionPath,
       path: AppRouter.roomSessionPath,
       label: 'Session',
       icon: Icons.graphic_eq_outlined,

@@ -38,6 +38,12 @@ dependencies:
   # State management - infrastructure only, actual usage in Phase 1+
   flutter_riverpod: ^2.5.1
 
+  # QR code generation for host side
+  qr_flutter: ^4.1.0
+
+  # QR code scanning for participant side
+  mobile_scanner: ^7.4.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

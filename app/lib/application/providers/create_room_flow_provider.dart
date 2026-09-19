@@ -283,12 +283,12 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
     state = state.copyWith(roomName: name);
   }
 
-  Future<void> createRoom() async {
+Future<void> createRoom() async {
     developer.log(
       'CreateRoomFlow: createRoom() called | roomName: "${state.roomName}" | currentStatus: ${state.status.name}',
       name: 'SoundMesh.CreateRoomFlow',
     );
-    
+
     if (_createRoomInProgress ||
         state.status == CreateRoomFlowStatus.creating ||
         state.status == CreateRoomFlowStatus.hosting) {
@@ -324,7 +324,7 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: Got local IP: $ip',
         name: 'SoundMesh.CreateRoomFlow',
       );
-      
+
       if (state.status != CreateRoomFlowStatus.creating) {
         developer.log(
           'CreateRoomFlow: Status changed during IP fetch, aborting',
@@ -333,6 +333,13 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         return;
       }
 
+      // Generate roomId at creation time for QR code payload
+      final roomId = generateUuidV4();
+      developer.log(
+        'CreateRoomFlow: Generated roomId: $roomId',
+        name: 'SoundMesh.CreateRoomFlow',
+      );
+
       // Quick fix: Generate join code immediately when entering hosting status
       // This eliminates the race condition where discoverable is emitted before code exists
       final joinCode = generateRoomCode();
@@ -340,11 +347,12 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: Generated join code: $joinCode | Setting status to hosting',
         name: 'SoundMesh.CreateRoomFlow',
       );
-      
+
       state = state.copyWith(
         localIpAddress: ip,
         status: CreateRoomFlowStatus.hosting,
         joinCode: joinCode,
+        roomId: roomId,
       );
 
       developer.log(
@@ -353,7 +361,7 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
       );
       final broadcastSuccess = await _discoveryManager.hostService.startBroadcast(
         code: joinCode,
-        roomId: state.roomId ?? 'room-${DateTime.now().millisecondsSinceEpoch}',
+        roomId: roomId,
         port: state.port ?? 8765,
       );
       developer.log(
@@ -370,7 +378,7 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: startHosting returned: $hostingSuccess',
         name: 'SoundMesh.CreateRoomFlow',
       );
-      
+
       developer.log(
         'CreateRoomFlow: startHosting completed',
         name: 'SoundMesh.CreateRoomFlow',
