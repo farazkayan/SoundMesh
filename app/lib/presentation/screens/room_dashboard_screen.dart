@@ -267,6 +267,9 @@ class RoomDashboardScreen extends StatelessWidget {
     final sync = appState.sync;
     final offset = sync?.offsetMs;
     final drift = sync?.driftMsPerSecond;
+    final isHost = appState.isHost == true;
+    final joinCode = appState.joinCode ?? '';
+    final isValidCode = isValidRoomCode(joinCode);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -274,6 +277,63 @@ class RoomDashboardScreen extends StatelessWidget {
         // Room identity
         _roomIdentityHeader(context, appState),
         SizedBox(height: SMSpacing.xl),
+        
+        // Host: keep showing the join code so more participants can join
+        if (isHost && joinCode.isNotEmpty) ...[
+          SMCard(
+            elevated: true,
+            padding: EdgeInsets.all(SMSpacing.xl),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.wifi_tethering,
+                  size: SMDimensions.emptyIconSize * 0.7,
+                  color: SMColors.soundmeshBlue,
+                ),
+                SizedBox(height: SMSpacing.lg),
+                Text(
+                  'Share This Code',
+                  style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                ),
+                SizedBox(height: SMSpacing.md),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SMSpacing.xl,
+                    vertical: SMSpacing.lg,
+                  ),
+                  decoration: BoxDecoration(
+                    color: SMColors.surfaceHigh,
+                    borderRadius: BorderRadius.circular(SMRadius.large),
+                    border: Border.all(
+                      color: SMColors.soundmeshBlue.withValues(alpha: 0.5),
+                      width: 2,
+                    ),
+                  ),
+                  child: Text(
+                    isValidCode ? _formatCode(joinCode) : joinCode,
+                    style: SMTypography.display.copyWith(
+                      color: SMColors.primaryText,
+                      letterSpacing: 8,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                SizedBox(height: SMSpacing.md),
+                Text(
+                  'Other phones enter this 6-digit code to join',
+                  style: SMTypography.caption.copyWith(color: SMColors.mutedText),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: SMSpacing.lg),
+                Text(
+                  'Room: ${appState.roomId ?? "—"}',
+                  style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: SMSpacing.xl),
+        ],
         // Sync status — synchronized
         SMCard(
           child: Row(

@@ -62,9 +62,18 @@ class JoinRoomScreen extends ConsumerWidget {
     }
 
     // Room ready → joined successfully, show code confirmation.
-    if (state == SMAppState.roomReady) {
+    if (state == SMAppState.roomReady || state == SMAppState.ready) {
       final joinCode = appState.joinCode ?? '';
       final isValidCode = isValidRoomCode(joinCode);
+      
+      // For participants, when ready state is reached, auto-navigate to dashboard
+      if (state == SMAppState.ready && appState.isHost != true) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            Navigator.pushReplacementNamed(context, AppRouter.roomDashboard);
+          }
+        });
+      }
       
       return Padding(
         padding: EdgeInsets.symmetric(
@@ -457,6 +466,7 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
       // Set the discovered IP/port on joinRoomFlowProvider
       ref.read(joinRoomFlowProvider.notifier).setHostIpAddress(announcement.hostIp);
       ref.read(joinRoomFlowProvider.notifier).setHostPort(announcement.hostPort);
+      ref.read(joinRoomFlowProvider.notifier).setJoinCode(announcement.code);
 
       developer.log(
         '[JOIN_TRACE] 11 Set host IP/port on joinRoomFlowProvider, calling joinRoom()',

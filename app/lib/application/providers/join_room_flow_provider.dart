@@ -25,6 +25,7 @@ class JoinRoomFlowState {
   final String? sessionId;
   final String? roomId;
   final int? hostProtocolVersion;
+  final String? joinCode;
 
   const JoinRoomFlowState({
     this.status = JoinRoomFlowStatus.idle,
@@ -36,6 +37,7 @@ class JoinRoomFlowState {
     this.sessionId,
     this.roomId,
     this.hostProtocolVersion,
+    this.joinCode,
   });
 
   JoinRoomFlowState copyWith({
@@ -48,6 +50,7 @@ class JoinRoomFlowState {
     String? sessionId,
     String? roomId,
     int? hostProtocolVersion,
+    String? joinCode,
   }) {
     return JoinRoomFlowState(
       status: status ?? this.status,
@@ -59,6 +62,7 @@ class JoinRoomFlowState {
       sessionId: sessionId ?? this.sessionId,
       roomId: roomId ?? this.roomId,
       hostProtocolVersion: hostProtocolVersion ?? this.hostProtocolVersion,
+      joinCode: joinCode ?? this.joinCode,
     );
   }
 }
@@ -252,6 +256,10 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
 
   void setHostPort(int port) {
     state = state.copyWith(hostPort: port);
+  }
+
+  void setJoinCode(String code) {
+    state = state.copyWith(joinCode: code);
   }
 
   Future<void> joinRoom() async {
