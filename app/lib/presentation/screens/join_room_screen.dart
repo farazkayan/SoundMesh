@@ -62,9 +62,44 @@ class JoinRoomScreen extends ConsumerWidget {
     }
 
     // Room ready → joined successfully, show code confirmation.
-    if (state == SMAppState.roomReady) {
-      final joinCode = appState.joinCode ?? '';
+    if (state == SMAppState.roomReady || state == SMAppState.ready) {
+      // Read joinCode directly from joinRoomFlowProvider as primary source
+      // (more reliable than appState.joinCode which goes through applicationStateProvider)
+      final joinFlowState = ref.watch(joinRoomFlowProvider);
+      final joinCode = (appState.joinCode ?? joinFlowState.joinCode ?? '').trim();
       final isValidCode = isValidRoomCode(joinCode);
+      
+      // For participants, when ready state is reached, auto-navigate to dashboard
+      if (state == SMAppState.ready && appState.isHost != true) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            Navigator.pushReplacementNamed(context, AppRouter.roomDashboard);
+          }
+        });
+      }
+      
+      // If code is still empty at render time, show loading state instead of blank
+      if (joinCode.isEmpty) {
+        return Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: SMSpacing.xl,
+            vertical: SMSpacing.xl,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SMLoadingIndicator(size: SMDimensions.emptyIconSize * 0.8),
+              SizedBox(height: SMSpacing.lg),
+              Text(
+                'Finalizing connection…',
+                textAlign: TextAlign.center,
+                style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+              ),
+              SizedBox(height: SMSpacing.xxl),
+            ],
+          ),
+        );
+      }
       
       return Padding(
         padding: EdgeInsets.symmetric(
@@ -467,6 +502,7 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
       // Set the discovered IP/port on joinRoomFlowProvider
       ref.read(joinRoomFlowProvider.notifier).setHostIpAddress(announcement.hostIp);
       ref.read(joinRoomFlowProvider.notifier).setHostPort(announcement.hostPort);
+      ref.read(joinRoomFlowProvider.notifier).setJoinCode(announcement.code);
 
       developer.log(
         '[JOIN_TRACE] 11 Set host IP/port on joinRoomFlowProvider, calling joinRoom()',

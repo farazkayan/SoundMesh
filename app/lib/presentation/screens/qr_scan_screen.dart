@@ -46,7 +46,8 @@ class _QRScanScreenState extends ConsumerState<QRScanScreen> {
       final String? rawValue = barcode.rawValue;
       if (rawValue == null || rawValue.isEmpty) continue;
 
-      if (isValidQrJoinUri(rawValue)) {
+      // Quick check for soundmesh://join URI before attempting full parse
+      if (rawValue.startsWith('soundmesh://join')) {
         _isScanning = false;
         _handleValidQrCode(rawValue);
         return;
@@ -55,22 +56,25 @@ class _QRScanScreenState extends ConsumerState<QRScanScreen> {
   }
 
   Future<void> _handleValidQrCode(String uriString) async {
-    final payload = QrJoinPayload.parse(uriString);
-    if (payload == null) {
-      _showErrorAndReset('Invalid QR code format');
+    late final JoinPayload payload;
+    try {
+      payload = JoinPayload.parseJoinUri(uriString);
+    } on JoinPayloadException catch (e) {
+      _showErrorAndReset(e.message);
       return;
     }
 
-    // Validate protocol version
-    if (payload.version != currentProtocolVersion) {
-      _showErrorAndReset('Protocol version mismatch: QR code is v${payload.version}, this app is v$currentProtocolVersion');
+    // Validate protocol version (already done in parseJoinUri, but keeping for clarity)
+    if (payload.protocolVersion != currentProtocolVersion) {
+      _showErrorAndReset('Protocol version mismatch: QR code is v${payload.protocolVersion}, this app is v$currentProtocolVersion');
       return;
     }
 
     // Feed parsed values into existing JoinRoomFlowNotifier
     // This skips UDP discovery and goes straight to TCP connect/handshake
-    ref.read(joinRoomFlowProvider.notifier).setHostIpAddress(payload.host);
-    ref.read(joinRoomFlowProvider.notifier).setHostPort(payload.port);
+    ref.read(joinRoomFlowProvider.notifier).setHostIpAddress(payload.hostAddress);
+    ref.read(joinRoomFlowProvider.notifier).setHostPort(payload.hostPort);
+    ref.read(joinRoomFlowProvider.notifier).setJoinCode(payload.code);
 
     // Navigate to join room screen which will show connecting/handshaking states
     if (!mounted) return;

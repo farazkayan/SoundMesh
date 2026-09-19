@@ -365,17 +365,15 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       return;
     }
 
-    // PROVISIONAL: Using 6-digit join code as token stand-in.
-    // Real short-lived join token mechanism not yet implemented (see DOCS/networking.md §13).
-    final payload = QrJoinPayload(
+    final payload = JoinPayload(
       roomId: roomId,
-      host: hostIp,
-      port: port,
-      version: currentProtocolVersion,
-      token: joinCode, // PROVISIONAL stand-in
+      hostAddress: hostIp,
+      hostPort: port,
+      protocolVersion: currentProtocolVersion,
+      code: joinCode,
     );
 
-    final uriString = payload.toUriString();
+    final uriString = payload.toJoinUri();
 
     showDialog(
       context: context,

@@ -50,6 +50,7 @@ class MockHostDiscoveryService extends HostDiscoveryService {
     required String roomId,
     required int port,
     String? hostName,
+    DateTime? expiresAt,
   }) async {
     return true;
   }

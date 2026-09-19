@@ -1,7 +1,12 @@
 // Discovery protocol types for SoundMesh local network room discovery.
 // Uses UDP broadcast/multicast for 6-digit room code resolution.
+//
+// RoomAnnouncement is the live-transmission form of the transport-independent
+// JoinPayload (see join_payload.dart). The wire contract is documented in
+// DOCS/networking.md, "Join Payload Contract".
 
 import 'dart:convert';
+import 'dart:math';
 
 /// Protocol version for discovery messages.
 const int kDiscoveryProtocolVersion = 1;
@@ -34,6 +39,11 @@ enum DiscoveryMessageType {
 }
 
 /// Room announcement payload broadcast by host.
+///
+/// This is the UDP-transmission form of the transport-independent JoinPayload.
+/// The optional [expiresAt] field carries the join credential's expiration;
+/// announcements without it (older senders) are treated as fresh because a
+/// live UDP broadcast is inherently ephemeral (2s interval).
 class RoomAnnouncement {
   const RoomAnnouncement({
     required this.code,
@@ -42,9 +52,10 @@ class RoomAnnouncement {
     required this.protocolVersion,
     required this.roomId,
     this.hostName,
+    this.expiresAt,
   });
 
-  /// 6-digit numeric room code.
+  /// 6-digit numeric room code. Doubles as the short-lived join credential.
   final String code;
 
   /// Host's local IP address.
@@ -56,11 +67,16 @@ class RoomAnnouncement {
   /// Discovery protocol version.
   final int protocolVersion;
 
-  /// Unique room identifier.
+  /// Unique room identifier. MUST be the host's actual room identifier so a
+  /// participant can verify it joined the advertised room.
   final String roomId;
 
   /// Optional human-readable host name.
   final String? hostName;
+
+  /// When the join credential expires (wall-clock epoch). Null for senders
+  /// that do not carry expiration.
+  final DateTime? expiresAt;
 
   /// Encodes to JSON string for UDP broadcast.
   String toJsonString() {
@@ -74,6 +90,9 @@ class RoomAnnouncement {
     };
     if (hostName != null) {
       map['host_name'] = hostName;
+    }
+    if (expiresAt != null) {
+      map['expires_at'] = expiresAt!.millisecondsSinceEpoch;
     }
     return jsonEncode(map);
   }
@@ -107,6 +126,7 @@ class RoomAnnouncement {
         return null;
       }
       
+      final expiresMillis = map['expires_at'] as int?;
       return RoomAnnouncement(
         code: code,
         hostIp: hostIp,
@@ -114,10 +134,21 @@ class RoomAnnouncement {
         protocolVersion: version ?? kDiscoveryProtocolVersion,
         roomId: roomId,
         hostName: map['host_name'] as String?,
+        expiresAt: expiresMillis != null
+            ? DateTime.fromMillisecondsSinceEpoch(expiresMillis)
+            : null,
       );
     } catch (_) {
       return null;
     }
+  }
+
+  /// Whether the join credential carried by this announcement has expired,
+  /// allowing a clock-skew allowance for wall-clock differences.
+  bool isExpiredAt(DateTime? now, {Duration skew = const Duration(seconds: 60)}) {
+    if (expiresAt == null) return false;
+    final effectiveNow = now ?? DateTime.now();
+    return effectiveNow.isAfter(expiresAt!.add(skew));
   }
 
   @override
@@ -125,11 +156,16 @@ class RoomAnnouncement {
 }
 
 /// Generates a random 6-digit numeric room code.
+///
+/// Cryptographically secure randomness is required: the previous
+/// timestamp-derived implementation produced identical codes for calls in the
+/// same millisecond and made codes predictable. The 6-digit format is kept —
+/// it must remain difficult enough to guess within the practical threat model
+/// (DOCS/interfaces/room-api.md §15).
 String generateRoomCode() {
-  final random = DateTime.now().millisecondsSinceEpoch;
-  // Use last 6 digits of timestamp + some randomness for better distribution
-  final base = (random % 900000) + 100000; // Ensures 6 digits (100000-999999)
-  return base.toString().padLeft(6, '0');
+  final random = Random.secure();
+  // 900000 codes in the 100000-999999 range, uniformly distributed.
+  return (100000 + random.nextInt(900000)).toString();
 }
 
 /// Validates a room code string.

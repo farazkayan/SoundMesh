@@ -11,12 +11,15 @@ import 'package:flutter/services.dart' show MethodChannel, MethodCall;
 /// Native implementation handles UDP broadcast/multicast.
 abstract class DiscoveryPlatform {
   /// Starts broadcasting room announcements on the local network.
+  /// [expiresAt] carries the join credential's expiration and is included in
+  /// the announcement payload when provided.
   Future<StartBroadcastResult> startBroadcast({
     required String code,
     required String hostIp,
     required int hostPort,
     required String roomId,
     String? hostName,
+    DateTime? expiresAt,
     int intervalSeconds = kDiscoveryBroadcastIntervalSeconds,
   });
 
@@ -56,16 +59,23 @@ class MethodChannelDiscoveryPlatform extends DiscoveryPlatform {
   Future<dynamic> _handleMethodCall(MethodCall call) async {
     if (call.method == 'onDiscoveryEvent') {
       final args = call.arguments as Map<dynamic, dynamic>;
+      // Key names must match what the native side sends in MainActivity.kt
+      // (camelCase). The event keys are an internal channel contract and are
+      // distinct from the snake_case announcement JSON wire format.
+      final expiresMillis = args['expiresAt'] as int?;
       final event = DiscoveryEvent(
         announcement: RoomAnnouncement(
           code: args['code'] as String,
-          hostIp: args['host_ip'] as String,
-          hostPort: args['host_port'] as int,
-          protocolVersion: args['protocol_version'] as int,
-          roomId: args['room_id'] as String,
-          hostName: args['host_name'] as String?,
+          hostIp: args['hostIp'] as String,
+          hostPort: args['hostPort'] as int,
+          protocolVersion: args['protocolVersion'] as int,
+          roomId: args['roomId'] as String,
+          hostName: args['hostName'] as String?,
+          expiresAt: expiresMillis != null
+              ? DateTime.fromMillisecondsSinceEpoch(expiresMillis)
+              : null,
         ),
-        isTimeout: args['is_timeout'] as bool,
+        isTimeout: args['isTimeout'] as bool,
       );
       developer.log(
         '[JOIN_TRACE] MethodChannelDiscoveryPlatform: Received onDiscoveryEvent from native: ${event.isTimeout ? "TIMEOUT" : "ANNOUNCEMENT(${event.announcement.code})"}',
@@ -84,6 +94,7 @@ class MethodChannelDiscoveryPlatform extends DiscoveryPlatform {
     required int hostPort,
     required String roomId,
     String? hostName,
+    DateTime? expiresAt,
     int intervalSeconds = kDiscoveryBroadcastIntervalSeconds,
   }) async {
     developer.log(
@@ -96,6 +107,7 @@ class MethodChannelDiscoveryPlatform extends DiscoveryPlatform {
       'hostPort': hostPort,
       'roomId': roomId,
       'hostName': hostName,
+      'expiresAt': expiresAt?.millisecondsSinceEpoch,
       'intervalSeconds': intervalSeconds,
     });
     return StartBroadcastResult(success: result as bool, errorMessage: result == true ? null : 'Native call failed');

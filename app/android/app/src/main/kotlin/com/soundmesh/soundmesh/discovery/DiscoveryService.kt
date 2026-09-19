@@ -48,7 +48,8 @@ class DiscoveryService(private val context: Context) {
         val hostPort: Int,
         val protocolVersion: Int,
         val roomId: String,
-        val hostName: String?
+        val hostName: String?,
+        val expiresAt: Long? = null
     )
 
     /**
@@ -106,6 +107,7 @@ class DiscoveryService(private val context: Context) {
         hostPort: Int,
         roomId: String,
         hostName: String?,
+        expiresAt: Long? = null,
         intervalSeconds: Int = BROADCAST_INTERVAL_SECONDS
     ): Boolean {
         if (isBroadcasting.get()) {
@@ -126,7 +128,7 @@ class DiscoveryService(private val context: Context) {
             return false
         }
 
-        val announcement = buildAnnouncementJson(code, hostIp, hostPort, roomId, hostName)
+        val announcement = buildAnnouncementJson(code, hostIp, hostPort, roomId, hostName, expiresAt)
         val broadcastAddress = getBroadcastAddress(ipAddress) ?: return false
 
         broadcastExecutor = Executors.newSingleThreadScheduledExecutor()
@@ -222,7 +224,12 @@ class DiscoveryService(private val context: Context) {
                     parseAnnouncement(json)?.let { announcement ->
                         Log.d(TAG, "[JOIN_TRACE] DiscoveryService: PARSED announcement: code=${announcement.code} hostIp=${announcement.hostIp} hostPort=${announcement.hostPort} roomId=${announcement.roomId} hostName=${announcement.hostName}")
                         if (announcement.code == targetCode) {
-                            Log.i(TAG, "[JOIN_TRACE] DiscoveryService: MATCH FOUND! code=$targetCode from $senderIp:$senderPort")
+                            Log.i(TAG, "[JOIN_TRACE] DiscoveryService: MATCH FOUND on background thread (thread=${Thread.currentThread().name}) code=$targetCode from $senderIp:$senderPort")
+                            // The scanListener (registered by MainActivity) hands the
+                            // result back to Flutter via MethodChannel, which must run
+                            // on the Android main thread; the listener itself is
+                            // responsible for that thread hop.
+                            Log.i(TAG, "[JOIN_TRACE] DiscoveryService: Dispatching discovery result to Android main thread")
                             scanListener.get()?.invoke(announcement)
                             stopScan()
                             break
@@ -265,14 +272,17 @@ class DiscoveryService(private val context: Context) {
     }
 
     /**
-     * Builds the JSON announcement payload.
+     * Builds the JSON announcement payload. The wire contract is documented in
+     * DOCS/networking.md, "Join Payload Contract". expires_at is optional so
+     * senders that do not carry expiration remain parseable.
      */
     private fun buildAnnouncementJson(
         code: String,
         hostIp: String,
         hostPort: Int,
         roomId: String,
-        hostName: String?
+        hostName: String?,
+        expiresAt: Long? = null
     ): String {
         val map = mutableMapOf<String, Any>(
             "type" to "room_announcement",
@@ -283,6 +293,7 @@ class DiscoveryService(private val context: Context) {
             "room_id" to roomId
         )
         hostName?.let { map["host_name"] = it }
+        expiresAt?.let { map["expires_at"] = it }
         // Use standard JSON encoding to avoid kotlinx.serialization dependency
         val json = StringBuilder()
         json.append("{")
@@ -346,6 +357,7 @@ class DiscoveryService(private val context: Context) {
             val hostPort = map["host_port"] as? Int ?: return null
             val roomId = map["room_id"] as? String ?: return null
             val hostName = map["host_name"] as? String
+            val expiresAt = (map["expires_at"] as? Number)?.toLong()
             
             if (!code.matches(Regex("^\\d{6}$"))) {
                 Log.w(TAG, "⚠️ Invalid code format: $code")
@@ -353,7 +365,7 @@ class DiscoveryService(private val context: Context) {
             }
             
             Log.d(TAG, "✅ Valid announcement parsed: code=$code hostIp=$hostIp hostPort=$hostPort roomId=$roomId")
-            RoomAnnouncement(code, hostIp, hostPort, PROTOCOL_VERSION, roomId, hostName)
+            RoomAnnouncement(code, hostIp, hostPort, PROTOCOL_VERSION, roomId, hostName, expiresAt)
         } catch (e: Exception) {
             Log.w(TAG, "❌ Failed to parse announcement: $json", e)
             null
