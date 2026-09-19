@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:soundmesh/core/design_system/index.dart';
+import 'package:soundmesh/core/theme/soundmesh_theme.dart';
 import 'package:soundmesh/core/router/app_router.dart';
+import 'package:soundmesh/core/design_system/index.dart';
 import 'package:soundmesh/presentation/components/button.dart';
 import 'package:soundmesh/presentation/components/surface.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
@@ -13,6 +14,19 @@ class HomeScreen extends StatelessWidget {
     return StateBuilder(
       builder: (context, appState) {
         return Scaffold(
+          backgroundColor: SoundMeshColors.background,
+          appBar: AppBar(
+            backgroundColor: SoundMeshColors.surface,
+            elevation: 0,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.settings_outlined, size: 24),
+                color: SoundMeshColors.primaryText,
+                tooltip: 'Settings',
+                onPressed: () => Navigator.pushNamed(context, AppRouter.settings),
+              ),
+            ],
+          ),
           body: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {

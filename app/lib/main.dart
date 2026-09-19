@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'core/theme/soundmesh_theme.dart';
 import 'core/router/app_router.dart';
 import 'presentation/state_compat.dart';
 import 'application/providers/discovery_provider.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Purchases.configure(
+    PurchasesConfiguration('test_EZNJoVDMTpwEdwfMiMuMzEICOHt'),
+  );
+
   runApp(
     const ProviderScope(
       child: SoundMeshApp(),
