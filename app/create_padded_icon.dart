@@ -1,3 +1,6 @@
+// ignore_for_file: avoid_print
+// ignore_for_file: unnecessary_brace_in_string_interps
+
 import 'dart:io';
 import 'package:image/image.dart';
 
@@ -5,11 +8,11 @@ void main() {
   // Load the original image
   var original = decodeImage(File("assets/images/FOR_APP_ICON.png").readAsBytesSync());
   if (original == null) {
-    print("Failed to decode source image");
+    print('Failed to decode source image');
     return;
   }
   
-  print("Original size: ${original.width}x${original.height}");
+  print('Original size: ${original.width}x${original.height}');
   
   // Convert to RGBA if needed
   var rgba = original.convert(numChannels: 4);
@@ -25,9 +28,9 @@ void main() {
   int contentSize = (canvasSize * safeZoneRatio).round();
   int padding = (canvasSize - contentSize) ~/ 2;
   
-  print("Canvas: $canvasSize x $canvasSize");
-  print("Content size: $contentSize x $contentSize");
-  print("Padding: $padding px on each side");
+  print('Canvas: ${canvasSize}x${canvasSize}');
+  print('Content size: ${contentSize}x${contentSize}');
+  print('Padding: ${padding}px on each side');
   
   // Resize original to fit content size
   var resized = copyResize(rgba, width: contentSize, height: contentSize);
@@ -43,7 +46,7 @@ void main() {
   // Save the new padded image
   var outputPath = "assets/images/FOR_APP_ICON_PADDED.png";
   File(outputPath).writeAsBytesSync(encodePng(canvas));
-  print("Saved padded image to $outputPath");
+  print('Saved padded image to $outputPath');
   
   // Verify the result
   var verify = decodeImage(File(outputPath).readAsBytesSync());
@@ -67,10 +70,10 @@ void main() {
       totalEdgePixels += 2;
     }
     
-    print("Verified - Edge transparent pixels: $transparentCount / $totalEdgePixels (${(transparentCount/totalEdgePixels*100).toStringAsFixed(1)}%)");
+    print('Verified - Edge transparent pixels: $transparentCount / $totalEdgePixels (${(transparentCount/totalEdgePixels*100).toStringAsFixed(1)}%)');
     
     // Check safe zone boundary
     var safeZonePixel = verify.getPixel(padding, padding);
-    print("Safe zone inner corner alpha: ${safeZonePixel.a}");
+    print('Safe zone inner corner alpha: ${safeZonePixel.a}');
   }
 }
