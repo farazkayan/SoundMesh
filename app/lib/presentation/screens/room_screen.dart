@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/theme/soundmesh_theme.dart';
 import '../../application/providers/create_room_flow_provider.dart';
 import '../../application/providers/join_room_flow_provider.dart';
@@ -241,6 +242,12 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                 },
               ),
         actions: [
+          if (!isClosed && isHost && (isListening || isHandshaking || isReady))
+            IconButton(
+              tooltip: 'Show QR Code',
+              onPressed: () => _showQrDialog(createState),
+              icon: const Icon(Icons.qr_code_rounded, color: SoundMeshColors.accent, size: 24),
+            ),
           if (!isClosed) _buildRoomActionButton(lifecycleState, isHost),
           _buildConnectionIndicator(screenState.connectionState, isHandshaking, isListening),
         ],
@@ -336,6 +343,100 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
               ref.read(joinRoomFlowProvider.notifier).reset();
             },
             child: const Text('Leave Room', style: TextStyle(color: SoundMeshColors.primaryText)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showQrDialog(CreateRoomFlowState createState) {
+    final roomId = createState.roomId;
+    final hostIp = createState.localIpAddress;
+    final port = createState.port ?? 8765;
+    final joinCode = createState.joinCode;
+
+    if (roomId == null || hostIp == null || joinCode == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Room information not ready yet'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final payload = JoinPayload(
+      roomId: roomId,
+      hostAddress: hostIp,
+      hostPort: port,
+      protocolVersion: currentProtocolVersion,
+      code: joinCode,
+    );
+
+    final uriString = payload.toJoinUri();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: SoundMeshColors.surface,
+        title: const Text('Room QR Code', style: TextStyle(color: SoundMeshColors.primaryText)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 240.0,
+              height: 240.0,
+              child: QrImageView(
+                data: uriString,
+                version: QrVersions.auto,
+                size: 240.0,
+                backgroundColor: Colors.white,
+                eyeStyle: QrEyeStyle(
+                  eyeShape: QrEyeShape.square,
+                  color: SoundMeshColors.background,
+                ),
+                dataModuleStyle: QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.square,
+                  color: SoundMeshColors.background,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Scan with SoundMesh to join',
+              style: TextStyle(color: SoundMeshColors.secondaryText, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              uriString,
+              style: TextStyle(
+                color: SoundMeshColors.mutedText,
+                fontSize: 10,
+                fontFamily: 'monospace',
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: SoundMeshColors.mutedText)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: SoundMeshColors.accent),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: uriString));
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('QR code URI copied to clipboard'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            child: const Text('Copy URI', style: TextStyle(color: SoundMeshColors.primaryText)),
           ),
         ],
       ),

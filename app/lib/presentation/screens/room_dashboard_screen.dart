@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:soundmesh/core/router/app_router.dart';
 import 'package:soundmesh/core/design_system/index.dart';
 import 'package:soundmesh/presentation/components/button.dart';
@@ -7,30 +10,31 @@ import 'package:soundmesh/presentation/components/loading_indicator.dart';
 import 'package:soundmesh/presentation/components/surface.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/infrastructure/discovery/discovery_types.dart';
+import 'package:soundmesh/application/protocol.dart';
+import 'package:soundmesh/application/providers/create_room_flow_provider.dart';
 
-class RoomDashboardScreen extends StatelessWidget {
+class RoomDashboardScreen extends ConsumerWidget {
   const RoomDashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return StateBuilder(
-      builder: (context, appState) {
-        return Scaffold(
-          body: SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(
-                horizontal: SMSpacing.xl,
-                vertical: SMSpacing.xl,
-              ),
-              child: _buildContent(context, appState),
-            ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appState = ref.watch(applicationStateProvider);
+    final createState = ref.watch(createRoomFlowProvider);
+    
+    return Scaffold(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: SMSpacing.xl,
+            vertical: SMSpacing.xl,
           ),
-        );
-      },
+          child: _buildContent(context, appState, createState),
+        ),
+      ),
     );
   }
 
-  Widget _buildContent(BuildContext context, ApplicationState appState) {
+  Widget _buildContent(BuildContext context, ApplicationState appState, CreateRoomFlowState createState) {
     final state = appState.state;
 
     switch (state) {
@@ -51,17 +55,17 @@ class RoomDashboardScreen extends StatelessWidget {
         return _preparingContent(appState);
 
       case SMAppState.ready:
-        return _readyContent(context, appState);
+        return _readyContent(context, appState, createState);
 
       case SMAppState.playing:
       case SMAppState.paused:
-        return _sessionStatusContent(context, appState);
+        return _sessionStatusContent(context, appState, createState);
 
       case SMAppState.stopping:
         return _stoppingContent(appState);
 
       case SMAppState.roomReady:
-        return _roomReadyContent(context, appState);
+        return _roomReadyContent(context, appState, createState);
 
       case SMAppState.idle:
       case SMAppState.creatingRoom:
@@ -70,7 +74,7 @@ class RoomDashboardScreen extends StatelessWidget {
     }
   }
 
-  Widget _roomReadyContent(BuildContext context, ApplicationState appState) {
+  Widget _roomReadyContent(BuildContext context, ApplicationState appState, CreateRoomFlowState createState) {
     final isHost = appState.isHost == true;
     final joinCode = appState.joinCode ?? '';
     final isValidCode = isValidRoomCode(joinCode);
@@ -79,66 +83,113 @@ class RoomDashboardScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Room identity with code confirmation
-        _roomIdentityHeader(context, appState),
+        _roomIdentityHeader(context, appState, createState),
         SizedBox(height: SMSpacing.xl),
         
-        // 6-digit code confirmation card (visible to both host and participant)
-        SMCard(
-          elevated: true,
-          padding: EdgeInsets.all(SMSpacing.xl),
-          child: Column(
-            children: [
-              Icon(
-                isHost ? Icons.wifi_tethering : Icons.check_circle,
-                size: SMDimensions.emptyIconSize * 0.7,
-                color: isHost ? SMColors.soundmeshBlue : SMColors.success,
-              ),
-              SizedBox(height: SMSpacing.lg),
-              Text(
-                isHost ? 'Share This Code' : 'Code Confirmed',
-                style: SMTypography.heading.copyWith(color: SMColors.primaryText),
-              ),
-              SizedBox(height: SMSpacing.md),
-              // Large 6-digit code display
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: SMSpacing.xl,
-                  vertical: SMSpacing.lg,
+        // 6-digit code confirmation card (HOST ONLY - participants don't share)
+        if (isHost) ...[
+          SMCard(
+            elevated: true,
+            padding: EdgeInsets.all(SMSpacing.xl),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.wifi_tethering,
+                  size: SMDimensions.emptyIconSize * 0.7,
+                  color: SMColors.soundmeshBlue,
                 ),
-                decoration: BoxDecoration(
-                  color: SMColors.surfaceHigh,
-                  borderRadius: BorderRadius.circular(SMRadius.large),
-                  border: Border.all(
-                    color: (isHost ? SMColors.soundmeshBlue : SMColors.success).withValues(alpha: 0.5),
-                    width: 2,
+                SizedBox(height: SMSpacing.lg),
+                Text(
+                  'Share This Code',
+                  style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                ),
+                SizedBox(height: SMSpacing.md),
+                // Large 6-digit code display
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SMSpacing.xl,
+                    vertical: SMSpacing.lg,
+                  ),
+                  decoration: BoxDecoration(
+                    color: SMColors.surfaceHigh,
+                    borderRadius: BorderRadius.circular(SMRadius.large),
+                    border: Border.all(
+                      color: SMColors.soundmeshBlue.withValues(alpha: 0.5),
+                      width: 2,
+                    ),
+                  ),
+                  child: Text(
+                    isValidCode ? _formatCode(joinCode) : joinCode,
+                    style: SMTypography.display.copyWith(
+                      color: SMColors.primaryText,
+                      letterSpacing: 8,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                child: Text(
-                  isValidCode ? _formatCode(joinCode) : joinCode,
-                  style: SMTypography.display.copyWith(
-                    color: SMColors.primaryText,
-                    letterSpacing: 8,
-                    fontWeight: FontWeight.w700,
-                  ),
+                SizedBox(height: SMSpacing.md),
+                Text(
+                  'Other phones enter this 6-digit code to join',
+                  style: SMTypography.caption.copyWith(color: SMColors.mutedText),
+                  textAlign: TextAlign.center,
                 ),
-              ),
-              SizedBox(height: SMSpacing.md),
-              Text(
-                isHost
-                    ? 'Other phones enter this 6-digit code to join'
-                    : 'Both devices show the same code',
-                style: SMTypography.caption.copyWith(color: SMColors.mutedText),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: SMSpacing.lg),
-              Text(
-                'Room: ${appState.roomId ?? "—"}',
-                style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        SizedBox(height: SMSpacing.xl),
+          SizedBox(height: SMSpacing.xl),
+        ],
+        
+        // Participant view: simple confirmation without share affordance
+        if (!isHost && joinCode.isNotEmpty) ...[
+          SMCard(
+            elevated: true,
+            padding: EdgeInsets.all(SMSpacing.xl),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  size: SMDimensions.emptyIconSize * 0.7,
+                  color: SMColors.success,
+                ),
+                SizedBox(height: SMSpacing.lg),
+                Text(
+                  'Code Confirmed',
+                  style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                ),
+                SizedBox(height: SMSpacing.md),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SMSpacing.xl,
+                    vertical: SMSpacing.lg,
+                  ),
+                  decoration: BoxDecoration(
+                    color: SMColors.surfaceHigh,
+                    borderRadius: BorderRadius.circular(SMRadius.large),
+                    border: Border.all(
+                      color: SMColors.success.withValues(alpha: 0.5),
+                      width: 2,
+                    ),
+                  ),
+                  child: Text(
+                    isValidCode ? _formatCode(joinCode) : joinCode,
+                    style: SMTypography.display.copyWith(
+                      color: SMColors.primaryText,
+                      letterSpacing: 8,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                SizedBox(height: SMSpacing.md),
+                Text(
+                  'Both devices show the same code',
+                  style: SMTypography.caption.copyWith(color: SMColors.mutedText),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: SMSpacing.xl),
+        ],
         
         // Mesh visualization placeholder
         SMCard(
@@ -182,9 +233,9 @@ class RoomDashboardScreen extends StatelessWidget {
     );
   }
 
-  // Room identity card per the Stitch export: icon chip, room name with a
-  // room-ID badge, supporting caption, and a QR invite chip.
-  Widget _roomIdentityHeader(BuildContext context, ApplicationState appState) {
+  Widget _roomIdentityHeader(BuildContext context, ApplicationState appState, CreateRoomFlowState createState) {
+    final isHost = appState.isHost == true;
+
     return SMCard(
       child: Row(
         children: [
@@ -213,25 +264,6 @@ class RoomDashboardScreen extends StatelessWidget {
                       style: SMTypography.heading
                           .copyWith(color: SMColors.primaryText),
                     ),
-                    if (appState.roomId != null) ...[
-                      SizedBox(width: SMSpacing.sm),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SMSpacing.sm,
-                          vertical: SMSpacing.xs,
-                        ),
-                        decoration: BoxDecoration(
-                          color: SMColors.surfaceHigh,
-                          borderRadius: BorderRadius.circular(SMRadius.xs),
-                        ),
-                        child: Text(
-                          appState.roomId!,
-                          style: SMTypography.smallMetadata.copyWith(
-                            color: SMColors.secondaryText,
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
                 SizedBox(height: SMSpacing.xs),
@@ -244,26 +276,27 @@ class RoomDashboardScreen extends StatelessWidget {
             ),
           ),
           SizedBox(width: SMSpacing.sm),
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: SMColors.surfaceContainer,
-              borderRadius: BorderRadius.circular(SMRadius.medium),
+          if (isHost)
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: SMColors.surfaceContainer,
+                borderRadius: BorderRadius.circular(SMRadius.medium),
+              ),
+              child: IconButton(
+                icon: Icon(Icons.qr_code_2, size: 20, color: SMColors.soundmeshBlue),
+                onPressed: () => _showQrDialog(context, createState),
+                tooltip: 'Show QR Code',
+                padding: EdgeInsets.zero,
+              ),
             ),
-            child: IconButton(
-              icon: Icon(Icons.qr_code_2, size: 20, color: SMColors.secondaryText),
-              onPressed: () => Navigator.pushNamed(context, AppRouter.qrScan),
-              tooltip: 'Show QR Code',
-              padding: EdgeInsets.zero,
-            ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _readyContent(BuildContext context, ApplicationState appState) {
+  Widget _readyContent(BuildContext context, ApplicationState appState, CreateRoomFlowState createState) {
     final sync = appState.sync;
     final offset = sync?.offsetMs;
     final drift = sync?.driftMsPerSecond;
@@ -275,65 +308,108 @@ class RoomDashboardScreen extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Room identity
-        _roomIdentityHeader(context, appState),
+        _roomIdentityHeader(context, appState, createState),
         SizedBox(height: SMSpacing.xl),
         
-        // Show join code for both host and participant (participant auto-navigates here)
+        // Show join code for host (with share affordance) and participant (confirmation only)
         if (joinCode.isNotEmpty) ...[
-          SMCard(
-            elevated: true,
-            padding: EdgeInsets.all(SMSpacing.xl),
-            child: Column(
-              children: [
-                Icon(
-                  isHost ? Icons.wifi_tethering : Icons.check_circle,
-                  size: SMDimensions.emptyIconSize * 0.7,
-                  color: isHost ? SMColors.soundmeshBlue : SMColors.success,
-                ),
-                SizedBox(height: SMSpacing.lg),
-                Text(
-                  isHost ? 'Share This Code' : 'Code Confirmed',
-                  style: SMTypography.heading.copyWith(color: SMColors.primaryText),
-                ),
-                SizedBox(height: SMSpacing.md),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SMSpacing.xl,
-                    vertical: SMSpacing.lg,
+          if (isHost) ...[
+            SMCard(
+              elevated: true,
+              padding: EdgeInsets.all(SMSpacing.xl),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.wifi_tethering,
+                    size: SMDimensions.emptyIconSize * 0.7,
+                    color: SMColors.soundmeshBlue,
                   ),
-                  decoration: BoxDecoration(
-                    color: SMColors.surfaceHigh,
-                    borderRadius: BorderRadius.circular(SMRadius.large),
-                    border: Border.all(
-                      color: (isHost ? SMColors.soundmeshBlue : SMColors.success).withValues(alpha: 0.5),
-                      width: 2,
+                  SizedBox(height: SMSpacing.lg),
+                  Text(
+                    'Share This Code',
+                    style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                  ),
+                  SizedBox(height: SMSpacing.md),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SMSpacing.xl,
+                      vertical: SMSpacing.lg,
+                    ),
+                    decoration: BoxDecoration(
+                      color: SMColors.surfaceHigh,
+                      borderRadius: BorderRadius.circular(SMRadius.large),
+                      border: Border.all(
+                        color: SMColors.soundmeshBlue.withValues(alpha: 0.5),
+                        width: 2,
+                      ),
+                    ),
+                    child: Text(
+                      isValidCode ? _formatCode(joinCode) : joinCode,
+                      style: SMTypography.display.copyWith(
+                        color: SMColors.primaryText,
+                        letterSpacing: 8,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                  child: Text(
-                    isValidCode ? _formatCode(joinCode) : joinCode,
-                    style: SMTypography.display.copyWith(
-                      color: SMColors.primaryText,
-                      letterSpacing: 8,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  SizedBox(height: SMSpacing.md),
+                  Text(
+                    'Other phones enter this 6-digit code to join',
+                    style: SMTypography.caption.copyWith(color: SMColors.mutedText),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-                SizedBox(height: SMSpacing.md),
-                Text(
-                  isHost
-                      ? 'Other phones enter this 6-digit code to join'
-                      : 'Both devices show the same code',
-                  style: SMTypography.caption.copyWith(color: SMColors.mutedText),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: SMSpacing.lg),
-                Text(
-                  'Room: ${appState.roomId ?? "—"}',
-                  style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+          ] else ...[
+            SMCard(
+              elevated: true,
+              padding: EdgeInsets.all(SMSpacing.xl),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.check_circle,
+                    size: SMDimensions.emptyIconSize * 0.7,
+                    color: SMColors.success,
+                  ),
+                  SizedBox(height: SMSpacing.lg),
+                  Text(
+                    'Code Confirmed',
+                    style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                  ),
+                  SizedBox(height: SMSpacing.md),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SMSpacing.xl,
+                      vertical: SMSpacing.lg,
+                    ),
+                    decoration: BoxDecoration(
+                      color: SMColors.surfaceHigh,
+                      borderRadius: BorderRadius.circular(SMRadius.large),
+                      border: Border.all(
+                        color: SMColors.success.withValues(alpha: 0.5),
+                        width: 2,
+                      ),
+                    ),
+                    child: Text(
+                      isValidCode ? _formatCode(joinCode) : joinCode,
+                      style: SMTypography.display.copyWith(
+                        color: SMColors.primaryText,
+                        letterSpacing: 8,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: SMSpacing.md),
+                  Text(
+                    'Both devices show the same code',
+                    style: SMTypography.caption.copyWith(color: SMColors.mutedText),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
           SizedBox(height: SMSpacing.xl),
         ],
         // Sync status — synchronized
@@ -416,7 +492,7 @@ class RoomDashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _sessionStatusContent(BuildContext context, ApplicationState appState) {
+  Widget _sessionStatusContent(BuildContext context, ApplicationState appState, CreateRoomFlowState createState) {
     final state = appState.state;
     final isPlaying = state == SMAppState.playing;
 
@@ -440,11 +516,6 @@ class RoomDashboardScreen extends StatelessWidget {
                     isPlaying ? 'Synchronized Audio Active' : 'Synchronized Audio Paused',
                     style: SMTypography.largeTitle
                         .copyWith(color: SMColors.primaryText),
-                  ),
-                  Text(
-                    appState.roomId ?? 'Room session active',
-                    style: SMTypography.caption
-                        .copyWith(color: SMColors.secondaryText),
                   ),
                 ],
               ),
@@ -672,6 +743,100 @@ class RoomDashboardScreen extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showQrDialog(BuildContext context, CreateRoomFlowState createState) {
+    final roomId = createState.roomId;
+    final hostIp = createState.localIpAddress;
+    final port = createState.port ?? 8765;
+    final joinCode = createState.joinCode;
+
+    if (roomId == null || hostIp == null || joinCode == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Room information not ready yet'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final payload = JoinPayload(
+      roomId: roomId,
+      hostAddress: hostIp,
+      hostPort: port,
+      protocolVersion: currentProtocolVersion,
+      code: joinCode,
+    );
+
+    final uriString = payload.toJoinUri();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: SMColors.surfaceHighest,
+        title: const Text('Room QR Code', style: TextStyle(color: SMColors.primaryText)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 240.0,
+              height: 240.0,
+              child: QrImageView(
+                data: uriString,
+                version: QrVersions.auto,
+                size: 240.0,
+                backgroundColor: Colors.white,
+                eyeStyle: QrEyeStyle(
+                  eyeShape: QrEyeShape.square,
+                  color: SMColors.background,
+                ),
+                dataModuleStyle: QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.square,
+                  color: SMColors.background,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Scan with SoundMesh to join',
+              style: TextStyle(color: SMColors.secondaryText, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              uriString,
+              style: TextStyle(
+                color: SMColors.mutedText,
+                fontSize: 10,
+                fontFamily: 'monospace',
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close', style: TextStyle(color: SMColors.mutedText)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: SMColors.soundmeshBlue),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: uriString));
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('QR code URI copied to clipboard'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            child: const Text('Copy URI', style: TextStyle(color: SMColors.primaryText)),
           ),
         ],
       ),
