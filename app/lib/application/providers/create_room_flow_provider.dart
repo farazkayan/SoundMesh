@@ -80,7 +80,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
   StreamSubscription? _stateSubscription;
   StreamSubscription? _protocolMessageSubscription;
   StreamSubscription? _connectionErrorSubscription;
-  StreamSubscription? _roomLifecycleSubscription;
   bool _createRoomInProgress = false;
 
   CreateRoomFlowNotifier(this._networkRepository, this._discoveryManager)
@@ -105,14 +104,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         _handleConnectionError(error);
       },
     );
-
-    _roomLifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((
-      lifecycleState,
-    ) {
-      debugPrint('[UILifecycle] CreateRoomFlow: roomLifecycleState change -> $lifecycleState (current status: ${state.status})');
-      state = state.copyWith(roomLifecycleState: lifecycleState);
-      _handleRoomLifecycleStateChange(lifecycleState);
-    });
   }
 
   void _handleConnectionError(ConnectionError error) {
@@ -197,80 +188,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         }
         break;
       default:
-        break;
-    }
-  }
-
-  void _handleRoomLifecycleStateChange(RoomLifecycleState lifecycleState) {
-    developer.log(
-      'CreateRoomFlow: Received lifecycle state: ${lifecycleState.name} | '
-      'Current status: ${state.status.name} | joinCode: ${state.joinCode ?? "null"}',
-      name: 'SoundMesh.CreateRoomFlow',
-    );
-    
-    switch (lifecycleState) {
-      case RoomLifecycleState.created:
-        if (state.status == CreateRoomFlowStatus.idle) {
-          developer.log(
-            'CreateRoomFlow: Transitioning to creating',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(status: CreateRoomFlowStatus.creating);
-        }
-        break;
-      case RoomLifecycleState.discoverable:
-        if (state.status == CreateRoomFlowStatus.creating ||
-            state.status == CreateRoomFlowStatus.hosting) {
-          // Join code is now generated in createRoom() to avoid race condition
-          // Just update status to listening
-          developer.log(
-            'CreateRoomFlow: Room discoverable, setting status to listening (joinCode already set: ${state.joinCode})',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(
-            status: CreateRoomFlowStatus.listening,
-          );
-        } else {
-          developer.log(
-            'CreateRoomFlow: SKIPPED status update - status not creating/hosting (current: ${state.status.name})',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-        }
-        break;
-      case RoomLifecycleState.joining:
-        if (state.status == CreateRoomFlowStatus.listening) {
-          developer.log(
-            'CreateRoomFlow: Transitioning to handshaking',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(status: CreateRoomFlowStatus.handshaking);
-        }
-        break;
-      case RoomLifecycleState.ready:
-        if (state.status == CreateRoomFlowStatus.handshaking) {
-          developer.log(
-            'CreateRoomFlow: Room ready, setting status to ready',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(
-            status: CreateRoomFlowStatus.ready,
-            sessionId: _networkRepository.sessionId,
-            roomId: _networkRepository.roomId,
-          );
-        }
-        break;
-      case RoomLifecycleState.closed:
-        if (state.status != CreateRoomFlowStatus.idle &&
-            state.status != CreateRoomFlowStatus.failed) {
-          developer.log(
-            'CreateRoomFlow: Room closed, setting failed',
-            name: 'SoundMesh.CreateRoomFlow',
-          );
-          state = state.copyWith(
-            status: CreateRoomFlowStatus.failed,
-            errorMessage: _networkRepository.roomClosedReason ?? 'Room ended',
-          );
-        }
         break;
     }
   }
@@ -403,7 +320,6 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
     _stateSubscription?.cancel();
     _protocolMessageSubscription?.cancel();
     _connectionErrorSubscription?.cancel();
-    _roomLifecycleSubscription?.cancel();
     super.dispose();
   }
 }
