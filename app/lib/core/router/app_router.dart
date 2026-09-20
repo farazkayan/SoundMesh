@@ -59,9 +59,9 @@ class AppRouter {
         // Phase 8: RoomDashboardScreen is the central room experience (Mahin's redo).
         return _route(const RoomShell(child: RoomDashboardScreen()), settings);
       case AppRouter.roomDevices:
-        return _route(const RoomShell(child: RoomDevicesScreen()), settings);
+        return _route(RoomShell(child: RoomDevicesScreen()), settings);
       case AppRouter.roomSession:
-        return _route(const RoomShell(child: RoomPlaybackScreen()), settings);
+        return _route(RoomShell(child: RoomPlaybackScreen()), settings);
       case AppRouter.roomPreparation:
         return _route(const RoomPreparationScreen(), settings);
       case AppRouter.qrScan:
