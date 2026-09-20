@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../src/soundmesh_messages.g.dart';
 import '../repositories/capture_repository.dart';
@@ -46,7 +47,7 @@ class CaptureUiStateData {
   }
 }
 
-class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
+class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> with WidgetsBindingObserver {
   final CaptureRepository _repository;
   bool _isListening = false;
   bool _batteryOptimizationChecked = false;
@@ -54,6 +55,16 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
   CaptureStateNotifier(this._repository) : super(const CaptureUiStateData()) {
     _startListening();
     _refreshState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('[BatteryOptimization] App resumed - re-checking status');
+      _batteryOptimizationChecked = false; // Allow re-check
+      _checkBatteryOptimization();
+    }
   }
 
   void _startListening() {
@@ -213,6 +224,7 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
   @override
   void dispose() {
     AudioCaptureFlutterApi.setUp(null);
+    WidgetsBinding.instance.removeObserver(this);
     _isListening = false;
     super.dispose();
   }
