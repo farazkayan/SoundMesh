@@ -494,6 +494,24 @@ class NetworkRepository {
       case ProtocolMessageType.joinRejected:
         _handleJoinRejected(message);
         break;
+      case ProtocolMessageType.audioStreamInfo:
+        _handleAudioStreamInfo(message);
+        break;
+      case ProtocolMessageType.audioStreamStart:
+        _handleAudioStreamStart(message);
+        break;
+      case ProtocolMessageType.audioStreamStop:
+        _handleAudioStreamStop(message);
+        break;
+      case ProtocolMessageType.audioPacket:
+        // Audio packets are handled natively, not forwarded to Dart
+        break;
+      case ProtocolMessageType.audioBufferStatus:
+        _handleAudioBufferStatus(message);
+        break;
+      case ProtocolMessageType.audioStreamError:
+        _handleAudioStreamError(message);
+        break;
       case null:
         // Unknown message type, ignore but log
         debugPrint('Unknown message type: ${message.messageType}');
@@ -717,6 +735,58 @@ class NetworkRepository {
       _transitionToRoomLifecycleState(RoomLifecycleState.closed);
       _transitionTo(NetworkConnectionState.disconnected);
     }
+  }
+
+  // ---- Phase 8: Audio stream handlers ----
+
+  void _handleAudioStreamInfo(ProtocolMessage message) {
+    if (_isHost) {
+      // Host doesn't handle its own stream info
+      return;
+    }
+    final payload = message.payload;
+    if (payload == null) return;
+    final sampleRate = payload['sampleRate'] as int?;
+    final channelCount = payload['channelCount'] as int?;
+    payload['startedAtNanos'] as int?; // Read but not used in Dart layer (native handles)
+    if (sampleRate != null && channelCount != null) {
+      debugPrint('[AudioStream] Received AUDIO_STREAM_INFO: sr=$sampleRate ch=$channelCount gen=${message.generation}');
+      // The native receive engine handles this via Pigeon, but we can also
+      // expose it for UI if needed
+    }
+  }
+
+  void _handleAudioStreamStart(ProtocolMessage message) {
+    if (_isHost) return;
+    debugPrint('[AudioStream] Received AUDIO_STREAM_START: gen=${message.generation}');
+    // Native receive engine handles this
+  }
+
+  void _handleAudioStreamStop(ProtocolMessage message) {
+    if (_isHost) return;
+    debugPrint('[AudioStream] Received AUDIO_STREAM_STOP: gen=${message.generation}');
+    // Native receive engine handles this
+  }
+
+  void _handleAudioBufferStatus(ProtocolMessage message) {
+    // Host receives buffer status from participant
+    if (!_isHost) return;
+    final payload = message.payload;
+    if (payload == null) return;
+    final bufferDepthMs = payload['bufferDepthMs'] as int?;
+    final lossRate = payload['lossRate'] as double?;
+    final isHealthy = payload['isHealthy'] as bool?;
+    debugPrint('[AudioStream] Buffer status from participant: depth=${bufferDepthMs}ms loss=$lossRate healthy=$isHealthy');
+    // Could forward to UI for monitoring
+  }
+
+  void _handleAudioStreamError(ProtocolMessage message) {
+    final payload = message.payload;
+    if (payload == null) return;
+    final errorCode = payload['errorCode'] as String?;
+    final errorMessage = payload['errorMessage'] as String?;
+    debugPrint('[AudioStream] Stream error: $errorCode - $errorMessage');
+    // Could surface to UI
   }
 
   // Test helper to manually trigger handshake timeout

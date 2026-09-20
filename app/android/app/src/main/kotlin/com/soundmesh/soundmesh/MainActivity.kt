@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import com.soundmesh.soundmesh.capture.AudioCaptureEngine
 import com.soundmesh.soundmesh.capture.AudioCaptureService
@@ -19,6 +20,13 @@ import com.soundmesh.soundmesh.capture.MediaProjectionHelper
 import com.soundmesh.soundmesh.capture.CaptureDiagnostics
 import com.soundmesh.soundmesh.FrameArrivalStats
 import com.soundmesh.soundmesh.discovery.DiscoveryService
+import com.soundmesh.soundmesh.transport.AudioPacket
+import com.soundmesh.soundmesh.transport.AudioReceiveEngine
+import com.soundmesh.soundmesh.transport.AudioTransportEngine
+import com.soundmesh.soundmesh.ReceiveState
+import com.soundmesh.soundmesh.ReceiveStats
+import com.soundmesh.soundmesh.StreamingMetadata
+import com.soundmesh.soundmesh.StreamingState
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import kotlinx.coroutines.CoroutineScope
@@ -37,9 +45,10 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.net.NetworkInterface
+import java.nio.charset.StandardCharsets
 
 class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkHostPlatform,
-    AudioCapturePlatform {
+    AudioCapturePlatform, AudioReceivePlatform {
     private val TAG = "NetworkHandler"
     private val DEFAULT_PORT = 8765
 
@@ -78,6 +87,11 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private var captureEngine: AudioCaptureEngine? = null
     private var captureFlutterApi: AudioCaptureFlutterApi? = null
 
+    // ---- Phase 8: audio transport ----
+    private var transportEngine: AudioTransportEngine? = null
+    private var receiveEngine: AudioReceiveEngine? = null
+    private var receiveFlutterApi: AudioReceiveFlutterApi? = null
+
     // ---- Discovery ----
     private lateinit var discoveryService: DiscoveryService
     private val discoveryChannelName = "soundmesh/discovery"
@@ -96,7 +110,22 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         flutterApi = NetworkFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
         AudioCapturePlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
         captureFlutterApi = AudioCaptureFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
-        
+        AudioReceivePlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
+        receiveFlutterApi = AudioReceiveFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
+
+        // Create transport engines
+        transportEngine = AudioTransportEngine(
+            context = this,
+            scope = scope,
+            sendProtocolMessage = { json -> sendProtocolMessage(json) },
+            notifyStreamState = { state, metadata -> notifyStreamState(state, metadata) },
+            notifyStreamError = { code, message -> notifyStreamError(code, message) },
+        )
+        receiveEngine = AudioReceiveEngine(
+            scope = scope,
+            notifyStreamState = { state, stats -> notifyReceiveState(state, stats) },
+        )
+
         // ---- Discovery ----
         discoveryService = DiscoveryService(this)
         val discoveryChannel = io.flutter.plugin.common.MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "soundmesh/discovery")
@@ -229,6 +258,9 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             notifyError = { code, message -> notifyCaptureError(code, message) },
             notifyFrameStats = { stats -> notifyCaptureFrameStats(stats) },
             notifyNotificationUpdate = { isReceivingAudio, isSilent -> notifyCaptureNotificationUpdate(isReceivingAudio, isSilent) },
+            onFrameCaptured = { data, byteCount, timestamp ->
+                transportEngine?.onPcmFrame(data, byteCount, timestamp)
+            },
         )
         return helper
     }
@@ -327,6 +359,28 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         )
     }
 
+    // ---- Phase 8: AudioCapturePlatform streaming extensions ----
+
+    override suspend fun startStreaming() {
+        val metadata = captureEngine?.currentMetadata()
+            ?: return
+        transportEngine?.startStreaming(metadata)
+    }
+
+    override suspend fun stopStreaming() {
+        transportEngine?.stopStreaming()
+    }
+
+    override fun getStreamingState(): StreamingState {
+        return transportEngine?.getState() ?: StreamingState(state = "IDLE", metadata = null)
+    }
+
+    // ---- Phase 8: AudioReceivePlatform ----
+
+    override fun getReceiveState(): ReceiveState {
+        return receiveEngine?.getState() ?: ReceiveState(state = "IDLE", stats = null)
+    }
+
     override fun isIgnoringBatteryOptimizations(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             // Before Android 6.0, no battery optimization exists
@@ -413,6 +467,38 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         // Update the foreground service notification with live status.
         // This is a direct native call, not via Flutter.
         AudioCaptureService.updateNotification(isReceivingAudio, isSilent)
+    }
+
+    // ---- Phase 8: Stream state notifications ----
+
+    private suspend fun notifyStreamState(state: String, metadata: StreamingMetadata?) {
+        withContext(Dispatchers.Main) {
+            try {
+                captureFlutterApi?.onStreamStateChanged(state, metadata)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify stream state", e)
+            }
+        }
+    }
+
+    private suspend fun notifyStreamError(code: String, message: String) {
+        withContext(Dispatchers.Main) {
+            try {
+                captureFlutterApi?.onStreamError(code, message)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify stream error", e)
+            }
+        }
+    }
+
+    private suspend fun notifyReceiveState(state: String, stats: ReceiveStats?) {
+        withContext(Dispatchers.Main) {
+            try {
+                receiveFlutterApi?.onStreamStateChanged(state, stats)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify receive state", e)
+            }
+        }
     }
 
     override fun startHosting(port: Long): Boolean {
@@ -685,7 +771,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             // IOException (e.g. write to a closed socket) would crash the app.
             try {
                 withContext(Dispatchers.IO) {
-                    val payload = message.toByteArray(Charsets.UTF_8)
+                    val payload = message.toByteArray(StandardCharsets.UTF_8)
                     val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
                     frame[0] = (payload.size shr 24).toByte()
                     frame[1] = (payload.size shr 16).toByte()
@@ -721,7 +807,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             try {
                 withContext(Dispatchers.IO) {
                     // Dart constructs the full ProtocolMessage.chat JSON and passes it to sendChatMessage
-                    val payload = text.toByteArray(Charsets.UTF_8)
+                    val payload = text.toByteArray(StandardCharsets.UTF_8)
                     val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
                     frame[0] = (payload.size shr 24).toByte()
                     frame[1] = (payload.size shr 16).toByte()
@@ -746,7 +832,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         scope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val payload = message.toByteArray(Charsets.UTF_8)
+                    val payload = message.toByteArray(StandardCharsets.UTF_8)
                     val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
                     frame[0] = (payload.size shr 24).toByte()
                     frame[1] = (payload.size shr 16).toByte()
@@ -940,7 +1026,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         put("generation", 0)
                         put("timestamp", System.currentTimeMillis())
                     }.toString()
-                    val payload = pingJson.toByteArray(Charsets.UTF_8)
+                    val payload = pingJson.toByteArray(StandardCharsets.UTF_8)
                     val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
                     frame[0] = (payload.size shr 24).toByte()
                     frame[1] = (payload.size shr 16).toByte()
@@ -1022,6 +1108,73 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
     }
 
+    // ---- Phase 8: Audio message handling ----
+
+    private fun isAudioMessage(message: String): Boolean {
+        try {
+            val json = JSONObject(message)
+            val messageType = json.optString("messageType", "")
+            return messageType == "AUDIO_PACKET" ||
+                   messageType == "AUDIO_STREAM_INFO" ||
+                   messageType == "AUDIO_STREAM_START" ||
+                   messageType == "AUDIO_STREAM_STOP"
+        } catch (e: Exception) {
+            return false
+        }
+    }
+
+    private fun handleAudioMessage(message: String) {
+        try {
+            val json = JSONObject(message)
+            val messageType = json.optString("messageType", "")
+            val sessionId = json.optString("sessionId", "")
+            val generation = json.optLong("generation", 0)
+
+            when (messageType) {
+                "AUDIO_STREAM_INFO" -> {
+                    val payload = json.optJSONObject("payload")
+                    if (payload != null) {
+                        val sampleRate = payload.optInt("sampleRate", 0)
+                        val channelCount = payload.optInt("channelCount", 0)
+                        val startedAtNanos = payload.optLong("startedAtNanos", 0)
+                        Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_INFO: sr=$sampleRate ch=$channelCount gen=$generation")
+                        receiveEngine?.onStreamInfo(sessionId, generation, sampleRate, channelCount)
+                    }
+                }
+                "AUDIO_STREAM_START" -> {
+                    Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_START: gen=$generation")
+                    scope.launch { receiveEngine?.onStreamStart(generation) }
+                }
+                "AUDIO_STREAM_STOP" -> {
+                    Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_STOP: gen=$generation")
+                    scope.launch { receiveEngine?.onStreamStop(generation) }
+                }
+                "AUDIO_PACKET" -> {
+                    val payload = json.optJSONObject("payload")
+                    if (payload != null) {
+                        val base64Data = payload.optString("data", "")
+                        val sequence = payload.optInt("sequence", 0)
+                        val captureTimestamp = payload.optLong("captureTimestamp", 0)
+                        if (base64Data.isNotEmpty()) {
+                            val wireBytes = Base64.decode(base64Data, Base64.NO_WRAP)
+                            val packet = AudioPacket.fromByteArray(wireBytes)
+                            packet?.let {
+                                // Override sequence and timestamp from envelope (source of truth)
+                                val updatedPacket = it.copy(
+                                    sequenceNumber = sequence,
+                                    captureTimestampNanos = captureTimestamp,
+                                )
+                                receiveEngine?.onAudioPacket(updatedPacket)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "[AudioTransport] Failed to handle audio message", e)
+        }
+    }
+
     private fun sendPong(pingJson: JSONObject) {
         val socket = connectionSocket ?: return
         val participantId = currentParticipantId ?: getFallbackDeviceId()
@@ -1038,7 +1191,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         put("timestamp", System.currentTimeMillis())
                         put("payload", JSONObject().put("originalMessageId", originalMessageId))
                     }.toString()
-                    val payload = pongJson.toByteArray(Charsets.UTF_8)
+                    val payload = pongJson.toByteArray(StandardCharsets.UTF_8)
                     val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
                     frame[0] = (payload.size shr 24).toByte()
                     frame[1] = (payload.size shr 16).toByte()
@@ -1102,6 +1255,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         // Handle heartbeat messages locally
                         if (isHeartbeatMessage(message)) {
                             handleHeartbeatMessage(message)
+                        } else if (isAudioMessage(message)) {
+                            handleAudioMessage(message)
                         } else {
                             notifyMessage(message)
                         }

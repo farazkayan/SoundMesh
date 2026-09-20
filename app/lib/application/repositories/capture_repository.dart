@@ -7,6 +7,10 @@ abstract class CaptureRepository {
   Future<CaptureStateResult> getCaptureState();
   Future<bool> isIgnoringBatteryOptimizations();
   Future<void> requestIgnoreBatteryOptimizations();
+  // Phase 8: Audio streaming
+  Future<void> startStreaming();
+  Future<void> stopStreaming();
+  Future<StreamingState> getStreamingState();
 }
 
 class LiveCaptureRepository implements CaptureRepository {
@@ -42,5 +46,20 @@ class LiveCaptureRepository implements CaptureRepository {
   @override
   Future<void> requestIgnoreBatteryOptimizations() async {
     return _platform.requestIgnoreBatteryOptimizations();
+  }
+
+  @override
+  Future<void> startStreaming() async {
+    return _platform.startStreaming();
+  }
+
+  @override
+  Future<void> stopStreaming() async {
+    return _platform.stopStreaming();
+  }
+
+  @override
+  Future<StreamingState> getStreamingState() async {
+    return _platform.getStreamingState();
   }
 }

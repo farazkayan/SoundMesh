@@ -20,6 +20,10 @@ class CaptureUiStateData {
   final CaptureError? error;
   final FrameArrivalStats? frameStats;
   final bool? isIgnoringBatteryOptimizations;
+  // Phase 8: Streaming state
+  final StreamingMetadata? streamingMetadata;
+  final String? streamState;
+  final CaptureError? streamError;
 
   const CaptureUiStateData({
     this.state = CaptureUiState.idle,
@@ -27,6 +31,9 @@ class CaptureUiStateData {
     this.error,
     this.frameStats,
     this.isIgnoringBatteryOptimizations,
+    this.streamingMetadata,
+    this.streamState,
+    this.streamError,
   });
 
   CaptureUiStateData copyWith({
@@ -35,6 +42,9 @@ class CaptureUiStateData {
     CaptureError? error,
     FrameArrivalStats? frameStats,
     bool? isIgnoringBatteryOptimizations,
+    StreamingMetadata? streamingMetadata,
+    String? streamState,
+    CaptureError? streamError,
   }) {
     return CaptureUiStateData(
       state: state ?? this.state,
@@ -42,6 +52,9 @@ class CaptureUiStateData {
       error: error ?? this.error,
       frameStats: frameStats ?? this.frameStats,
       isIgnoringBatteryOptimizations: isIgnoringBatteryOptimizations ?? this.isIgnoringBatteryOptimizations,
+      streamingMetadata: streamingMetadata ?? this.streamingMetadata,
+      streamState: streamState ?? this.streamState,
+      streamError: streamError ?? this.streamError,
     );
   }
 }
@@ -141,6 +154,21 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> with Widget
     state = state.copyWith(
       state: CaptureUiState.failed,
       error: CaptureError(code: code, message: message),
+    );
+  }
+
+  void handleStreamStateChanged(String streamState, StreamingMetadata? metadata) {
+    state = state.copyWith(
+      streamState: streamState,
+      streamingMetadata: metadata,
+      streamError: null,
+    );
+  }
+
+  void handleStreamError(String code, String message) {
+    state = state.copyWith(
+      streamState: 'FAILED',
+      streamError: CaptureError(code: code, message: message),
     );
   }
 
@@ -250,6 +278,18 @@ class _CaptureFlutterApiImpl implements AudioCaptureFlutterApi {
   void onCaptureFramesReceived(FrameArrivalStats stats) {
     debugPrint('[Capture] Frame stats: ${stats.totalFrames} frames, ${stats.framesPerSecond} fps');
     _notifier.handleFrameStats(stats);
+  }
+
+  @override
+  void onStreamStateChanged(String state, StreamingMetadata? metadata) {
+    debugPrint('[Capture] Stream state change: $state');
+    _notifier.handleStreamStateChanged(state, metadata);
+  }
+
+  @override
+  void onStreamError(String errorCode, String errorMessage) {
+    debugPrint('[Capture] Stream error: $errorCode - $errorMessage');
+    _notifier.handleStreamError(errorCode, errorMessage);
   }
 }
 
