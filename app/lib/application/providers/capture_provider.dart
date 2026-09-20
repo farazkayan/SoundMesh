@@ -18,22 +18,30 @@ class CaptureUiStateData {
   final CaptureUiState state;
   final CaptureMetadata? metadata;
   final CaptureError? error;
+  final FrameArrivalStats? frameStats;
+  final bool? isIgnoringBatteryOptimizations;
 
   const CaptureUiStateData({
     this.state = CaptureUiState.idle,
     this.metadata,
     this.error,
+    this.frameStats,
+    this.isIgnoringBatteryOptimizations,
   });
 
   CaptureUiStateData copyWith({
     CaptureUiState? state,
     CaptureMetadata? metadata,
     CaptureError? error,
+    FrameArrivalStats? frameStats,
+    bool? isIgnoringBatteryOptimizations,
   }) {
     return CaptureUiStateData(
       state: state ?? this.state,
       metadata: metadata ?? this.metadata,
       error: error ?? this.error,
+      frameStats: frameStats ?? this.frameStats,
+      isIgnoringBatteryOptimizations: isIgnoringBatteryOptimizations ?? this.isIgnoringBatteryOptimizations,
     );
   }
 }
@@ -41,6 +49,7 @@ class CaptureUiStateData {
 class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
   final CaptureRepository _repository;
   bool _isListening = false;
+  bool _batteryOptimizationChecked = false;
 
   CaptureStateNotifier(this._repository) : super(const CaptureUiStateData()) {
     _startListening();
@@ -61,6 +70,30 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
     } catch (e) {
       debugPrint('[Capture] Failed to get initial state: $e');
     }
+    // Check battery optimization status once on startup
+    _checkBatteryOptimization();
+  }
+
+  Future<void> _checkBatteryOptimization() async {
+    if (_batteryOptimizationChecked) return;
+    _batteryOptimizationChecked = true;
+    try {
+      final isIgnoring = await _repository.isIgnoringBatteryOptimizations();
+      state = state.copyWith(isIgnoringBatteryOptimizations: isIgnoring);
+    } catch (e) {
+      debugPrint('[Capture] Failed to check battery optimization: $e');
+    }
+  }
+
+  Future<void> requestIgnoreBatteryOptimizations() async {
+    try {
+      await _repository.requestIgnoreBatteryOptimizations();
+      // After the user responds to the system dialog, re-check status
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _checkBatteryOptimization();
+    } catch (e) {
+      debugPrint('[Capture] Failed to request battery optimization exemption: $e');
+    }
   }
 
   void _mapState(CaptureStateResult result) {
@@ -80,6 +113,10 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
       metadata: metadata,
       error: null,
     );
+  }
+
+  void handleFrameStats(FrameArrivalStats stats) {
+    state = state.copyWith(frameStats: stats);
   }
 
   void handleError(String code, String message) {
@@ -188,6 +225,12 @@ class _CaptureFlutterApiImpl implements AudioCaptureFlutterApi {
   void onCaptureError(String errorCode, String errorMessage) {
     debugPrint('[Capture] Native error: $errorCode - $errorMessage');
     _notifier.handleError(errorCode, errorMessage);
+  }
+
+  @override
+  void onCaptureFramesReceived(FrameArrivalStats stats) {
+    debugPrint('[Capture] Frame stats: ${stats.totalFrames} frames, ${stats.framesPerSecond} fps');
+    _notifier.handleFrameStats(stats);
   }
 }
 

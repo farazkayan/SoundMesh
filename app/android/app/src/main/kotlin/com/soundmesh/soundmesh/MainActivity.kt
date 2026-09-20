@@ -1,18 +1,23 @@
 package com.soundmesh.soundmesh
 
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import com.soundmesh.soundmesh.capture.AudioCaptureEngine
+import com.soundmesh.soundmesh.capture.AudioCaptureService
 import com.soundmesh.soundmesh.capture.CaptureErrorClassifier
 import com.soundmesh.soundmesh.capture.CaptureSessionState
 import com.soundmesh.soundmesh.capture.CaptureStateMachine
 import com.soundmesh.soundmesh.capture.MediaProjectionHelper
 import com.soundmesh.soundmesh.capture.CaptureDiagnostics
+import com.soundmesh.soundmesh.FrameArrivalStats
 import com.soundmesh.soundmesh.discovery.DiscoveryService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -220,9 +225,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             scope = scope,
             helper = helper,
             stateMachine = captureStateMachine,
-            diagnostics = CaptureDiagnostics(scope),
             notifyState = { state, metadata -> notifyCaptureState(state, metadata) },
             notifyError = { code, message -> notifyCaptureError(code, message) },
+            notifyFrameStats = { stats -> notifyCaptureFrameStats(stats) },
+            notifyNotificationUpdate = { isReceivingAudio, isSilent -> notifyCaptureNotificationUpdate(isReceivingAudio, isSilent) },
         )
         return helper
     }
@@ -321,6 +327,27 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         )
     }
 
+    override fun isIgnoringBatteryOptimizations(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            // Before Android 6.0, no battery optimization exists
+            return true
+        }
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return powerManager.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    override suspend fun requestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return
+        }
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+        intent.data = Uri.parse("package:$packageName")
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        withContext(Dispatchers.Main) {
+            startActivity(intent)
+        }
+    }
+
     // Activity-result plumbing for the capture permission flow.
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -360,6 +387,22 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 Log.e(TAG, "Failed to notify capture error", e)
             }
         }
+    }
+
+    private suspend fun notifyCaptureFrameStats(stats: FrameArrivalStats) {
+        withContext(Dispatchers.Main) {
+            try {
+                captureFlutterApi?.onCaptureFramesReceived(stats)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify capture frame stats", e)
+            }
+        }
+    }
+
+    private suspend fun notifyCaptureNotificationUpdate(isReceivingAudio: Boolean, isSilent: Boolean) {
+        // Update the foreground service notification with live status.
+        // This is a direct native call, not via Flutter.
+        AudioCaptureService.updateNotification(isReceivingAudio, isSilent)
     }
 
     override fun startHosting(port: Long): Boolean {

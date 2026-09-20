@@ -264,4 +264,9 @@ class _RecordingCaptureApi implements AudioCaptureFlutterApi {
   void onCaptureError(String errorCode, String errorMessage) {
     errors.add((errorCode, errorMessage));
   }
+
+  @override
+  void onCaptureFramesReceived(FrameArrivalStats stats) {
+    // Not recording frame stats in this test
+  }
 }
