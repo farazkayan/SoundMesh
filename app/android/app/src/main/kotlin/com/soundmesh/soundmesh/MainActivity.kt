@@ -106,6 +106,20 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         private const val CONNECT_TIMEOUT_MS = 10_000
     }
 
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        // If the app was swiped away from recents while capture was active,
+        // the foreground service (AudioCaptureService) survives but the Activity
+        // is recreated fresh. Clean up any orphaned capture service/engine so
+        // the new session starts with a clean slate. Only do this on a true
+        // fresh launch (not config change like rotation) and when there's no
+        // saved instance state to restore.
+        if (!isChangingConfigurations && savedInstanceState == null) {
+            Log.i(TAG, "Fresh launch detected — stopping any orphaned AudioCaptureService")
+            AudioCaptureService.stop(this)
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         DevicePlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)

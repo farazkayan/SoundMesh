@@ -129,9 +129,12 @@ class AudioReceiveEngine(
 
         val seq = packet.sequenceNumber
 
+        // Compute payload audio stats (peak amplitude, silence detection)
+        val (peakAmplitude, isSilent) = computePayloadStats(packet.payload)
+
         // Periodic logging for packet flow verification (every 50 packets ~ 1 second)
         if (seq % 50 == 0) {
-            Log.i(TAG, "Received packet: seq=$seq generation=$currentGeneration bufferDepth=${getBufferDepth()}")
+            Log.i(TAG, "Received packet: seq=$seq generation=$currentGeneration bufferDepth=${getBufferDepth()} peakAmplitude=$peakAmplitude isSilent=$isSilent")
         }
 
         // Handle sequence wrapping (unlikely with 32-bit but be safe)
@@ -141,13 +144,21 @@ class AudioReceiveEngine(
             return
         }
 
-        // Gap detection
+        // Gap detection - only fire for genuine skips (seq > expectedSequence + 1)
+        // If seq == expectedSequence, it's the next expected packet - update expectedSequence
         if (seq > expectedSequence) {
             val gap = seq - expectedSequence
-            packetsLost.addAndGet(gap.toLong())
-            packetsOutOfOrder.incrementAndGet()
-            Log.w(TAG, "Packet gap detected: expected=$expectedSequence got=$seq (gap=$gap)")
-            expectedSequence = seq
+            if (gap > 1) {
+                // Genuine gap (skip), not just the next sequential packet
+                packetsLost.addAndGet(gap.toLong())
+                packetsOutOfOrder.incrementAndGet()
+                Log.w(TAG, "Packet gap detected: expected=$expectedSequence got=$seq (gap=$gap)")
+            }
+            // Update expectedSequence to the next expected after this packet
+            expectedSequence = seq + 1
+        } else if (seq == expectedSequence) {
+            // Normal sequential arrival - advance expected sequence
+            expectedSequence = seq + 1
         }
 
         // Insert into jitter buffer
@@ -157,11 +168,34 @@ class AudioReceiveEngine(
         if (existing != null) {
             // Overrun - buffer slot already occupied (wrapped around)
             bufferOverruns.incrementAndGet()
-            Log.w(TAG, "Jitter buffer overrun at index $index (seq=$seq)")
+            Log.w(TAG, "Jitter buffer overrun at index $index (seq=$seq) bufferDepth=${getBufferDepth()} expectedSeq=$expectedSequence")
         }
 
         jitterBuffer[index] = packet
         bufferTail = seq + 1
+    }
+
+    /**
+     * Compute peak amplitude and silence detection from PCM payload.
+     * Payload is 16-bit stereo PCM (2 bytes per sample * 2 channels).
+     */
+    private fun computePayloadStats(payload: ByteArray): kotlin.Pair<Int, Boolean> {
+        var peak = 0
+        var nonZeroSamples = 0
+        // Process as 16-bit samples (2 bytes per sample)
+        for (i in 0 until payload.size step 2) {
+            if (i + 1 < payload.size) {
+                val lowByte = payload[i].toInt() and 0xFF
+                val highByte = payload[i + 1].toInt() and 0xFF
+                val sample = lowByte + (highByte * 256)
+                val absSample = if (sample < 0) -sample else sample
+                if (absSample > peak) peak = absSample
+                if (absSample > 0) nonZeroSamples++
+            }
+        }
+        // Consider silent if less than 0.1% of samples are non-zero
+        val isSilent = nonZeroSamples < (payload.size / 2) / 1000
+        return peak to isSilent
     }
 
     /**

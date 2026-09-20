@@ -65,6 +65,11 @@ class AudioCaptureService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Invoke stop listener to clean up the capture engine (MediaProjection, AudioRecord)
+        // This handles the case where the service is stopped while capture is active
+        // (e.g., app was swiped away and relaunched, or user taps Stop notification)
+        stopListener?.invoke()
+        stopListener = null
         AudioCaptureService.setServiceInstance(null)
         Log.d(TAG, "Foreground service stopped")
     }

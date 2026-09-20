@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
 import 'package:soundmesh/application/providers/capture_provider.dart';
-import 'package:soundmesh/application/providers/receive_provider.dart';
 import 'package:soundmesh/core/design_system/index.dart';
 import 'package:soundmesh/presentation/components/empty_state.dart';
 import 'package:soundmesh/presentation/components/loading_indicator.dart';
@@ -16,7 +15,6 @@ class RoomPlaybackScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(applicationStateProvider);
     final captureState = ref.watch(captureStateProvider);
-    final receiveState = ref.watch(receiveStateProvider);
 
     return Scaffold(
       body: SafeArea(
