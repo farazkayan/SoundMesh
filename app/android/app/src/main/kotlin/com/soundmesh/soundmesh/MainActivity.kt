@@ -87,6 +87,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private var captureEngine: AudioCaptureEngine? = null
     private var captureFlutterApi: AudioCaptureFlutterApi? = null
 
+    // Latest frame stats for notification updates when streaming state changes
+    @Volatile private var lastFrameReceivingAudio = false
+    @Volatile private var lastFrameIsSilent = false
+
     // ---- Phase 8: audio transport ----
     private var transportEngine: AudioTransportEngine? = null
     private var receiveEngine: AudioReceiveEngine? = null
@@ -461,6 +465,9 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 Log.e(TAG, "Failed to notify capture frame stats", e)
             }
         }
+        // Store latest frame stats for notification updates when streaming state changes
+        lastFrameReceivingAudio = stats.isReceivingAudio
+        lastFrameIsSilent = stats.isSilent
     }
 
     private suspend fun notifyCaptureNotificationUpdate(isReceivingAudio: Boolean, isSilent: Boolean) {
@@ -479,6 +486,12 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 Log.e(TAG, "Failed to notify stream state", e)
             }
         }
+        // Also update the foreground notification to reflect streaming status
+        AudioCaptureService.updateNotificationWithStreaming(
+            lastFrameReceivingAudio,
+            lastFrameIsSilent,
+            state
+        )
     }
 
     private suspend fun notifyStreamError(code: String, message: String) {

@@ -129,6 +129,11 @@ class AudioReceiveEngine(
 
         val seq = packet.sequenceNumber
 
+        // Periodic logging for packet flow verification (every 50 packets ~ 1 second)
+        if (seq % 50 == 0) {
+            Log.i(TAG, "Received packet: seq=$seq generation=$currentGeneration bufferDepth=${getBufferDepth()}")
+        }
+
         // Handle sequence wrapping (unlikely with 32-bit but be safe)
         if (seq < expectedSequence) {
             // Duplicate or very late packet

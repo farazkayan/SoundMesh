@@ -128,17 +128,21 @@ class AudioTransportEngine(
      * Accumulates bytes until we have a full ~20ms packet, then enqueues for sending.
      */
     fun onPcmFrame(pcmData: ByteArray, byteCount: Int, captureTimestampNanos: Long) {
-        if (!isStreaming.get()) return
+        if (!isStreaming.get()) {
+            Log.v(TAG, "onPcmFrame called but not streaming yet, dropping frame")
+            return
+        }
 
         frameAccumulator.write(pcmData, 0, byteCount)
 
         // Emit full frames
         while (frameAccumulator.size() >= TARGET_FRAME_BYTES) {
             val frameBytes = ByteArray(TARGET_FRAME_BYTES)
-            frameAccumulator.reset() // This doesn't work as expected - need to read from buffer
-            // Re-read the accumulated data
+            
+            // Read accumulated data FIRST, then reset
             val allData = frameAccumulator.toByteArray()
             frameAccumulator.reset()
+            
             if (allData.size >= TARGET_FRAME_BYTES) {
                 System.arraycopy(allData, 0, frameBytes, 0, TARGET_FRAME_BYTES)
                 // Put remaining back
@@ -156,6 +160,11 @@ class AudioTransportEngine(
                     payload = frameBytes,
                 )
 
+                // Periodic logging for packet flow verification (every 50 packets ~ 1 second)
+                if (seq % 50 == 0) {
+                    Log.i(TAG, "Packetizing: seq=$seq generation=$currentGeneration timestamp=$captureTimestampNanos")
+                }
+
                 // Non-blocking send to channel
                 scope.launch {
                     try {
@@ -163,7 +172,7 @@ class AudioTransportEngine(
                     } catch (e: ClosedReceiveChannelException) {
                         // Channel closed, streaming stopped
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to enqueue packet", e)
+                        Log.e(TAG, "Failed to enqueue packet seq=$seq", e)
                     }
                 }
             } else {
@@ -202,6 +211,8 @@ class AudioTransportEngine(
                 val sent = sendProtocolMessage(json.toString())
                 if (!sent) {
                     Log.w(TAG, "Failed to send audio packet seq=${packet.sequenceNumber}")
+                } else if (packet.sequenceNumber % 50 == 0) {
+                    Log.i(TAG, "Sent packet: seq=${packet.sequenceNumber} generation=${packet.streamGeneration} bytes=${wireBytes.size}")
                 }
             }
         } catch (e: Exception) {
