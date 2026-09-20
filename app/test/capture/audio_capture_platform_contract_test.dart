@@ -192,8 +192,10 @@ void main() {
         (tester) async {
       final received = <(String, CaptureMetadata?)>[];
       final errors = <(String, String)>[];
+      final streamStates = <(String, StreamingMetadata?)>[];
+      final streamErrors = <(String, String)>[];
       AudioCaptureFlutterApi.setUp(
-        _RecordingCaptureApi(states: received, errors: errors),
+        _RecordingCaptureApi(states: received, errors: errors, streamStates: streamStates, streamErrors: streamErrors),
       );
 
       pushEvent('onCaptureStateChanged', <Object?>[
@@ -218,8 +220,10 @@ void main() {
         (tester) async {
       final received = <(String, CaptureMetadata?)>[];
       final errors = <(String, String)>[];
+      final streamStates = <(String, StreamingMetadata?)>[];
+      final streamErrors = <(String, String)>[];
       AudioCaptureFlutterApi.setUp(
-        _RecordingCaptureApi(states: received, errors: errors),
+        _RecordingCaptureApi(states: received, errors: errors, streamStates: streamStates, streamErrors: streamErrors),
       );
 
       pushEvent('onCaptureStateChanged', <Object?>['PERMISSION_DENIED', null]);
@@ -233,8 +237,10 @@ void main() {
         (tester) async {
       final states = <(String, CaptureMetadata?)>[];
       final errors = <(String, String)>[];
+      final streamStates = <(String, StreamingMetadata?)>[];
+      final streamErrors = <(String, String)>[];
       AudioCaptureFlutterApi.setUp(
-        _RecordingCaptureApi(states: states, errors: errors),
+        _RecordingCaptureApi(states: states, errors: errors, streamStates: streamStates, streamErrors: streamErrors),
       );
 
       pushEvent('onCaptureError', <Object?>[
@@ -250,10 +256,12 @@ void main() {
 }
 
 class _RecordingCaptureApi implements AudioCaptureFlutterApi {
-  _RecordingCaptureApi({required this.states, required this.errors});
+  _RecordingCaptureApi({required this.states, required this.errors, required this.streamStates, required this.streamErrors});
 
   final List<(String, CaptureMetadata?)> states;
   final List<(String, String)> errors;
+  final List<(String, StreamingMetadata?)> streamStates;
+  final List<(String, String)> streamErrors;
 
   @override
   void onCaptureStateChanged(String state, CaptureMetadata? metadata) {
@@ -268,5 +276,15 @@ class _RecordingCaptureApi implements AudioCaptureFlutterApi {
   @override
   void onCaptureFramesReceived(FrameArrivalStats stats) {
     // Not recording frame stats in this test
+  }
+
+  @override
+  void onStreamStateChanged(String state, StreamingMetadata? metadata) {
+    streamStates.add((state, metadata));
+  }
+
+  @override
+  void onStreamError(String errorCode, String errorMessage) {
+    streamErrors.add((errorCode, errorMessage));
   }
 }

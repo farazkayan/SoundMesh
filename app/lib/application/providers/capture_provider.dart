@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../src/soundmesh_messages.g.dart';
@@ -21,6 +20,10 @@ class CaptureUiStateData {
   final CaptureError? error;
   final FrameArrivalStats? frameStats;
   final bool? isIgnoringBatteryOptimizations;
+  // Phase 8: Streaming state
+  final StreamingMetadata? streamingMetadata;
+  final String? streamState;
+  final CaptureError? streamError;
 
   const CaptureUiStateData({
     this.state = CaptureUiState.idle,
@@ -28,6 +31,9 @@ class CaptureUiStateData {
     this.error,
     this.frameStats,
     this.isIgnoringBatteryOptimizations,
+    this.streamingMetadata,
+    this.streamState,
+    this.streamError,
   });
 
   CaptureUiStateData copyWith({
@@ -36,6 +42,9 @@ class CaptureUiStateData {
     CaptureError? error,
     FrameArrivalStats? frameStats,
     bool? isIgnoringBatteryOptimizations,
+    StreamingMetadata? streamingMetadata,
+    String? streamState,
+    CaptureError? streamError,
   }) {
     return CaptureUiStateData(
       state: state ?? this.state,
@@ -43,6 +52,9 @@ class CaptureUiStateData {
       error: error ?? this.error,
       frameStats: frameStats ?? this.frameStats,
       isIgnoringBatteryOptimizations: isIgnoringBatteryOptimizations ?? this.isIgnoringBatteryOptimizations,
+      streamingMetadata: streamingMetadata ?? this.streamingMetadata,
+      streamState: streamState ?? this.streamState,
+      streamError: streamError ?? this.streamError,
     );
   }
 }
@@ -145,6 +157,21 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> with Widget
     );
   }
 
+  void handleStreamStateChanged(String streamState, StreamingMetadata? metadata) {
+    state = state.copyWith(
+      streamState: streamState,
+      streamingMetadata: metadata,
+      streamError: null,
+    );
+  }
+
+  void handleStreamError(String code, String message) {
+    state = state.copyWith(
+      streamState: 'FAILED',
+      streamError: CaptureError(code: code, message: message),
+    );
+  }
+
   CaptureUiState parseState(String state) {
     switch (state) {
       case 'IDLE':
@@ -217,6 +244,39 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> with Widget
     }
   }
 
+  Future<void> startCaptureAndStream() async {
+    try {
+      final result = await _repository.startCapture();
+      if (!result.success) {
+        state = state.copyWith(
+          state: CaptureUiState.failed,
+          error: result.error,
+        );
+        return;
+      }
+      await _repository.startStreaming();
+    } catch (e) {
+      state = state.copyWith(
+        state: CaptureUiState.failed,
+        error: CaptureError(code: 'ERROR', message: e.toString()),
+      );
+    }
+  }
+
+  Future<void> stopStreamingAndCapture() async {
+    try {
+      await _repository.stopStreaming();
+      await _repository.stopCapture();
+    } catch (e) {
+      state = state.copyWith(
+        state: CaptureUiState.failed,
+        error: CaptureError(code: 'ERROR', message: e.toString()),
+      );
+    }
+  }
+
+  bool get isStreaming => state.streamState == 'STREAMING';
+
   Future<void> refresh() async {
     _refreshState();
   }
@@ -251,6 +311,18 @@ class _CaptureFlutterApiImpl implements AudioCaptureFlutterApi {
   void onCaptureFramesReceived(FrameArrivalStats stats) {
     debugPrint('[Capture] Frame stats: ${stats.totalFrames} frames, ${stats.framesPerSecond} fps');
     _notifier.handleFrameStats(stats);
+  }
+
+  @override
+  void onStreamStateChanged(String state, StreamingMetadata? metadata) {
+    debugPrint('[Capture] Stream state change: $state');
+    _notifier.handleStreamStateChanged(state, metadata);
+  }
+
+  @override
+  void onStreamError(String errorCode, String errorMessage) {
+    debugPrint('[Capture] Stream error: $errorCode - $errorMessage');
+    _notifier.handleStreamError(errorCode, errorMessage);
   }
 }
 

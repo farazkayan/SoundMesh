@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import '../../presentation/screens/home_screen.dart';
-import '../../presentation/screens/create_room_screen.dart';
-import '../../presentation/screens/join_room_screen.dart';
-import '../../presentation/screens/room_dashboard_screen.dart';
-import '../../presentation/screens/room_devices_screen.dart';
-import '../../presentation/screens/room_session_screen.dart';
-import '../../presentation/screens/room_preparation_screen.dart';
-import '../../presentation/screens/qr_scan_screen.dart';
-import '../../presentation/screens/settings_screen.dart';
-import '../../presentation/screens/diagnostics_screen.dart';
-import '../../presentation/components/room_shell.dart';
+  import '../../presentation/screens/create_room_screen.dart';
+  import '../../presentation/screens/join_room_screen.dart';
+  import '../../presentation/screens/room_dashboard_screen.dart';
+  import '../../presentation/screens/room_devices_screen.dart';
+  import '../../presentation/screens/room_session_screen.dart';
+  import '../../presentation/screens/room_preparation_screen.dart';
+  import '../../presentation/screens/qr_scan_screen.dart';
+  import '../../presentation/screens/settings_screen.dart';
+  import '../../presentation/screens/diagnostics_screen.dart';
+  import '../../presentation/components/room_shell.dart';
 
 class AppRouter {
   static const String home = '/';
@@ -56,11 +56,12 @@ class AppRouter {
       case AppRouter.joinRoom:
         return _route(const JoinRoomScreen(), settings);
       case AppRouter.roomDashboard:
+        // Phase 8: RoomDashboardScreen is the central room experience (Mahin's redo).
         return _route(const RoomShell(child: RoomDashboardScreen()), settings);
       case AppRouter.roomDevices:
-        return _route(const RoomShell(child: RoomDevicesScreen()), settings);
+        return _route(RoomShell(child: RoomDevicesScreen()), settings);
       case AppRouter.roomSession:
-        return _route(const RoomShell(child: RoomPlaybackScreen()), settings);
+        return _route(RoomShell(child: RoomPlaybackScreen()), settings);
       case AppRouter.roomPreparation:
         return _route(const RoomPreparationScreen(), settings);
       case AppRouter.qrScan:

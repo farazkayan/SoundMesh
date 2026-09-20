@@ -12,6 +12,7 @@ class RoomLifecycleStateData {
   final String? sessionId;
   final bool participantJoined;
   final String? closedReason;
+  final String? errorMessage;
 
   const RoomLifecycleStateData({
     this.lifecycleState = RoomLifecycleState.created,
@@ -20,6 +21,7 @@ class RoomLifecycleStateData {
     this.sessionId,
     this.participantJoined = false,
     this.closedReason,
+    this.errorMessage,
   });
 
   RoomLifecycleStateData copyWith({
@@ -29,6 +31,8 @@ class RoomLifecycleStateData {
     String? sessionId,
     bool? participantJoined,
     String? closedReason,
+    String? errorMessage,
+    bool clearErrorMessage = false,
   }) {
     return RoomLifecycleStateData(
       lifecycleState: lifecycleState ?? this.lifecycleState,
@@ -37,6 +41,7 @@ class RoomLifecycleStateData {
       sessionId: sessionId ?? this.sessionId,
       participantJoined: participantJoined ?? this.participantJoined,
       closedReason: closedReason ?? this.closedReason,
+      errorMessage: clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
@@ -46,6 +51,7 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
   StreamSubscription? _lifecycleSubscription;
   StreamSubscription? _protocolMessageSubscription;
   StreamSubscription? _connectionStateSubscription;
+  StreamSubscription? _connectionErrorSubscription;
 
   RoomLifecycleNotifier(this._networkRepository) : super(const RoomLifecycleStateData()) {
     _lifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((lifecycleState) {
@@ -73,13 +79,16 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
 
     _connectionStateSubscription = _networkRepository.connectionStateStream.listen((connState) {
       debugPrint('[UILifecycle] RoomLifecycle: connectionState change -> $connState');
-      // Update roomId and sessionId when they become available
       if (connState == NetworkConnectionState.ready) {
         state = state.copyWith(
           sessionId: _networkRepository.sessionId,
           roomId: _networkRepository.roomId,
         );
       }
+    });
+
+    _connectionErrorSubscription = _networkRepository.connectionErrorStream.listen((error) {
+      state = state.copyWith(errorMessage: 'Connection error: ${error.errorCode} - ${error.errorMessage}');
     });
 
     // Initialize role from network repository
@@ -113,6 +122,7 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
     _lifecycleSubscription?.cancel();
     _protocolMessageSubscription?.cancel();
     _connectionStateSubscription?.cancel();
+    _connectionErrorSubscription?.cancel();
     super.dispose();
   }
 }

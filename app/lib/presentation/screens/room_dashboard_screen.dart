@@ -14,7 +14,6 @@ import 'package:soundmesh/application/protocol.dart';
 import 'package:soundmesh/application/providers/create_room_flow_provider.dart';
 import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
 import 'package:soundmesh/application/providers/capture_provider.dart';
-import 'package:soundmesh/presentation/screens/room_screen.dart';
 import 'package:soundmesh/application/room/room_lifecycle.dart';
 
 class RoomDashboardScreen extends ConsumerWidget {
@@ -41,7 +40,7 @@ class RoomDashboardScreen extends ConsumerWidget {
   Widget _buildContent(BuildContext context, WidgetRef ref, ApplicationState appState, CreateRoomFlowState createState) {
     final lifecycleState = ref.watch(roomLifecycleProvider);
     final captureState = ref.watch(captureStateProvider);
-    final screenError = ref.watch(roomScreenProvider.select((s) => s.errorMessage));
+    final screenError = lifecycleState.errorMessage;
     
     final state = appState.state;
     final participantJoined = lifecycleState.participantJoined;

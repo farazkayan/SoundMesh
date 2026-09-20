@@ -29,7 +29,7 @@
         android:maxSdkVersion="32" />
     <application
         android:label="SoundMesh"
-        android:name="${applicationName}"
+        android:name=".SoundMeshApplication"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

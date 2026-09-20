@@ -100,6 +100,52 @@ class FrameArrivalStats {
   });
 }
 
+class StreamingMetadata {
+  final String sessionId;
+  final int generation;
+  final int sampleRate;
+  final int channelCount;
+  final int startedAtNanos;
+  StreamingMetadata({
+    required this.sessionId,
+    required this.generation,
+    required this.sampleRate,
+    required this.channelCount,
+    required this.startedAtNanos,
+  });
+}
+
+class StreamingState {
+  final String state;
+  final StreamingMetadata? metadata;
+  StreamingState({required this.state, this.metadata});
+}
+
+class ReceiveStats {
+  final int packetsReceived;
+  final int packetsLost;
+  final int packetsOutOfOrder;
+  final int bufferDepthMs;
+  final double lossRate;
+  final int timestampNanos;
+  final bool isHealthy;
+  ReceiveStats({
+    required this.packetsReceived,
+    required this.packetsLost,
+    required this.packetsOutOfOrder,
+    required this.bufferDepthMs,
+    required this.lossRate,
+    required this.timestampNanos,
+    required this.isHealthy,
+  });
+}
+
+class ReceiveState {
+  final String state;
+  final ReceiveStats? stats;
+  ReceiveState({required this.state, this.stats});
+}
+
 @HostApi()
 abstract class NetworkHostPlatform {
   bool startHosting(int port);
@@ -137,6 +183,16 @@ abstract class AudioCapturePlatform {
   bool isIgnoringBatteryOptimizations();
   @async
   void requestIgnoreBatteryOptimizations();
+  @async
+  void startStreaming();
+  @async
+  void stopStreaming();
+  StreamingState getStreamingState();
+}
+
+@HostApi()
+abstract class AudioReceivePlatform {
+  ReceiveState getReceiveState();
 }
 
 @FlutterApi()
@@ -151,4 +207,11 @@ abstract class AudioCaptureFlutterApi {
   void onCaptureStateChanged(String state, CaptureMetadata? metadata);
   void onCaptureError(String errorCode, String errorMessage);
   void onCaptureFramesReceived(FrameArrivalStats stats);
+  void onStreamStateChanged(String state, StreamingMetadata? metadata);
+  void onStreamError(String errorCode, String errorMessage);
+}
+
+@FlutterApi()
+abstract class AudioReceiveFlutterApi {
+  void onStreamStateChanged(String state, ReceiveStats? stats);
 }

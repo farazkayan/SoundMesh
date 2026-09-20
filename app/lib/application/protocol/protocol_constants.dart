@@ -14,6 +14,12 @@ enum ProtocolMessageType {
   joinRequest,
   joinAccepted,
   joinRejected,
+  audioStreamInfo,
+  audioPacket,
+  audioStreamStart,
+  audioStreamStop,
+  audioBufferStatus,
+  audioStreamError,
 }
 
 extension ProtocolMessageTypeX on ProtocolMessageType {
@@ -41,6 +47,18 @@ extension ProtocolMessageTypeX on ProtocolMessageType {
         return 'JOIN_ACCEPTED';
       case ProtocolMessageType.joinRejected:
         return 'JOIN_REJECTED';
+      case ProtocolMessageType.audioStreamInfo:
+        return 'AUDIO_STREAM_INFO';
+      case ProtocolMessageType.audioPacket:
+        return 'AUDIO_PACKET';
+      case ProtocolMessageType.audioStreamStart:
+        return 'AUDIO_STREAM_START';
+      case ProtocolMessageType.audioStreamStop:
+        return 'AUDIO_STREAM_STOP';
+      case ProtocolMessageType.audioBufferStatus:
+        return 'AUDIO_BUFFER_STATUS';
+      case ProtocolMessageType.audioStreamError:
+        return 'AUDIO_STREAM_ERROR';
     }
   }
 
@@ -68,6 +86,18 @@ extension ProtocolMessageTypeX on ProtocolMessageType {
         return ProtocolMessageType.joinAccepted;
       case 'JOIN_REJECTED':
         return ProtocolMessageType.joinRejected;
+      case 'AUDIO_STREAM_INFO':
+        return ProtocolMessageType.audioStreamInfo;
+      case 'AUDIO_PACKET':
+        return ProtocolMessageType.audioPacket;
+      case 'AUDIO_STREAM_START':
+        return ProtocolMessageType.audioStreamStart;
+      case 'AUDIO_STREAM_STOP':
+        return ProtocolMessageType.audioStreamStop;
+      case 'AUDIO_BUFFER_STATUS':
+        return ProtocolMessageType.audioBufferStatus;
+      case 'AUDIO_STREAM_ERROR':
+        return ProtocolMessageType.audioStreamError;
       default:
         return null;
     }

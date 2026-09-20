@@ -65,6 +65,11 @@ class AudioCaptureService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Invoke stop listener to clean up the capture engine (MediaProjection, AudioRecord)
+        // This handles the case where the service is stopped while capture is active
+        // (e.g., app was swiped away and relaunched, or user taps Stop notification)
+        stopListener?.invoke()
+        stopListener = null
         AudioCaptureService.setServiceInstance(null)
         Log.d(TAG, "Foreground service stopped")
     }
@@ -83,7 +88,11 @@ class AudioCaptureService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun buildNotification(isReceivingAudio: Boolean = false, isSilent: Boolean = false): Notification {
+    private fun buildNotification(
+        isReceivingAudio: Boolean = false,
+        isSilent: Boolean = false,
+        streamState: String? = null
+    ): Notification {
         val stopIntent = Intent(this, AudioCaptureService::class.java).apply {
             action = ACTION_STOP_CAPTURE
         }
@@ -94,14 +103,28 @@ class AudioCaptureService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val text = if (isReceivingAudio) {
-            if (isSilent) {
-                "Capturing audio: Silent (no audio detected)"
+        val isStreaming = streamState == "STREAMING"
+        val text: String
+        if (isStreaming) {
+            text = if (isReceivingAudio) {
+                if (isSilent) {
+                    "SoundMesh — Capturing & Streaming: Silent"
+                } else {
+                    "SoundMesh — Capturing & Streaming: Receiving audio"
+                }
             } else {
-                "Capturing audio: Receiving audio"
+                "SoundMesh — Capturing & Streaming: No frames"
             }
         } else {
-            "Capturing audio: No frames arriving"
+            text = if (isReceivingAudio) {
+                if (isSilent) {
+                    "Capturing audio: Silent (no audio detected)"
+                } else {
+                    "Capturing audio: Receiving audio"
+                }
+            } else {
+                "Capturing audio: No frames arriving"
+            }
         }
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -130,8 +153,19 @@ class AudioCaptureService : Service() {
      * Called from the capture engine on each frame-stats interval (~500ms).
      */
     fun updateNotificationContent(isReceivingAudio: Boolean, isSilent: Boolean) {
-        val notification = buildNotification(isReceivingAudio, isSilent)
+        val notification = buildNotification(isReceivingAudio, isSilent, currentStreamState)
         // Update the existing foreground notification in-place (no flicker)
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIFICATION_ID, notification)
+    }
+
+    /**
+     * Update the notification with streaming state included.
+     * Called when stream state changes.
+     */
+    fun updateNotificationWithStreaming(isReceivingAudio: Boolean, isSilent: Boolean, streamState: String) {
+        currentStreamState = streamState
+        val notification = buildNotification(isReceivingAudio, isSilent, streamState)
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(NOTIFICATION_ID, notification)
     }
@@ -151,6 +185,9 @@ class AudioCaptureService : Service() {
 
         /** Listener invoked when the user taps "Stop" on the notification. */
         @Volatile private var stopListener: (() -> Unit)? = null
+
+        /** Current streaming state for notification display. */
+        @Volatile private var currentStreamState: String? = null
 
         /**
          * Start the foreground service and suspend until startForeground()
@@ -191,6 +228,10 @@ class AudioCaptureService : Service() {
 
         fun updateNotification(isReceivingAudio: Boolean, isSilent: Boolean) {
             serviceInstance?.updateNotificationContent(isReceivingAudio, isSilent)
+        }
+
+        fun updateNotificationWithStreaming(isReceivingAudio: Boolean, isSilent: Boolean, streamState: String) {
+            serviceInstance?.updateNotificationWithStreaming(isReceivingAudio, isSilent, streamState)
         }
     }
 }

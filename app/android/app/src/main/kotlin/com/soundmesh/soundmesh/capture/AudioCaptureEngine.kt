@@ -53,6 +53,8 @@ class AudioCaptureEngine(
     private val notifyFrameStats: suspend (stats: FrameArrivalStats) -> Unit,
     /** Notification content updates (must be main-dispatcher safe). */
     private val notifyNotificationUpdate: suspend (isReceivingAudio: Boolean, isSilent: Boolean) -> Unit,
+    /** Optional callback for forwarding raw PCM frames to transport layer (Phase 8). */
+    private val onFrameCaptured: ((ByteArray, Int, Long) -> Unit)? = null,
 ) {
     private val TAG = "AudioCaptureEngine"
 
@@ -248,6 +250,9 @@ class AudioCaptureEngine(
                 when {
                     readBytes > 0 -> {
                         diagnostics.recordFrame(readBuffer, readBytes)
+                        // Forward frame to transport layer (Phase 8)
+                        val captureTimestamp = SystemClock.elapsedRealtimeNanos()
+                        onFrameCaptured?.invoke(readBuffer, readBytes, captureTimestamp)
                         // NOTE: No SOURCE_APP_BLOCKED heuristic here.
                         // "No audio currently playing" is a normal, expected state —
                         // not an error. The isReceivingAudio/isSilent flags in FrameArrivalStats

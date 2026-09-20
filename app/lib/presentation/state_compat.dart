@@ -11,7 +11,6 @@ import '../application/providers/create_room_flow_provider.dart';
 import '../application/providers/join_room_flow_provider.dart';
 import '../application/repositories/network_repository.dart';
 import '../application/room/room_lifecycle.dart';
-import '../presentation/screens/room_screen.dart';
 
 /// Conceptual lifecycle states for the SoundMesh application UI.
 /// Mirrors legacy SMAppState exactly.
@@ -116,9 +115,8 @@ class ApplicationState {
 }
 
 /// Maps backend RoomLifecycleState to legacy SMAppState.
-SMAppState _mapLifecycleState(RoomLifecycleState lifecycleState, CreateRoomFlowStatus? createStatus, JoinRoomFlowStatus? joinStatus, RoomScreenState? screenState) {
+SMAppState _mapLifecycleState(RoomLifecycleState lifecycleState, CreateRoomFlowStatus? createStatus, JoinRoomFlowStatus? joinStatus, Object? screenState) {
   // Check for error first
-  if (screenState?.errorMessage != null) return SMAppState.error;
   if (createStatus == CreateRoomFlowStatus.failed) return SMAppState.error;
   if (joinStatus == JoinRoomFlowStatus.failed) return SMAppState.error;
 
@@ -191,7 +189,6 @@ final applicationStateProvider = Provider<ApplicationState>((ref) {
   final lifecycleState = ref.watch(roomLifecycleProvider);
   final createState = ref.watch(createRoomFlowProvider);
   final joinState = ref.watch(joinRoomFlowProvider);
-  final screenState = ref.watch(roomScreenProvider);
 
   developer.log(
     'ApplicationState: Rebuild | '
@@ -207,18 +204,18 @@ final applicationStateProvider = Provider<ApplicationState>((ref) {
     lifecycleState.lifecycleState,
     createState.status,
     joinState.status,
-    screenState,
+    null, // screenState no longer used
   );
 
   final isHost = lifecycleState.role == RoomRole.host;
-  final syncStatus = _mapSyncStatus(lifecycleState.lifecycleState, screenState.connectionState);
+  final syncStatus = _mapSyncStatus(lifecycleState.lifecycleState, NetworkConnectionState.ready);
 
   // For participants, get joinCode from joinRoomFlowProvider; for hosts, from createRoomFlowProvider
   final joinCode = isHost ? createState.joinCode : joinState.joinCode;
 
   return ApplicationState(
     state: mappedState,
-    message: screenState.errorMessage ?? createState.errorMessage ?? joinState.errorMessage,
+    message: lifecycleState.errorMessage ?? createState.errorMessage ?? joinState.errorMessage,
     isHost: isHost,
     roomId: lifecycleState.roomId,
     joinCode: joinCode,
@@ -265,7 +262,7 @@ class CoreStateController extends ChangeNotifier {
   }
 
   Future<void> leaveRoom() async {
-    await _ref.read(roomScreenProvider.notifier).leaveRoom();
+    await _ref.read(roomLifecycleProvider.notifier).leaveRoom();
   }
 }
 

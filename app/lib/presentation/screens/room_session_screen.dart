@@ -260,9 +260,12 @@ class RoomPlaybackScreen extends ConsumerWidget {
     final state = captureState.state;
     final metadata = captureState.metadata;
     final error = captureState.error;
+    final streamState = captureState.streamState;
+    final streamError = captureState.streamError;
 
     final isCapturing = state == CaptureUiState.capturing;
     final hasPermission = state == CaptureUiState.permissionGranted || isCapturing;
+    final isStreaming = streamState == 'STREAMING';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -348,6 +351,15 @@ class RoomPlaybackScreen extends ConsumerWidget {
               ),
               SizedBox(height: SMSpacing.xs),
               _CaptureStateBadge(state: state),
+              SizedBox(height: SMSpacing.md),
+              Divider(color: SMColors.divider),
+              SizedBox(height: SMSpacing.md),
+              Text(
+                'Streaming State',
+                style: SMTypography.label.copyWith(color: SMColors.secondaryText),
+              ),
+              SizedBox(height: SMSpacing.xs),
+              _StreamingStateBadge(state: streamState ?? 'IDLE', error: streamError),
               SizedBox(height: SMSpacing.md),
               Divider(color: SMColors.divider),
               SizedBox(height: SMSpacing.md),
@@ -452,13 +464,13 @@ class RoomPlaybackScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  // Start Capture Button
+                  // Start Capture & Stream Button
                   FilledButton.icon(
                     onPressed: hasPermission && !isCapturing
-                        ? () => notifier.start()
+                        ? () => notifier.startCaptureAndStream()
                         : null,
                     icon: const Icon(Icons.play_arrow, size: 18),
-                    label: const Text('Start Capture'),
+                    label: const Text('Start Capture & Stream'),
                     style: FilledButton.styleFrom(
                       backgroundColor: SMColors.success,
                       foregroundColor: SMColors.onAccent,
@@ -468,13 +480,13 @@ class RoomPlaybackScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  // Stop Capture Button
+                  // Stop Button (stops streaming then capture)
                   FilledButton.icon(
-                    onPressed: isCapturing
-                        ? () => notifier.stop()
+                    onPressed: isCapturing || isStreaming
+                        ? () => notifier.stopStreamingAndCapture()
                         : null,
                     icon: const Icon(Icons.stop, size: 18),
-                    label: const Text('Stop Capture'),
+                    label: const Text('Stop'),
                     style: FilledButton.styleFrom(
                       backgroundColor: SMColors.error,
                       foregroundColor: Colors.white,
@@ -541,6 +553,71 @@ class _CaptureStateBadge extends StatelessWidget {
         textColor = SMColors.error;
         label = 'FAILED';
         break;
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: SMSpacing.md, vertical: SMSpacing.sm),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(SMRadius.small),
+        border: Border.all(color: textColor.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        label,
+        style: SMTypography.caption.copyWith(
+          color: textColor,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _StreamingStateBadge extends StatelessWidget {
+  const _StreamingStateBadge({required this.state, this.error});
+
+  final String state;
+  final CaptureError? error;
+
+  @override
+  Widget build(BuildContext context) {
+    Color bgColor;
+    Color textColor;
+    String label;
+
+    final captureError = error;
+    if (captureError != null) {
+      bgColor = SMColors.error.withValues(alpha: 0.2);
+      textColor = SMColors.error;
+      label = '${captureError.code}: ${captureError.message}';
+    } else {
+      switch (state) {
+        case 'IDLE':
+          bgColor = SMColors.mutedText.withValues(alpha: 0.2);
+          textColor = SMColors.mutedText;
+          label = 'IDLE';
+          break;
+        case 'STREAMING':
+          bgColor = SMColors.soundmeshBlue.withValues(alpha: 0.2);
+          textColor = SMColors.soundmeshBlue;
+          label = 'STREAMING';
+          break;
+        case 'STOPPED':
+          bgColor = SMColors.secondaryText.withValues(alpha: 0.2);
+          textColor = SMColors.secondaryText;
+          label = 'STOPPED';
+          break;
+        case 'FAILED':
+          bgColor = SMColors.error.withValues(alpha: 0.2);
+          textColor = SMColors.error;
+          label = 'FAILED';
+          break;
+        default:
+          bgColor = SMColors.mutedText.withValues(alpha: 0.2);
+          textColor = SMColors.mutedText;
+          label = state;
+      }
     }
 
     return Container(
