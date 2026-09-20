@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import '../../presentation/screens/home_screen.dart';
-import '../../presentation/screens/create_room_screen.dart';
-import '../../presentation/screens/join_room_screen.dart';
-import '../../presentation/screens/room_screen.dart';
-import '../../presentation/screens/room_devices_screen.dart';
-import '../../presentation/screens/room_session_screen.dart';
-import '../../presentation/screens/room_preparation_screen.dart';
-import '../../presentation/screens/qr_scan_screen.dart';
-import '../../presentation/screens/settings_screen.dart';
-import '../../presentation/screens/diagnostics_screen.dart';
-import '../../presentation/components/room_shell.dart';
+  import '../../presentation/screens/create_room_screen.dart';
+  import '../../presentation/screens/join_room_screen.dart';
+  import '../../presentation/screens/room_dashboard_screen.dart';
+  import '../../presentation/screens/room_devices_screen.dart';
+  import '../../presentation/screens/room_session_screen.dart';
+  import '../../presentation/screens/room_preparation_screen.dart';
+  import '../../presentation/screens/qr_scan_screen.dart';
+  import '../../presentation/screens/settings_screen.dart';
+  import '../../presentation/screens/diagnostics_screen.dart';
+  import '../../presentation/components/room_shell.dart';
 
 class AppRouter {
   static const String home = '/';
@@ -56,10 +56,8 @@ class AppRouter {
       case AppRouter.joinRoom:
         return _route(const JoinRoomScreen(), settings);
       case AppRouter.roomDashboard:
-        // Phase 8: the Room screen is the central room experience. The
-        // dashboard remains available as a class but the room tab renders
-        // the Room screen per mahinwork.md Phase 8.
-        return _route(const RoomShell(child: RoomScreen()), settings);
+        // Phase 8: RoomDashboardScreen is the central room experience (Mahin's redo).
+        return _route(const RoomDashboardScreen(), settings);
       case AppRouter.roomDevices:
         return _route(const RoomShell(child: RoomDevicesScreen()), settings);
       case AppRouter.roomSession:
