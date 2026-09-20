@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../presentation/screens/home_screen.dart';
 import '../../presentation/screens/create_room_screen.dart';
 import '../../presentation/screens/join_room_screen.dart';
-import '../../presentation/screens/room_dashboard_screen.dart';
+import '../../presentation/screens/room_screen.dart';
 import '../../presentation/screens/room_devices_screen.dart';
 import '../../presentation/screens/room_session_screen.dart';
 import '../../presentation/screens/room_preparation_screen.dart';
@@ -56,7 +56,10 @@ class AppRouter {
       case AppRouter.joinRoom:
         return _route(const JoinRoomScreen(), settings);
       case AppRouter.roomDashboard:
-        return _route(const RoomShell(child: RoomDashboardScreen()), settings);
+        // Phase 8: the Room screen is the central room experience. The
+        // dashboard remains available as a class but the room tab renders
+        // the Room screen per mahinwork.md Phase 8.
+        return _route(const RoomShell(child: RoomScreen()), settings);
       case AppRouter.roomDevices:
         return _route(const RoomShell(child: RoomDevicesScreen()), settings);
       case AppRouter.roomSession:
