@@ -244,6 +244,39 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> with Widget
     }
   }
 
+  Future<void> startCaptureAndStream() async {
+    try {
+      final result = await _repository.startCapture();
+      if (!result.success) {
+        state = state.copyWith(
+          state: CaptureUiState.failed,
+          error: result.error,
+        );
+        return;
+      }
+      await _repository.startStreaming();
+    } catch (e) {
+      state = state.copyWith(
+        state: CaptureUiState.failed,
+        error: CaptureError(code: 'ERROR', message: e.toString()),
+      );
+    }
+  }
+
+  Future<void> stopStreamingAndCapture() async {
+    try {
+      await _repository.stopStreaming();
+      await _repository.stopCapture();
+    } catch (e) {
+      state = state.copyWith(
+        state: CaptureUiState.failed,
+        error: CaptureError(code: 'ERROR', message: e.toString()),
+      );
+    }
+  }
+
+  bool get isStreaming => state.streamState == 'STREAMING';
+
   Future<void> refresh() async {
     _refreshState();
   }
