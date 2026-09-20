@@ -75,24 +75,32 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
   }
 
   Future<void> _checkBatteryOptimization() async {
-    if (_batteryOptimizationChecked) return;
+    if (_batteryOptimizationChecked) {
+      debugPrint('[BatteryOptimization] Already checked, skipping');
+      return;
+    }
     _batteryOptimizationChecked = true;
     try {
+      debugPrint('[BatteryOptimization] Checking status via platform channel...');
       final isIgnoring = await _repository.isIgnoringBatteryOptimizations();
+      debugPrint('[BatteryOptimization] Platform returned: $isIgnoring');
       state = state.copyWith(isIgnoringBatteryOptimizations: isIgnoring);
     } catch (e) {
-      debugPrint('[Capture] Failed to check battery optimization: $e');
+      debugPrint('[BatteryOptimization] Failed to check battery optimization: $e');
     }
   }
 
   Future<void> requestIgnoreBatteryOptimizations() async {
+    debugPrint('[BatteryOptimization] Button pressed - requesting ignore battery optimizations');
     try {
       await _repository.requestIgnoreBatteryOptimizations();
+      debugPrint('[BatteryOptimization] Repository call returned, waiting to re-check');
       // After the user responds to the system dialog, re-check status
       await Future.delayed(const Duration(milliseconds: 500));
+      debugPrint('[BatteryOptimization] Re-checking battery optimization status');
       await _checkBatteryOptimization();
     } catch (e) {
-      debugPrint('[Capture] Failed to request battery optimization exemption: $e');
+      debugPrint('[BatteryOptimization] Failed to request battery optimization exemption: $e');
     }
   }
 

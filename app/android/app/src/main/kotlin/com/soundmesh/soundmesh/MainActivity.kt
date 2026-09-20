@@ -333,18 +333,28 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             return true
         }
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        return powerManager.isIgnoringBatteryOptimizations(packageName)
+        val result = powerManager.isIgnoringBatteryOptimizations(packageName)
+        Log.d(TAG, "[BatteryOptimization] isIgnoringBatteryOptimizations() = $result")
+        return result
     }
 
     override suspend fun requestIgnoreBatteryOptimizations() {
+        Log.d(TAG, "[BatteryOptimization] requestIgnoreBatteryOptimizations() called")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            Log.d(TAG, "[BatteryOptimization] Pre-Android M, skipping")
             return
         }
         val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
         intent.data = Uri.parse("package:$packageName")
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        Log.d(TAG, "[BatteryOptimization] Launching intent: $intent")
         withContext(Dispatchers.Main) {
-            startActivity(intent)
+            try {
+                startActivity(intent)
+                Log.d(TAG, "[BatteryOptimization] Intent launched successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "[BatteryOptimization] Failed to launch intent", e)
+            }
         }
     }
 
