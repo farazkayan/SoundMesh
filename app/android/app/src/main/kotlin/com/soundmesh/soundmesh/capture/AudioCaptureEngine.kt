@@ -14,6 +14,7 @@ import android.util.Log
 import com.soundmesh.soundmesh.CaptureError
 import com.soundmesh.soundmesh.CaptureMetadata
 import com.soundmesh.soundmesh.CaptureResult
+import com.soundmesh.soundmesh.FrameArrivalStats
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,11 +45,14 @@ class AudioCaptureEngine(
     private val scope: CoroutineScope,
     private val helper: MediaProjectionHelper,
     private val stateMachine: CaptureStateMachine,
-    private val diagnostics: CaptureDiagnostics,
     /** State transitions surfaced to Flutter (must be main-dispatcher safe). */
     private val notifyState: suspend (state: String, metadata: CaptureMetadata?) -> Unit,
     /** Errors surfaced to Flutter (must be main-dispatcher safe). */
     private val notifyError: suspend (code: String, message: String) -> Unit,
+    /** Frame arrival stats surfaced to Flutter (must be main-dispatcher safe). */
+    private val notifyFrameStats: suspend (stats: FrameArrivalStats) -> Unit,
+    /** Notification content updates (must be main-dispatcher safe). */
+    private val notifyNotificationUpdate: suspend (isReceivingAudio: Boolean, isSilent: Boolean) -> Unit,
 ) {
     private val TAG = "AudioCaptureEngine"
 
@@ -58,7 +62,12 @@ class AudioCaptureEngine(
     private var mediaProjection: MediaProjection? = null
     private val generationCounter = AtomicLong(0)
     @Volatile private var currentMetadata: CaptureMetadata? = null
-    private val silenceDetector = SilenceDetector()
+    private val diagnostics = CaptureDiagnostics(scope) { stats ->
+        scope.launch {
+            notifyFrameStats(stats)
+            notifyNotificationUpdate(stats.isReceivingAudio, stats.isSilent)
+        }
+    }
 
     /** Fires when MediaProjection is revoked mid-capture (system UI or policy). */
     private val projectionCallback = object : MediaProjection.Callback() {
@@ -238,21 +247,13 @@ class AudioCaptureEngine(
                 val readBytes = record.read(readBuffer, 0, readBuffer.size)
                 when {
                     readBytes > 0 -> {
-                        val silent = readBuffer.allZero(readBytes)
-                        diagnostics.recordFrame(readBytes, silent)
-                        if (silenceDetector.observe(readBuffer, readBytes)) {
-                            // Distinct SOURCE_APP_BLOCKED signal. Deliberately
-                            // NOT tearing down the capture: sustained silence is
-                            // ambiguous (blocked source vs paused source,
-                            // audio-api.md §40.2). Keep capturing so a paused
-                            // source self-corrects; the experiment table
-                            // disambiguates per app.
-                            val message = "Sustained digital silence while frames keep " +
-                                "arriving — source app likely blocked capture " +
-                                "(ALLOW_CAPTURE_BY policy) or is paused/muted"
-                            Log.w(TAG, "SOURCE_APP_BLOCKED heuristic fired: $message")
-                            notifyError(CaptureErrorClassifier.SOURCE_APP_BLOCKED, message)
-                        }
+                        diagnostics.recordFrame(readBuffer, readBytes)
+                        // NOTE: No SOURCE_APP_BLOCKED heuristic here.
+                        // "No audio currently playing" is a normal, expected state —
+                        // not an error. The isReceivingAudio/isSilent flags in FrameArrivalStats
+                        // communicate this to Flutter/UI. SOURCE_APP_BLOCKED should
+                        // only fire if Android explicitly signals a policy-based
+                        // capture rejection (not currently available via public API).
                     }
                     readBytes == 0 -> {
                         // Blocking read returns 0 when the record is stopped —
@@ -344,7 +345,6 @@ class AudioCaptureEngine(
             runCatching { projection.stop() }
         }
         mediaProjection = null
-        silenceDetector.reset()
         AudioCaptureService.setStopListener(null)
         AudioCaptureService.stop(context)
     }

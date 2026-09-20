@@ -528,6 +528,91 @@ class CaptureStateResult {
   }
 }
 
+class FrameArrivalStats {
+  FrameArrivalStats({
+    required this.totalFrames,
+    required this.totalBytes,
+    required this.silentFrames,
+    required this.framesPerSecond,
+    required this.bytesPerSecond,
+    required this.timestampNanos,
+    required this.isReceivingAudio,
+    required this.peakAmplitude,
+    required this.isSilent,
+  });
+
+  int totalFrames;
+
+  int totalBytes;
+
+  int silentFrames;
+
+  int framesPerSecond;
+
+  int bytesPerSecond;
+
+  int timestampNanos;
+
+  bool isReceivingAudio;
+
+  int peakAmplitude;
+
+  bool isSilent;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      totalFrames,
+      totalBytes,
+      silentFrames,
+      framesPerSecond,
+      bytesPerSecond,
+      timestampNanos,
+      isReceivingAudio,
+      peakAmplitude,
+      isSilent,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static FrameArrivalStats decode(Object result) {
+    result as List<Object?>;
+    return FrameArrivalStats(
+      totalFrames: result[0]! as int,
+      totalBytes: result[1]! as int,
+      silentFrames: result[2]! as int,
+      framesPerSecond: result[3]! as int,
+      bytesPerSecond: result[4]! as int,
+      timestampNanos: result[5]! as int,
+      isReceivingAudio: result[6]! as bool,
+      peakAmplitude: result[7]! as int,
+      isSilent: result[8]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! FrameArrivalStats || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(totalFrames, other.totalFrames) && _deepEquals(totalBytes, other.totalBytes) && _deepEquals(silentFrames, other.silentFrames) && _deepEquals(framesPerSecond, other.framesPerSecond) && _deepEquals(bytesPerSecond, other.bytesPerSecond) && _deepEquals(timestampNanos, other.timestampNanos) && _deepEquals(isReceivingAudio, other.isReceivingAudio) && _deepEquals(peakAmplitude, other.peakAmplitude) && _deepEquals(isSilent, other.isSilent);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'FrameArrivalStats(totalFrames: $totalFrames, totalBytes: $totalBytes, silentFrames: $silentFrames, framesPerSecond: $framesPerSecond, bytesPerSecond: $bytesPerSecond, timestampNanos: $timestampNanos, isReceivingAudio: $isReceivingAudio, peakAmplitude: $peakAmplitude, isSilent: $isSilent)';
+  }
+}
+
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -560,6 +645,9 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is CaptureStateResult) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
+    }    else if (value is FrameArrivalStats) {
+      buffer.putUint8(137);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -584,6 +672,8 @@ class _PigeonCodec extends StandardMessageCodec {
         return CaptureResult.decode(readValue(buffer)!);
       case 136:
         return CaptureStateResult.decode(readValue(buffer)!);
+      case 137:
+        return FrameArrivalStats.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -926,6 +1016,43 @@ class AudioCapturePlatform {
     ;
     return pigeonVar_replyValue! as CaptureStateResult;
   }
+
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.AudioCapturePlatform.isIgnoringBatteryOptimizations$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as bool;
+  }
+
+  Future<void> requestIgnoreBatteryOptimizations() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.AudioCapturePlatform.requestIgnoreBatteryOptimizations$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
 }
 
 abstract class NetworkFlutterApi {
@@ -1013,6 +1140,8 @@ abstract class AudioCaptureFlutterApi {
 
   void onCaptureError(String errorCode, String errorMessage);
 
+  void onCaptureFramesReceived(FrameArrivalStats stats);
+
   static void setUp(AudioCaptureFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
     messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
     {
@@ -1050,6 +1179,27 @@ abstract class AudioCaptureFlutterApi {
           final String arg_errorMessage = args[1]! as String;
           try {
             api.onCaptureError(arg_errorCode, arg_errorMessage);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.AudioCaptureFlutterApi.onCaptureFramesReceived$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final FrameArrivalStats arg_stats = args[0]! as FrameArrivalStats;
+          try {
+            api.onCaptureFramesReceived(arg_stats);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

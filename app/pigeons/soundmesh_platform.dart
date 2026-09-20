@@ -77,6 +77,29 @@ class CaptureStateResult {
   CaptureStateResult({required this.state, this.metadata});
 }
 
+class FrameArrivalStats {
+  final int totalFrames;
+  final int totalBytes;
+  final int silentFrames;
+  final int framesPerSecond;
+  final int bytesPerSecond;
+  final int timestampNanos;
+  final bool isReceivingAudio;
+  final int peakAmplitude;
+  final bool isSilent;
+  FrameArrivalStats({
+    required this.totalFrames,
+    required this.totalBytes,
+    required this.silentFrames,
+    required this.framesPerSecond,
+    required this.bytesPerSecond,
+    required this.timestampNanos,
+    required this.isReceivingAudio,
+    required this.peakAmplitude,
+    required this.isSilent,
+  });
+}
+
 @HostApi()
 abstract class NetworkHostPlatform {
   bool startHosting(int port);
@@ -111,6 +134,9 @@ abstract class AudioCapturePlatform {
   @async
   void stopCapture();
   CaptureStateResult getCaptureState();
+  bool isIgnoringBatteryOptimizations();
+  @async
+  void requestIgnoreBatteryOptimizations();
 }
 
 @FlutterApi()
@@ -124,4 +150,5 @@ abstract class NetworkFlutterApi {
 abstract class AudioCaptureFlutterApi {
   void onCaptureStateChanged(String state, CaptureMetadata? metadata);
   void onCaptureError(String errorCode, String errorMessage);
+  void onCaptureFramesReceived(FrameArrivalStats stats);
 }

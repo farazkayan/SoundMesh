@@ -29,6 +29,8 @@ class AudioCaptureService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        // Register this service instance for notification updates
+        AudioCaptureService.setServiceInstance(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -63,6 +65,7 @@ class AudioCaptureService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        AudioCaptureService.setServiceInstance(null)
         Log.d(TAG, "Foreground service stopped")
     }
 
@@ -80,7 +83,7 @@ class AudioCaptureService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(isReceivingAudio: Boolean = false, isSilent: Boolean = false): Notification {
         val stopIntent = Intent(this, AudioCaptureService::class.java).apply {
             action = ACTION_STOP_CAPTURE
         }
@@ -91,6 +94,16 @@ class AudioCaptureService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        val text = if (isReceivingAudio) {
+            if (isSilent) {
+                "Capturing audio: Silent (no audio detected)"
+            } else {
+                "Capturing audio: Receiving audio"
+            }
+        } else {
+            "Capturing audio: No frames arriving"
+        }
+
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
         } else {
@@ -100,7 +113,7 @@ class AudioCaptureService : Service() {
         return builder
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle("SoundMesh")
-            .setContentText("Capturing audio")
+            .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
@@ -110,6 +123,17 @@ class AudioCaptureService : Service() {
                 stopPendingIntent,
             )
             .build()
+    }
+
+    /**
+     * Update the foreground notification content text with live capture status.
+     * Called from the capture engine on each frame-stats interval (~500ms).
+     */
+    fun updateNotificationContent(isReceivingAudio: Boolean, isSilent: Boolean) {
+        val notification = buildNotification(isReceivingAudio, isSilent)
+        // Update the existing foreground notification in-place (no flicker)
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIFICATION_ID, notification)
     }
 
     companion object {
@@ -153,6 +177,20 @@ class AudioCaptureService : Service() {
 
         fun stop(context: Context) {
             context.stopService(Intent(context, AudioCaptureService::class.java))
+        }
+
+        /**
+         * Update the notification content from anywhere (e.g. capture engine).
+         * Safe to call when service is not running — no-op.
+         */
+        @Volatile private var serviceInstance: AudioCaptureService? = null
+
+        internal fun setServiceInstance(instance: AudioCaptureService?) {
+            serviceInstance = instance
+        }
+
+        fun updateNotification(isReceivingAudio: Boolean, isSilent: Boolean) {
+            serviceInstance?.updateNotificationContent(isReceivingAudio, isSilent)
         }
     }
 }

@@ -5,6 +5,8 @@ abstract class CaptureRepository {
   Future<CaptureResult> startCapture();
   Future<void> stopCapture();
   Future<CaptureStateResult> getCaptureState();
+  Future<bool> isIgnoringBatteryOptimizations();
+  Future<void> requestIgnoreBatteryOptimizations();
 }
 
 class LiveCaptureRepository implements CaptureRepository {
@@ -30,5 +32,15 @@ class LiveCaptureRepository implements CaptureRepository {
   @override
   Future<CaptureStateResult> getCaptureState() async {
     return _platform.getCaptureState();
+  }
+
+  @override
+  Future<bool> isIgnoringBatteryOptimizations() async {
+    return _platform.isIgnoringBatteryOptimizations();
+  }
+
+  @override
+  Future<void> requestIgnoreBatteryOptimizations() async {
+    return _platform.requestIgnoreBatteryOptimizations();
   }
 }

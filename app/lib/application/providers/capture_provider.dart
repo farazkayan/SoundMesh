@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../src/soundmesh_messages.g.dart';
 import '../repositories/capture_repository.dart';
@@ -18,33 +18,52 @@ class CaptureUiStateData {
   final CaptureUiState state;
   final CaptureMetadata? metadata;
   final CaptureError? error;
+  final FrameArrivalStats? frameStats;
+  final bool? isIgnoringBatteryOptimizations;
 
   const CaptureUiStateData({
     this.state = CaptureUiState.idle,
     this.metadata,
     this.error,
+    this.frameStats,
+    this.isIgnoringBatteryOptimizations,
   });
 
   CaptureUiStateData copyWith({
     CaptureUiState? state,
     CaptureMetadata? metadata,
     CaptureError? error,
+    FrameArrivalStats? frameStats,
+    bool? isIgnoringBatteryOptimizations,
   }) {
     return CaptureUiStateData(
       state: state ?? this.state,
       metadata: metadata ?? this.metadata,
       error: error ?? this.error,
+      frameStats: frameStats ?? this.frameStats,
+      isIgnoringBatteryOptimizations: isIgnoringBatteryOptimizations ?? this.isIgnoringBatteryOptimizations,
     );
   }
 }
 
-class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
+class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> with WidgetsBindingObserver {
   final CaptureRepository _repository;
   bool _isListening = false;
+  bool _batteryOptimizationChecked = false;
 
   CaptureStateNotifier(this._repository) : super(const CaptureUiStateData()) {
     _startListening();
     _refreshState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('[BatteryOptimization] App resumed - re-checking status');
+      _batteryOptimizationChecked = false; // Allow re-check
+      _checkBatteryOptimization();
+    }
   }
 
   void _startListening() {
@@ -60,6 +79,38 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
       _mapState(result);
     } catch (e) {
       debugPrint('[Capture] Failed to get initial state: $e');
+    }
+    // Check battery optimization status once on startup
+    _checkBatteryOptimization();
+  }
+
+  Future<void> _checkBatteryOptimization() async {
+    if (_batteryOptimizationChecked) {
+      debugPrint('[BatteryOptimization] Already checked, skipping');
+      return;
+    }
+    _batteryOptimizationChecked = true;
+    try {
+      debugPrint('[BatteryOptimization] Checking status via platform channel...');
+      final isIgnoring = await _repository.isIgnoringBatteryOptimizations();
+      debugPrint('[BatteryOptimization] Platform returned: $isIgnoring');
+      state = state.copyWith(isIgnoringBatteryOptimizations: isIgnoring);
+    } catch (e) {
+      debugPrint('[BatteryOptimization] Failed to check battery optimization: $e');
+    }
+  }
+
+  Future<void> requestIgnoreBatteryOptimizations() async {
+    debugPrint('[BatteryOptimization] Button pressed - requesting ignore battery optimizations');
+    try {
+      await _repository.requestIgnoreBatteryOptimizations();
+      debugPrint('[BatteryOptimization] Repository call returned, waiting to re-check');
+      // After the user responds to the system dialog, re-check status
+      await Future.delayed(const Duration(milliseconds: 500));
+      debugPrint('[BatteryOptimization] Re-checking battery optimization status');
+      await _checkBatteryOptimization();
+    } catch (e) {
+      debugPrint('[BatteryOptimization] Failed to request battery optimization exemption: $e');
     }
   }
 
@@ -80,6 +131,10 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
       metadata: metadata,
       error: null,
     );
+  }
+
+  void handleFrameStats(FrameArrivalStats stats) {
+    state = state.copyWith(frameStats: stats);
   }
 
   void handleError(String code, String message) {
@@ -168,6 +223,7 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> {
   @override
   void dispose() {
     AudioCaptureFlutterApi.setUp(null);
+    WidgetsBinding.instance.removeObserver(this);
     _isListening = false;
     super.dispose();
   }
@@ -188,6 +244,12 @@ class _CaptureFlutterApiImpl implements AudioCaptureFlutterApi {
   void onCaptureError(String errorCode, String errorMessage) {
     debugPrint('[Capture] Native error: $errorCode - $errorMessage');
     _notifier.handleError(errorCode, errorMessage);
+  }
+
+  @override
+  void onCaptureFramesReceived(FrameArrivalStats stats) {
+    debugPrint('[Capture] Frame stats: ${stats.totalFrames} frames, ${stats.framesPerSecond} fps');
+    _notifier.handleFrameStats(stats);
   }
 }
 
