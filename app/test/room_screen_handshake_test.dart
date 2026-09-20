@@ -40,8 +40,14 @@ class MockNetworkRepository extends NetworkRepository {
   }
 
   @override
-  Stream<NetworkConnectionState> get connectionStateStream =>
-      _stateController.stream;
+  // Replay the current state to EVERY subscriber, then forward live events.
+  // The lifecycle notifier subscribes before the screen notifier, so a
+  // plain onListen replay would only reach the first subscriber and leave
+  // later subscribers on a stale initial state.
+  Stream<NetworkConnectionState> get connectionStateStream async* {
+    yield _currentState;
+    yield* _stateController.stream;
+  }
 
   @override
   Stream<String> get messageStream => _messageController.stream;
@@ -281,8 +287,9 @@ testWidgets('shows ready state after handshake completes (host)', (
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Check app bar title shows "Host" which indicates ready state
-      expect(find.text('Host'), findsOneWidget);
+      // "Host" appears in the app bar title and the role status card
+      // (Phase 8 status section shows role explicitly).
+      expect(find.text('Host'), findsAtLeastNWidgets(1));
       expect(find.text('Handshaking...'), findsNothing);
     });
 
@@ -330,8 +337,9 @@ testWidgets('shows ready state after handshake completes (participant)', (
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Check app bar title shows "Participant" which indicates ready state
-      expect(find.text('Participant'), findsOneWidget);
+      // "Participant" appears in the app bar title and the role status card
+      // (Phase 8 status section shows role explicitly).
+      expect(find.text('Participant'), findsAtLeastNWidgets(1));
       expect(find.text('Handshaking...'), findsNothing);
     });
 
@@ -589,6 +597,73 @@ testWidgets('shows ready state after handshake completes (participant)', (
       networkRepo.setState(NetworkConnectionState.ready);
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('Protocol error: Invalid JSON'), findsOneWidget);
+    });
+
+    testWidgets('status section shows honest placeholders and no fabricated metrics when ready (host)', (
+      WidgetTester tester,
+    ) async {
+      // Tall viewport so the full Phase 8 status section is on-screen.
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final networkRepo = MockNetworkRepository();
+      networkRepo.setHostMode(true);
+      networkRepo.setState(NetworkConnectionState.ready);
+      networkRepo.setRoomLifecycleState(RoomLifecycleState.ready);
+
+      final createState = CreateRoomFlowState(
+        status: CreateRoomFlowStatus.ready,
+        connectionState: NetworkConnectionState.ready,
+      );
+
+      final lifecycleState = RoomLifecycleStateData(
+        lifecycleState: RoomLifecycleState.ready,
+        role: RoomRole.host,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            networkRepositoryProvider.overrideWithValue(networkRepo),
+            createRoomFlowProvider.overrideWith(
+              (_) => MockCreateRoomFlowNotifier(createState, networkRepo),
+            ),
+            joinRoomFlowProvider.overrideWith(
+              (_) => MockJoinRoomFlowNotifier(const JoinRoomFlowState(), networkRepo),
+            ),
+            roomLifecycleProvider.overrideWith(
+              (_) => MockRoomLifecycleNotifier(lifecycleState, networkRepo),
+            ),
+          ],
+          child: const MaterialApp(home: RoomScreen()),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // Real role data: host framing.
+      expect(find.text('Host'), findsAtLeastNWidgets(1));
+      expect(find.text('You are hosting this room'), findsOneWidget);
+
+      // Real connection state.
+      expect(find.text('Connection'), findsOneWidget);
+      expect(find.text('All systems connected'), findsOneWidget);
+
+      // Honest placeholder: no real device list exists. No device count
+      // number may be fabricated.
+      expect(find.text('Connected Devices'), findsOneWidget);
+      expect(find.text('Device tracking not yet implemented'), findsOneWidget);
+      expect(find.text('[UI SCAFFOLDING — NO REAL DEVICE DATA]'), findsOneWidget);
+
+      // No fabricated sync quality metrics: offset/drift do not exist on the
+      // backend and must not appear. The basic status explicitly notes that
+      // quality metrics are not yet available.
+      expect(find.textContaining('Synchronized (basic)'), findsOneWidget);
+      expect(find.textContaining('not yet available'), findsAtLeastNWidgets(1));
+      expect(find.textContaining('Offset:'), findsNothing);
+      expect(find.textContaining('Drift:'), findsNothing);
+      expect(find.textContaining('Sync Quality'), findsNothing);
+      expect(find.textContaining('Excellent'), findsNothing);
     });
   });
 }
