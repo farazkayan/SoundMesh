@@ -4,10 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:soundmesh/core/router/app_router.dart';
 import 'package:soundmesh/core/design_system/index.dart';
-import 'package:soundmesh/presentation/components/button.dart';
-import 'package:soundmesh/presentation/components/empty_state.dart';
-import 'package:soundmesh/presentation/components/loading_indicator.dart';
-import 'package:soundmesh/presentation/components/surface.dart';
+import 'package:soundmesh/presentation/components/index.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/infrastructure/discovery/discovery_types.dart';
 import 'package:soundmesh/application/protocol.dart';
@@ -1096,7 +1093,7 @@ class RoomDashboardScreen extends ConsumerWidget {
             style: SMTypography.label.copyWith(color: SMColors.secondaryText),
           ),
           SizedBox(height: SMSpacing.md),
-          _DeviceRow(
+          DeviceRow(
             name: isHost ? 'This Device (Host)' : 'This Device (Participant)',
             role: isHost ? 'HOST' : 'PARTICIPANT',
             roleColor: isHost ? SMColors.soundmeshBlue : SMColors.secondaryText,
@@ -1104,7 +1101,7 @@ class RoomDashboardScreen extends ConsumerWidget {
           ),
           if (participantJoined) ...[
             Divider(color: SMColors.divider, height: SMSpacing.lg),
-            _DeviceRow(
+            DeviceRow(
               name: 'Participant',
               role: 'PARTICIPANT',
               roleColor: SMColors.secondaryText,
@@ -1129,8 +1126,8 @@ class RoomDashboardScreen extends ConsumerWidget {
           ],
           SizedBox(height: SMSpacing.sm),
           Text(
-            '[NAMES ONLY — FULL PER-DEVICE STATE IS PHASE 9]',
-            style: SMTypography.metadata.copyWith(color: SMColors.warning),
+            'Per-device connection, audio, sync, and error state not yet available',
+            style: SMTypography.caption.copyWith(color: SMColors.mutedText),
           ),
         ],
       ),
@@ -1349,75 +1346,6 @@ class RoomDashboardScreen extends ConsumerWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-class _DeviceRow extends StatelessWidget {
-  const _DeviceRow({
-    required this.name,
-    required this.role,
-    required this.roleColor,
-    required this.isCurrent,
-  });
-
-  final String name;
-  final String role;
-  final Color roleColor;
-  final bool isCurrent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          isCurrent ? Icons.phone_android : Icons.phone_android_outlined,
-          size: 20,
-          color: isCurrent ? SMColors.soundmeshBlue : SMColors.secondaryText,
-        ),
-        SizedBox(width: SMSpacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: SMTypography.body.copyWith(color: SMColors.primaryText),
-              ),
-              SizedBox(height: 2),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: SMSpacing.xs, vertical: 1),
-                decoration: BoxDecoration(
-                  color: roleColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(SMRadius.small),
-                ),
-                child: Text(
-                  role,
-                  style: SMTypography.metadata.copyWith(
-                    color: roleColor,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (isCurrent)
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: SMSpacing.xs, vertical: 1),
-            decoration: BoxDecoration(
-              color: SMColors.soundmeshBlue.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(SMRadius.small),
-            ),
-            child: Text(
-              'YOU',
-              style: SMTypography.metadata.copyWith(
-                color: SMColors.soundmeshBlue,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-      ],
     );
   }
 }

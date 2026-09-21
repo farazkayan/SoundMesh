@@ -20,6 +20,7 @@ analyzer:
     - check_image.dart
     - check_legacy.dart
     - create_padded_icon.dart
+    - web/**
 
 linter:
   # The lint rules applied to this project can be customized in the
