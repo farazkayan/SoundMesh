@@ -35,6 +35,7 @@ class RoomPlaybackScreen extends ConsumerWidget {
   Widget _buildContent(BuildContext context, ApplicationState appState, CaptureUiStateData captureState, ReceiveUiStateData receiveState, WidgetRef ref) {
     final sync = appState.sync;
     final syncStatus = sync?.syncState ?? SMSyncStatus.unknown;
+    final isHost = appState.isHost == true;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -53,10 +54,17 @@ class RoomPlaybackScreen extends ConsumerWidget {
         SizedBox(height: SMSpacing.xl),
         _buildSyncStatusCard(syncStatus),
         SizedBox(height: SMSpacing.xxl),
-        _buildReceiveDebugSection(context, receiveState),
-        SizedBox(height: SMSpacing.xxl),
-        _buildCaptureDebugSection(context, captureState, ref),
-        SizedBox(height: SMSpacing.xxl),
+        // Receive debug section - PARTICIPANT ONLY
+        if (!isHost) ...[
+          _buildReceiveDebugSection(context, receiveState),
+          SizedBox(height: SMSpacing.xxl),
+        ],
+        // Capture debug section - HOST ONLY
+        if (isHost) ...[
+          _buildCaptureDebugSection(context, captureState, ref),
+          SizedBox(height: SMSpacing.xxl),
+        ],
+        // Output debug section - shown for both (both have output)
         _buildOutputDebugSection(context, ref),
       ],
     );
