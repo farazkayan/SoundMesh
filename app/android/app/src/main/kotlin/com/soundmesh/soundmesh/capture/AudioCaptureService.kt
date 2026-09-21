@@ -63,11 +63,21 @@ class AudioCaptureService : Service() {
         return START_NOT_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.i(TAG, "Task removed (swiped from Recents) — stopping capture and service")
+        // Perform the same cleanup as the notification's Stop action:
+        // stop capture engine, remove notification, stop service.
+        stopListener?.invoke()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // Invoke stop listener to clean up the capture engine (MediaProjection, AudioRecord)
         // This handles the case where the service is stopped while capture is active
-        // (e.g., app was swiped away and relaunched, or user taps Stop notification)
+        // (e.g., user taps Stop notification, or system stops service after onTaskRemoved)
         stopListener?.invoke()
         stopListener = null
         AudioCaptureService.setServiceInstance(null)
