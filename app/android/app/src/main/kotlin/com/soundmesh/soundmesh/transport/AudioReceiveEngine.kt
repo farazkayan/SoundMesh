@@ -54,6 +54,12 @@ class AudioReceiveEngine(
     private val packetsOutOfOrder = AtomicLong(0)
     private val bufferUnderruns = AtomicLong(0)
     private val bufferOverruns = AtomicLong(0)
+    
+    // --- Diagnostic counters for BUG #3 pipeline tracing ---
+    private val packetsDispatchedToOutput = AtomicLong(0)
+    private val lastPacketReceivedTimestampNanos = AtomicLong(0)
+    private var receiveDiagJob: Job? = null
+
     private var statsJob: Job? = null
     private var amplitudeJob: Job? = null
 
@@ -106,8 +112,18 @@ class AudioReceiveEngine(
             Log.i(TAG, "Adopting generation from AUDIO_STREAM_START: $generation")
         }
 
+        // Reset diagnostic counters
+        packetsReceived.set(0)
+        packetsLost.set(0)
+        packetsOutOfOrder.set(0)
+        bufferUnderruns.set(0)
+        bufferOverruns.set(0)
+        packetsDispatchedToOutput.set(0)
+        lastPacketReceivedTimestampNanos.set(0)
+
         // Start periodic stats reporting
         statsJob = scope.launch(Dispatchers.IO) { statsReporter() }
+        receiveDiagJob = scope.launch(Dispatchers.IO) { receiveDiagnosticsReporter() }
 
         // Start fast amplitude reporting for visual meter (~40-60ms updates)
         amplitudeJob = scope.launch(Dispatchers.IO) { amplitudeReporter() }
@@ -135,6 +151,9 @@ class AudioReceiveEngine(
 
         amplitudeJob?.cancel()
         amplitudeJob = null
+
+        receiveDiagJob?.cancel()
+        receiveDiagJob = null
 
         // Reset amplitude to zero when stopped
         latestPeakAmplitude = 0
@@ -169,6 +188,7 @@ class AudioReceiveEngine(
         }
 
         packetsReceived.incrementAndGet()
+        lastPacketReceivedTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
 
         val seq = packet.sequenceNumber
 
@@ -223,6 +243,7 @@ class AudioReceiveEngine(
 
         // Feed to output engine (Phase 9)
         outputEngine?.onAudioPacket(packet)
+        packetsDispatchedToOutput.incrementAndGet()
     }
 
     /**
@@ -328,12 +349,16 @@ class AudioReceiveEngine(
         packetsOutOfOrder.set(0)
         bufferUnderruns.set(0)
         bufferOverruns.set(0)
+        packetsDispatchedToOutput.set(0)
+        lastPacketReceivedTimestampNanos.set(0)
         latestPeakAmplitude = 0
         latestIsSilent = true
         statsJob?.cancel()
         statsJob = null
         amplitudeJob?.cancel()
         amplitudeJob = null
+        receiveDiagJob?.cancel()
+        receiveDiagJob = null
     }
 
     private suspend fun statsReporter() {
@@ -382,5 +407,29 @@ class AudioReceiveEngine(
             peakAmplitude = latestPeakAmplitude.toLong(),
             isSilent = latestIsSilent,
         )
+    }
+
+    /** Periodic diagnostic reporter for pipeline tracing (BUG #3). */
+    private suspend fun receiveDiagnosticsReporter() {
+        try {
+            while (isReceiving.get()) {
+                kotlinx.coroutines.delay(2000)
+                val now = SystemClock.elapsedRealtimeNanos()
+                val lastPacketAgeMs = if (lastPacketReceivedTimestampNanos.get() > 0) {
+                    (now - lastPacketReceivedTimestampNanos.get()) / 1_000_000
+                } else -1L
+                Log.i(
+                    TAG,
+                    "[DIAG] AudioReceive: packetsReceived=${packetsReceived.get()} " +
+                        "packetsLost=${packetsLost.get()} packetsOutOfOrder=${packetsOutOfOrder.get()} " +
+                        "bufferDepth=${getBufferDepth()} bufferDepthMs=${getBufferDepthMs()} " +
+                        "underruns=${bufferUnderruns.get()} overruns=${bufferOverruns.get()} " +
+                        "dispatchedToOutput=${packetsDispatchedToOutput.get()} " +
+                        "lastPacketAgeMs=$lastPacketAgeMs"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Receive diagnostics reporter failed", e)
+        }
     }
 }
