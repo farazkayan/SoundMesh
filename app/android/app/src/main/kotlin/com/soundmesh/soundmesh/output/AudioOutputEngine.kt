@@ -140,19 +140,28 @@ class AudioOutputEngine(
      * Start output (called on AUDIO_STREAM_START).
      */
     suspend fun onStreamStart(generation: Long) {
-        if (generation != currentGeneration) {
+        // Be lenient: accept if generation matches OR if we haven't received stream info yet (currentGeneration == 0)
+        // This handles the case where AUDIO_STREAM_START arrives before AUDIO_STREAM_INFO is processed
+        if (currentGeneration != 0L && generation != currentGeneration) {
             Log.w(TAG, "Stream start for wrong generation: $generation (current: $currentGeneration)")
-            return
-        }
-        if (!isInitialized.get()) {
-            Log.w(TAG, "Cannot start output: not initialized")
-            scope.launch {
-                notifyOutputState("ERROR", "OUTPUT_NOT_READY", "Output engine not initialized")
-            }
             return
         }
         if (isOutputting.get()) {
             Log.w(TAG, "Output already running")
+            return
+        }
+
+        // If we received stream start before stream info, adopt the generation
+        if (currentGeneration == 0L) {
+            currentGeneration = generation
+            Log.i(TAG, "Adopting generation from AUDIO_STREAM_START: $generation")
+        }
+
+        if (!isInitialized.get()) {
+            Log.w(TAG, "Cannot start output: not initialized (stream info may not have been processed yet)")
+            scope.launch {
+                notifyOutputState("ERROR", "OUTPUT_NOT_READY", "Output engine not initialized")
+            }
             return
         }
 
