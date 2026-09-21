@@ -114,6 +114,12 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
     state = state.copyWith(role: role, participantJoined: participantJoined);
   }
 
+  /// Public method to explicitly sync role and participantJoined from NetworkRepository.
+  /// Called by flow providers after intentional role changes (startHosting, connectToHost).
+  void syncRoleAndParticipantState() {
+    _syncRoleAndParticipantState();
+  }
+
   void setParticipantDisplayName(String? displayName) {
     _networkRepository.setParticipantDisplayName(displayName);
   }

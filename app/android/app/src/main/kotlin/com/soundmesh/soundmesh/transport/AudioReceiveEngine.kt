@@ -89,13 +89,21 @@ class AudioReceiveEngine(
      * Start receiving (called on AUDIO_STREAM_START).
      */
     suspend fun onStreamStart(generation: Long) {
-        if (generation != currentGeneration) {
+        // Be lenient: accept if generation matches OR if we haven't received stream info yet (currentGeneration == 0)
+        // This handles the case where AUDIO_STREAM_START arrives before AUDIO_STREAM_INFO is processed
+        if (currentGeneration != 0L && generation != currentGeneration) {
             Log.w(TAG, "Stream start for wrong generation: $generation (current: $currentGeneration)")
             return
         }
         if (isReceiving.getAndSet(true)) {
             Log.w(TAG, "onStreamStart called but already receiving")
             return
+        }
+
+        // If we received stream start before stream info, adopt the generation
+        if (currentGeneration == 0L) {
+            currentGeneration = generation
+            Log.i(TAG, "Adopting generation from AUDIO_STREAM_START: $generation")
         }
 
         // Start periodic stats reporting
@@ -142,6 +150,13 @@ class AudioReceiveEngine(
      */
     fun onAudioPacket(packet: AudioPacket) {
         if (!isReceiving.get()) return
+
+        // If we haven't adopted a generation yet (e.g., packets arrive before STREAM_START),
+        // adopt the packet's generation
+        if (currentGeneration == 0L) {
+            currentGeneration = packet.streamGeneration
+            Log.i(TAG, "Adopting generation from first AUDIO_PACKET: $currentGeneration")
+        }
 
         // Discard stale generations
         if (packet.streamGeneration < currentGeneration) {

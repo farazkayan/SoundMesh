@@ -89,10 +89,10 @@ class AudioTransportEngine(
         // Start the packet sender coroutine
         pendingSendJob = scope.launch(Dispatchers.IO) { packetSender() }
 
-        // Send AUDIO_STREAM_INFO message with format info
+        // Send AUDIO_STREAM_INFO message with format info FIRST (synchronously wait)
         sendStreamInfo(metadata)
 
-        // Send AUDIO_STREAM_START to signal participants
+        // Then send AUDIO_STREAM_START to signal participants (synchronously wait)
         sendStreamStart(metadata)
 
         notifyStreamState("STREAMING", metadata)

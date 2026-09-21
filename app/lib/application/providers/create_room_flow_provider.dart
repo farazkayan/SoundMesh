@@ -10,6 +10,7 @@ import '../room/room_lifecycle.dart';
 import '../../infrastructure/discovery/discovery_types.dart';
 import '../../infrastructure/discovery/discovery_manager.dart';
 import '../providers/discovery_provider.dart';
+import 'room_lifecycle_provider.dart';
 
 enum CreateRoomFlowStatus {
   idle,
@@ -211,7 +212,7 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
     state = state.copyWith(roomName: name);
   }
 
-  Future<void> createRoom() async {
+  Future<void> createRoom({WidgetRef? ref}) async {
     developer.log(
       'CreateRoomFlow: createRoom() called | roomName: "${state.roomName}" | currentStatus: ${state.status.name}',
       name: 'SoundMesh.CreateRoomFlow',
@@ -309,6 +310,13 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: startHosting returned: $hostingSuccess',
         name: 'SoundMesh.CreateRoomFlow',
       );
+
+      // Explicitly sync role after startHosting to ensure RoomLifecycleNotifier
+      // has the correct role (host) immediately, avoiding race condition where
+      // initial sync reads default role before NetworkRepository is updated.
+      if (hostingSuccess && ref != null) {
+        ref.read(roomLifecycleProvider.notifier).syncRoleAndParticipantState();
+      }
       
       developer.log(
         'CreateRoomFlow: startHosting completed',
