@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
 import 'package:soundmesh/core/design_system/index.dart';
 import 'package:soundmesh/core/router/app_router.dart';
-import 'package:soundmesh/presentation/components/button.dart';
-import 'package:soundmesh/presentation/components/empty_state.dart';
-import 'package:soundmesh/presentation/components/loading_indicator.dart';
-import 'package:soundmesh/presentation/components/surface.dart';
+import 'package:soundmesh/presentation/components/index.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
+import 'package:soundmesh/application/repositories/network_repository.dart';
 
 class RoomDevicesScreen extends ConsumerWidget {
   const RoomDevicesScreen({super.key});
@@ -16,6 +14,7 @@ class RoomDevicesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(applicationStateProvider);
     final lifecycleState = ref.watch(roomLifecycleProvider);
+    final connectionState = ref.watch(networkRepositoryProvider.select((r) => r.currentState));
     final participantJoined = lifecycleState.participantJoined;
     final isHost = appState.isHost == true;
     final deviceCount = 1 + (participantJoined ? 1 : 0);
@@ -27,13 +26,13 @@ class RoomDevicesScreen extends ConsumerWidget {
             horizontal: SMSpacing.xl,
             vertical: SMSpacing.xl,
           ),
-          child: _buildContent(context, appState, lifecycleState, deviceCount, participantJoined, isHost),
+          child: _buildContent(context, appState, lifecycleState, connectionState, deviceCount, participantJoined, isHost),
         ),
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context, ApplicationState appState, RoomLifecycleStateData lifecycleState, int deviceCount, bool participantJoined, bool isHost) {
+  Widget _buildContent(BuildContext context, ApplicationState appState, RoomLifecycleStateData lifecycleState, NetworkConnectionState connectionState, int deviceCount, bool participantJoined, bool isHost) {
     final state = appState.state;
 
     switch (state) {
@@ -56,7 +55,7 @@ class RoomDevicesScreen extends ConsumerWidget {
       case SMAppState.ready:
       case SMAppState.playing:
       case SMAppState.paused:
-        return _devicesContent(context, appState, lifecycleState, deviceCount, participantJoined, isHost);
+        return _devicesContent(context, appState, lifecycleState, connectionState, deviceCount, participantJoined, isHost);
 
       case SMAppState.stopping:
         return _stoppingContent(appState);
@@ -65,17 +64,60 @@ class RoomDevicesScreen extends ConsumerWidget {
       case SMAppState.idle:
       case SMAppState.creatingRoom:
       case SMAppState.joiningRoom:
-        return _devicesContent(context, appState, lifecycleState, deviceCount, participantJoined, isHost);
+        return _devicesContent(context, appState, lifecycleState, connectionState, deviceCount, participantJoined, isHost);
     }
   }
 
-  Widget _devicesContent(BuildContext context, ApplicationState appState, RoomLifecycleStateData lifecycleState, int deviceCount, bool participantJoined, bool isHost) {
+  Widget _devicesContent(BuildContext context, ApplicationState appState, RoomLifecycleStateData lifecycleState, NetworkConnectionState connectionState, int deviceCount, bool participantJoined, bool isHost) {
     final sync = appState.sync;
     final status = sync?.syncState ?? SMSyncStatus.unknown;
     final bool isSynchronized = status == SMSyncStatus.synchronized;
     final bool isCalibrating = status == SMSyncStatus.calibrating ||
         status == SMSyncStatus.preparing ||
         status == SMSyncStatus.resynchronizing;
+
+    // Room-level connection status (not per-device)
+    final String roomConnectionLabel;
+    final Color roomConnectionColor;
+    final IconData roomConnectionIcon;
+    switch (connectionState) {
+      case NetworkConnectionState.ready:
+        roomConnectionLabel = 'Connected';
+        roomConnectionColor = SMColors.success;
+        roomConnectionIcon = Icons.wifi;
+        break;
+      case NetworkConnectionState.handshaking:
+        roomConnectionLabel = 'Handshaking…';
+        roomConnectionColor = SMColors.warning;
+        roomConnectionIcon = Icons.sync;
+        break;
+      case NetworkConnectionState.listening:
+        roomConnectionLabel = isHost ? 'Listening for participant…' : 'Connecting…';
+        roomConnectionColor = SMColors.warning;
+        roomConnectionIcon = isHost ? Icons.wifi_tethering : Icons.wifi;
+        break;
+      case NetworkConnectionState.connecting:
+        roomConnectionLabel = 'Connecting…';
+        roomConnectionColor = SMColors.warning;
+        roomConnectionIcon = Icons.wifi;
+        break;
+      case NetworkConnectionState.reconnecting:
+        roomConnectionLabel = 'Reconnecting…';
+        roomConnectionColor = SMColors.warning;
+        roomConnectionIcon = Icons.sync;
+        break;
+      case NetworkConnectionState.failed:
+        roomConnectionLabel = 'Connection failed';
+        roomConnectionColor = SMColors.error;
+        roomConnectionIcon = Icons.wifi_off;
+        break;
+      case NetworkConnectionState.disconnected:
+      default:
+        roomConnectionLabel = 'Disconnected';
+        roomConnectionColor = SMColors.error;
+        roomConnectionIcon = Icons.wifi_off;
+        break;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -94,48 +136,101 @@ class RoomDevicesScreen extends ConsumerWidget {
         // Device count card
         _buildDeviceCountCard(deviceCount, participantJoined, isHost),
         SizedBox(height: SMSpacing.lg),
-        // Device list (names only)
+        // Device list (names + role only — no per-device state available)
         _buildDeviceListCard(participantJoined, isHost),
         SizedBox(height: SMSpacing.xl),
-        // Sync status card
+        // Room-level connection status card
         SMCard(
           elevated: true,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                isSynchronized
-                    ? Icons.sync
-                    : (isCalibrating ? Icons.sync : Icons.sync_disabled),
-                size: SMDimensions.emptyIconSize,
-                color: isSynchronized
-                    ? SMColors.success
-                    : (isCalibrating ? SMColors.warning : SMColors.warning),
+              Text(
+                'Room Connection',
+                style: SMTypography.label.copyWith(color: SMColors.secondaryText),
               ),
               SizedBox(height: SMSpacing.lg),
-              Text(
-                isSynchronized ? 'Synchronized' : 'Not Synchronized',
-                style: SMTypography.heading
-                    .copyWith(color: SMColors.primaryText),
+              Row(
+                children: [
+                  Icon(
+                    roomConnectionIcon,
+                    size: SMDimensions.iconSize,
+                    color: roomConnectionColor,
+                  ),
+                  SizedBox(width: SMSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          roomConnectionLabel,
+                          style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                        ),
+                        SizedBox(height: SMSpacing.xs),
+                        Text(
+                          'Room-level network state — not per-device',
+                          style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(height: SMSpacing.md),
+            ],
+          ),
+        ),
+        SizedBox(height: SMSpacing.lg),
+        // Room-level sync status card
+        SMCard(
+          elevated: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                isSynchronized
-                    ? 'Devices are calibrated and ready for synchronized session.'
-                    : 'Devices have not been calibrated for synchronized session.\n'
-                        'Run calibration to measure and compensate for latency differences.',
-                textAlign: TextAlign.center,
-                style: SMTypography.body
-                    .copyWith(color: SMColors.secondaryText),
+                'Room Sync Status',
+                style: SMTypography.label.copyWith(color: SMColors.secondaryText),
               ),
-              SizedBox(height: SMSpacing.xl),
-              if (isSynchronized && sync != null && sync.offsetMs != null)
+              SizedBox(height: SMSpacing.lg),
+              Row(
+                children: [
+                  Icon(
+                    isSynchronized
+                        ? Icons.sync
+                        : (isCalibrating ? Icons.sync : Icons.sync_disabled),
+                    size: SMDimensions.iconSize,
+                    color: isSynchronized
+                        ? SMColors.success
+                        : (isCalibrating ? SMColors.warning : SMColors.warning),
+                  ),
+                  SizedBox(width: SMSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isSynchronized ? 'Synchronized' : 'Not Synchronized',
+                          style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                        ),
+                        SizedBox(height: SMSpacing.xs),
+                        Text(
+                          isSynchronized
+                              ? 'Devices are calibrated and ready for synchronized session.'
+                              : 'Devices have not been calibrated for synchronized session.\nRun calibration to measure and compensate for latency differences.',
+                          style: SMTypography.body.copyWith(color: SMColors.secondaryText),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (isSynchronized && sync != null && sync.offsetMs != null) ...[
+                SizedBox(height: SMSpacing.lg),
                 Text(
-                  'Offset: ${sync.offsetMs!.toStringAsFixed(1)} ms · '
-                  'Drift: ${sync.driftMsPerSecond?.toStringAsFixed(2) ?? "?"} ms/s',
-                  style: SMTypography.caption
-                      .copyWith(color: SMColors.secondaryText),
+                  'Offset: ${sync.offsetMs!.toStringAsFixed(1)} ms · Drift: ${sync.driftMsPerSecond?.toStringAsFixed(2) ?? "?"} ms/s',
+                  style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
                 ),
-              SizedBox(height: SMSpacing.xl),
+              ],
+              SizedBox(height: SMSpacing.lg),
               SMButton(
                 text: isSynchronized ? 'Re-calibrate' : 'Calibrate Devices',
                 icon: isCalibrating ? Icons.sync : Icons.sync,
@@ -152,18 +247,13 @@ class RoomDevicesScreen extends ConsumerWidget {
                 Text(
                   'Calibrating…',
                   textAlign: TextAlign.center,
-                  style: SMTypography.caption
-                      .copyWith(color: SMColors.secondaryText),
+                  style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
                 ),
               ],
               SizedBox(height: SMSpacing.lg),
-              const Text(
+              Text(
                 '[UI SCAFFOLDING — NO REAL CALIBRATION LOGIC]',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: SMColors.warning,
-                ),
+                style: SMTypography.metadata.copyWith(color: SMColors.warning),
               ),
             ],
           ),
@@ -265,7 +355,7 @@ class RoomDevicesScreen extends ConsumerWidget {
             style: SMTypography.label.copyWith(color: SMColors.secondaryText),
           ),
           SizedBox(height: SMSpacing.md),
-          _DeviceRow(
+          DeviceRow(
             name: isHost ? 'This Device (Host)' : 'This Device (Participant)',
             role: isHost ? 'HOST' : 'PARTICIPANT',
             roleColor: isHost ? SMColors.soundmeshBlue : SMColors.secondaryText,
@@ -273,7 +363,7 @@ class RoomDevicesScreen extends ConsumerWidget {
           ),
           if (participantJoined) ...[
             Divider(color: SMColors.divider, height: SMSpacing.lg),
-            _DeviceRow(
+            DeviceRow(
               name: 'Participant',
               role: 'PARTICIPANT',
               roleColor: SMColors.secondaryText,
@@ -298,8 +388,8 @@ class RoomDevicesScreen extends ConsumerWidget {
           ],
           SizedBox(height: SMSpacing.sm),
           Text(
-            '[NAMES ONLY — FULL PER-DEVICE STATE IS PHASE 9]',
-            style: SMTypography.metadata.copyWith(color: SMColors.warning),
+            'Per-device connection, audio, sync, and error state not yet available',
+            style: SMTypography.caption.copyWith(color: SMColors.mutedText),
           ),
         ],
       ),
@@ -354,75 +444,6 @@ class RoomDevicesScreen extends ConsumerWidget {
               SMTypography.body.copyWith(color: SMColors.secondaryText),
         ),
         SizedBox(height: SMSpacing.xxl),
-      ],
-    );
-  }
-}
-
-class _DeviceRow extends StatelessWidget {
-  const _DeviceRow({
-    required this.name,
-    required this.role,
-    required this.roleColor,
-    required this.isCurrent,
-  });
-
-  final String name;
-  final String role;
-  final Color roleColor;
-  final bool isCurrent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(
-          isCurrent ? Icons.phone_android : Icons.phone_android_outlined,
-          size: 20,
-          color: isCurrent ? SMColors.soundmeshBlue : SMColors.secondaryText,
-        ),
-        SizedBox(width: SMSpacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: SMTypography.body.copyWith(color: SMColors.primaryText),
-              ),
-              SizedBox(height: 2),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: SMSpacing.xs, vertical: 1),
-                decoration: BoxDecoration(
-                  color: roleColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(SMRadius.small),
-                ),
-                child: Text(
-                  role,
-                  style: SMTypography.metadata.copyWith(
-                    color: roleColor,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (isCurrent)
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: SMSpacing.xs, vertical: 1),
-            decoration: BoxDecoration(
-              color: SMColors.soundmeshBlue.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(SMRadius.small),
-            ),
-            child: Text(
-              'YOU',
-              style: SMTypography.metadata.copyWith(
-                color: SMColors.soundmeshBlue,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
       ],
     );
   }
