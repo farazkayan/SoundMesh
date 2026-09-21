@@ -717,7 +717,9 @@ data class ReceiveStats (
   val bufferDepthMs: Long,
   val lossRate: Double,
   val timestampNanos: Long,
-  val isHealthy: Boolean
+  val isHealthy: Boolean,
+  val peakAmplitude: Long,
+  val isSilent: Boolean
 )
  {
   companion object {
@@ -729,7 +731,9 @@ data class ReceiveStats (
       val lossRate = pigeonVar_list[4] as Double
       val timestampNanos = pigeonVar_list[5] as Long
       val isHealthy = pigeonVar_list[6] as Boolean
-      return ReceiveStats(packetsReceived, packetsLost, packetsOutOfOrder, bufferDepthMs, lossRate, timestampNanos, isHealthy)
+      val peakAmplitude = pigeonVar_list[7] as Long
+      val isSilent = pigeonVar_list[8] as Boolean
+      return ReceiveStats(packetsReceived, packetsLost, packetsOutOfOrder, bufferDepthMs, lossRate, timestampNanos, isHealthy, peakAmplitude, isSilent)
     }
   }
   fun toList(): List<Any?> {
@@ -741,6 +745,8 @@ data class ReceiveStats (
       lossRate,
       timestampNanos,
       isHealthy,
+      peakAmplitude,
+      isSilent,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -751,7 +757,7 @@ data class ReceiveStats (
       return true
     }
     val other = other as ReceiveStats
-    return SoundMeshMessagesPigeonUtils.deepEquals(this.packetsReceived, other.packetsReceived) && SoundMeshMessagesPigeonUtils.deepEquals(this.packetsLost, other.packetsLost) && SoundMeshMessagesPigeonUtils.deepEquals(this.packetsOutOfOrder, other.packetsOutOfOrder) && SoundMeshMessagesPigeonUtils.deepEquals(this.bufferDepthMs, other.bufferDepthMs) && SoundMeshMessagesPigeonUtils.deepEquals(this.lossRate, other.lossRate) && SoundMeshMessagesPigeonUtils.deepEquals(this.timestampNanos, other.timestampNanos) && SoundMeshMessagesPigeonUtils.deepEquals(this.isHealthy, other.isHealthy)
+    return SoundMeshMessagesPigeonUtils.deepEquals(this.packetsReceived, other.packetsReceived) && SoundMeshMessagesPigeonUtils.deepEquals(this.packetsLost, other.packetsLost) && SoundMeshMessagesPigeonUtils.deepEquals(this.packetsOutOfOrder, other.packetsOutOfOrder) && SoundMeshMessagesPigeonUtils.deepEquals(this.bufferDepthMs, other.bufferDepthMs) && SoundMeshMessagesPigeonUtils.deepEquals(this.lossRate, other.lossRate) && SoundMeshMessagesPigeonUtils.deepEquals(this.timestampNanos, other.timestampNanos) && SoundMeshMessagesPigeonUtils.deepEquals(this.isHealthy, other.isHealthy) && SoundMeshMessagesPigeonUtils.deepEquals(this.peakAmplitude, other.peakAmplitude) && SoundMeshMessagesPigeonUtils.deepEquals(this.isSilent, other.isSilent)
   }
 
   override fun hashCode(): Int {
@@ -763,10 +769,12 @@ data class ReceiveStats (
     result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.lossRate)
     result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.timestampNanos)
     result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.isHealthy)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.peakAmplitude)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.isSilent)
     return result
   }
   override fun toString(): String {
-    return "ReceiveStats(packetsReceived=$packetsReceived, packetsLost=$packetsLost, packetsOutOfOrder=$packetsOutOfOrder, bufferDepthMs=$bufferDepthMs, lossRate=$lossRate, timestampNanos=$timestampNanos, isHealthy=$isHealthy)"
+    return "ReceiveStats(packetsReceived=$packetsReceived, packetsLost=$packetsLost, packetsOutOfOrder=$packetsOutOfOrder, bufferDepthMs=$bufferDepthMs, lossRate=$lossRate, timestampNanos=$timestampNanos, isHealthy=$isHealthy, peakAmplitude=$peakAmplitude, isSilent=$isSilent)"
   }
 }
 
@@ -808,6 +816,88 @@ data class ReceiveState (
   }
   override fun toString(): String {
     return "ReceiveState(state=$state, stats=$stats)"
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class OutputState (
+  val state: String,
+  val bufferedMs: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): OutputState {
+      val state = pigeonVar_list[0] as String
+      val bufferedMs = pigeonVar_list[1] as Long
+      return OutputState(state, bufferedMs)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      state,
+      bufferedMs,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as OutputState
+    return SoundMeshMessagesPigeonUtils.deepEquals(this.state, other.state) && SoundMeshMessagesPigeonUtils.deepEquals(this.bufferedMs, other.bufferedMs)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.state)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.bufferedMs)
+    return result
+  }
+  override fun toString(): String {
+    return "OutputState(state=$state, bufferedMs=$bufferedMs)"
+  }
+}
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class OutputError (
+  val code: String,
+  val message: String
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): OutputError {
+      val code = pigeonVar_list[0] as String
+      val message = pigeonVar_list[1] as String
+      return OutputError(code, message)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      code,
+      message,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as OutputError
+    return SoundMeshMessagesPigeonUtils.deepEquals(this.code, other.code) && SoundMeshMessagesPigeonUtils.deepEquals(this.message, other.message)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.code)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.message)
+    return result
+  }
+  override fun toString(): String {
+    return "OutputError(code=$code, message=$message)"
   }
 }
 private open class SoundMeshMessagesPigeonCodec : StandardMessageCodec() {
@@ -878,6 +968,16 @@ private open class SoundMeshMessagesPigeonCodec : StandardMessageCodec() {
           ReceiveState.fromList(it)
         }
       }
+      142.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          OutputState.fromList(it)
+        }
+      }
+      143.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          OutputError.fromList(it)
+        }
+      }
       else -> super.readValueOfType(type, buffer)
     }
   }
@@ -935,12 +1035,98 @@ private open class SoundMeshMessagesPigeonCodec : StandardMessageCodec() {
         stream.write(141)
         writeValue(stream, value.toList())
       }
+      is OutputState -> {
+        stream.write(142)
+        writeValue(stream, value.toList())
+      }
+      is OutputError -> {
+        stream.write(143)
+        writeValue(stream, value.toList())
+      }
       else -> super.writeValue(stream, value)
     }
   }
 }
 
 
+/** Generated interface from Pigeon that represents a handler of messages from Flutter. */
+interface AudioOutputPlatform {
+  fun getOutputState(): OutputState
+
+  companion object {
+    /** The codec used by AudioOutputPlatform. */
+    val codec: MessageCodec<Any?> by lazy {
+      SoundMeshMessagesPigeonCodec()
+    }
+    /** Sets up an instance of `AudioOutputPlatform` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: AudioOutputPlatform?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.soundmesh.AudioOutputPlatform.getOutputState$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.getOutputState())
+            } catch (exception: Throwable) {
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
+/** Generated class from Pigeon that represents Flutter messages that can be called from Kotlin. */
+class AudioOutputFlutterApi(private val binaryMessenger: BinaryMessenger, private val messageChannelSuffix: String = "") {
+  companion object {
+    /** The codec used by AudioOutputFlutterApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      SoundMeshMessagesPigeonCodec()
+    }
+  }
+  suspend fun onOutputStateChanged(stateArg: String, bufferedMsArg: Long)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    return suspendCancellableCoroutine { continuation ->
+      val channelName = "dev.flutter.pigeon.soundmesh.AudioOutputFlutterApi.onOutputStateChanged$separatedMessageChannelSuffix"
+      val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+      channel.send(listOf(stateArg, bufferedMsArg)) {
+        if (it is List<*>) {
+          if (it.size > 1) {
+            continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))
+          } else {
+            continuation.resume(Unit)
+          }
+        } else {
+          continuation.resumeWithException(SoundMeshMessagesPigeonUtils.createConnectionError(channelName))
+        } 
+      }
+    }
+  }
+  suspend fun onOutputError(errorCodeArg: String, errorMessageArg: String)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    return suspendCancellableCoroutine { continuation ->
+      val channelName = "dev.flutter.pigeon.soundmesh.AudioOutputFlutterApi.onOutputError$separatedMessageChannelSuffix"
+      val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+      channel.send(listOf(errorCodeArg, errorMessageArg)) {
+        if (it is List<*>) {
+          if (it.size > 1) {
+            continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))
+          } else {
+            continuation.resume(Unit)
+          }
+        } else {
+          continuation.resumeWithException(SoundMeshMessagesPigeonUtils.createConnectionError(channelName))
+        } 
+      }
+    }
+  }
+}
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface NetworkHostPlatform {
   fun startHosting(port: Long): Boolean
@@ -1576,6 +1762,25 @@ class AudioReceiveFlutterApi(private val binaryMessenger: BinaryMessenger, priva
       val channelName = "dev.flutter.pigeon.soundmesh.AudioReceiveFlutterApi.onStreamStateChanged$separatedMessageChannelSuffix"
       val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
       channel.send(listOf(stateArg, statsArg)) {
+        if (it is List<*>) {
+          if (it.size > 1) {
+            continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))
+          } else {
+            continuation.resume(Unit)
+          }
+        } else {
+          continuation.resumeWithException(SoundMeshMessagesPigeonUtils.createConnectionError(channelName))
+        } 
+      }
+    }
+  }
+  suspend fun onAudioLevelUpdate(peakAmplitudeArg: Long, isSilentArg: Boolean)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    return suspendCancellableCoroutine { continuation ->
+      val channelName = "dev.flutter.pigeon.soundmesh.AudioReceiveFlutterApi.onAudioLevelUpdate$separatedMessageChannelSuffix"
+      val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+      channel.send(listOf(peakAmplitudeArg, isSilentArg)) {
         if (it is List<*>) {
           if (it.size > 1) {
             continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))

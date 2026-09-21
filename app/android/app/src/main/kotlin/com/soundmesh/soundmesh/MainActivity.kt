@@ -20,11 +20,13 @@ import com.soundmesh.soundmesh.capture.MediaProjectionHelper
 import com.soundmesh.soundmesh.capture.CaptureDiagnostics
 import com.soundmesh.soundmesh.FrameArrivalStats
 import com.soundmesh.soundmesh.discovery.DiscoveryService
+import com.soundmesh.soundmesh.output.AudioOutputEngine
 import com.soundmesh.soundmesh.transport.AudioPacket
 import com.soundmesh.soundmesh.transport.AudioReceiveEngine
 import com.soundmesh.soundmesh.transport.AudioTransportEngine
 import com.soundmesh.soundmesh.ReceiveState
 import com.soundmesh.soundmesh.ReceiveStats
+import com.soundmesh.soundmesh.OutputState
 import com.soundmesh.soundmesh.StreamingMetadata
 import com.soundmesh.soundmesh.StreamingState
 import io.flutter.embedding.android.FlutterActivity
@@ -48,7 +50,7 @@ import java.net.NetworkInterface
 import java.nio.charset.StandardCharsets
 
 class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkHostPlatform,
-    AudioCapturePlatform, AudioReceivePlatform {
+    AudioCapturePlatform, AudioReceivePlatform, AudioOutputPlatform {
     private val TAG = "NetworkHandler"
     private val DEFAULT_PORT = 8765
 
@@ -95,6 +97,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private var transportEngine: AudioTransportEngine? = null
     private var receiveEngine: AudioReceiveEngine? = null
     private var receiveFlutterApi: AudioReceiveFlutterApi? = null
+    private var outputFlutterApi: AudioOutputFlutterApi? = null
+
+    // ---- Phase 9: audio output ----
+    private var outputEngine: AudioOutputEngine? = null
 
     // ---- Discovery ----
     private lateinit var discoveryService: DiscoveryService
@@ -131,6 +137,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         AudioReceivePlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
         receiveFlutterApi = AudioReceiveFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
 
+        // ---- Phase 9: AudioOutputPlatform ----
+        AudioOutputPlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
+        outputFlutterApi = AudioOutputFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
+
         // Create transport engines
         transportEngine = AudioTransportEngine(
             context = this,
@@ -142,7 +152,16 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         receiveEngine = AudioReceiveEngine(
             scope = scope,
             notifyStreamState = { state, stats -> notifyReceiveState(state, stats) },
+            notifyAudioLevel = { peakAmplitude, isSilent -> notifyReceiveAudioLevel(peakAmplitude, isSilent) },
         )
+        outputEngine = AudioOutputEngine(
+            context = this,
+            scope = scope,
+            notifyOutputState = { state, errorCode, errorMessage -> notifyOutputState(state, errorCode, errorMessage) },
+        )
+
+        // Wire receive engine to output engine
+        receiveEngine?.setOutputEngine(outputEngine!!)
 
         // ---- Discovery ----
         discoveryService = DiscoveryService(this)
@@ -399,6 +418,12 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         return receiveEngine?.getState() ?: ReceiveState(state = "IDLE", stats = null)
     }
 
+    // ---- Phase 9: AudioOutputPlatform ----
+
+    override fun getOutputState(): OutputState {
+        return outputEngine?.getState() ?: OutputState(state = "ERROR", bufferedMs = 0)
+    }
+
     override fun isIgnoringBatteryOptimizations(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             // Before Android 6.0, no battery optimization exists
@@ -524,6 +549,38 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 receiveFlutterApi?.onStreamStateChanged(state, stats)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to notify receive state", e)
+            }
+        }
+    }
+
+    private suspend fun notifyReceiveAudioLevel(peakAmplitude: Int, isSilent: Boolean) {
+        withContext(Dispatchers.Main) {
+            try {
+                receiveFlutterApi?.onAudioLevelUpdate(peakAmplitude.toLong(), isSilent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify receive audio level", e)
+            }
+        }
+    }
+
+    private suspend fun notifyOutputState(state: String, errorCode: String?, errorMessage: String?) {
+        withContext(Dispatchers.Main) {
+            try {
+                when (state) {
+                    "OUTPUT_STARTED" -> outputFlutterApi?.onOutputStateChanged("PLAYING", 0)
+                    "OUTPUT_STOPPED" -> outputFlutterApi?.onOutputStateChanged("STOPPED", 0)
+                    "OUTPUT_UNDERRUN" -> outputFlutterApi?.onOutputStateChanged("UNDERRUN", 0)
+                    "OUTPUT_ROUTE_CHANGED" -> outputFlutterApi?.onOutputStateChanged("ROUTE_CHANGED", 0)
+                    "ERROR" -> {
+                        outputFlutterApi?.onOutputStateChanged("ERROR", 0)
+                        if (errorCode != null && errorMessage != null) {
+                            outputFlutterApi?.onOutputError(errorCode, errorMessage)
+                        }
+                    }
+                    else -> outputFlutterApi?.onOutputStateChanged(state, 0)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify output state", e)
             }
         }
     }

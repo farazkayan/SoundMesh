@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.soundmesh.soundmesh.ReceiveState
 import com.soundmesh.soundmesh.ReceiveStats
+import com.soundmesh.soundmesh.output.AudioOutputEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +25,8 @@ class AudioReceiveEngine(
     private val scope: CoroutineScope,
     /** Notify Flutter of receive state changes (STREAMING/RECOVERING/FAILED/STOPPED). */
     private val notifyStreamState: suspend (state: String, stats: ReceiveStats?) -> Unit,
+    /** Notify Flutter of audio level updates for visual meter (peakAmplitude 0-32767, isSilent). */
+    private val notifyAudioLevel: suspend (peakAmplitude: Int, isSilent: Boolean) -> Unit,
 ) {
     private val TAG = "AudioReceiveEngine"
 
@@ -52,6 +55,18 @@ class AudioReceiveEngine(
     private val bufferUnderruns = AtomicLong(0)
     private val bufferOverruns = AtomicLong(0)
     private var statsJob: Job? = null
+    private var amplitudeJob: Job? = null
+
+    // Latest audio amplitude for visual meter
+    private var latestPeakAmplitude = 0
+    private var latestIsSilent = true
+
+    // Output engine (Phase 9) - set after construction
+    private var outputEngine: AudioOutputEngine? = null
+
+    fun setOutputEngine(engine: AudioOutputEngine) {
+        outputEngine = engine
+    }
 
     /**
      * Initialize for a new stream (called on AUDIO_STREAM_INFO with new generation).
@@ -66,6 +81,7 @@ class AudioReceiveEngine(
             this.sampleRate = sampleRate
             this.channelCount = channelCount
             expectedSequence = 0
+            outputEngine?.onStreamInfo(generation, sampleRate, channelCount)
         }
     }
 
@@ -85,7 +101,11 @@ class AudioReceiveEngine(
         // Start periodic stats reporting
         statsJob = scope.launch(Dispatchers.IO) { statsReporter() }
 
+        // Start fast amplitude reporting for visual meter (~40-60ms updates)
+        amplitudeJob = scope.launch(Dispatchers.IO) { amplitudeReporter() }
+
         notifyStreamState("STREAMING", computeStats())
+        outputEngine?.onStreamStart(generation)
         Log.i(TAG, "Receiving started for generation $generation")
     }
 
@@ -105,6 +125,14 @@ class AudioReceiveEngine(
         statsJob?.cancel()
         statsJob = null
 
+        amplitudeJob?.cancel()
+        amplitudeJob = null
+
+        // Reset amplitude to zero when stopped
+        latestPeakAmplitude = 0
+        latestIsSilent = true
+
+        outputEngine?.onStreamStop(generation)
         notifyStreamState("STOPPED", null)
         Log.i(TAG, "Receiving stopped for generation $generation")
     }
@@ -131,6 +159,10 @@ class AudioReceiveEngine(
 
         // Compute payload audio stats (peak amplitude, silence detection)
         val (peakAmplitude, isSilent) = computePayloadStats(packet.payload)
+
+        // Update latest amplitude for visual meter
+        latestPeakAmplitude = peakAmplitude
+        latestIsSilent = isSilent
 
         // Periodic logging for packet flow verification (every 50 packets ~ 1 second)
         if (seq % 50 == 0) {
@@ -173,6 +205,9 @@ class AudioReceiveEngine(
 
         jitterBuffer[index] = packet
         bufferTail = seq + 1
+
+        // Feed to output engine (Phase 9)
+        outputEngine?.onAudioPacket(packet)
     }
 
     /**
@@ -278,8 +313,12 @@ class AudioReceiveEngine(
         packetsOutOfOrder.set(0)
         bufferUnderruns.set(0)
         bufferOverruns.set(0)
+        latestPeakAmplitude = 0
+        latestIsSilent = true
         statsJob?.cancel()
         statsJob = null
+        amplitudeJob?.cancel()
+        amplitudeJob = null
     }
 
     private suspend fun statsReporter() {
@@ -293,6 +332,21 @@ class AudioReceiveEngine(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Stats reporter failed", e)
+        }
+    }
+
+    /**
+     * Fast amplitude reporter for visual meter updates (~40-60ms).
+     * Reports latest peak amplitude and silence state to Flutter for real-time VU meter.
+     */
+    private suspend fun amplitudeReporter() {
+        try {
+            while (isReceiving.get()) {
+                notifyAudioLevel(latestPeakAmplitude, latestIsSilent)
+                kotlinx.coroutines.delay(50) // ~20ms * 2.5 packets = 50ms
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Amplitude reporter failed", e)
         }
     }
 
@@ -310,6 +364,8 @@ class AudioReceiveEngine(
             lossRate = lossRate,
             timestampNanos = SystemClock.elapsedRealtimeNanos(),
             isHealthy = isHealthy(),
+            peakAmplitude = latestPeakAmplitude.toLong(),
+            isSilent = latestIsSilent,
         )
     }
 }
