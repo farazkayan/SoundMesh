@@ -4,7 +4,6 @@ import android.os.SystemClock
 import android.util.Log
 import com.soundmesh.soundmesh.ReceiveState
 import com.soundmesh.soundmesh.ReceiveStats
-import com.soundmesh.soundmesh.output.AudioOutputEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -56,7 +55,6 @@ class AudioReceiveEngine(
     private val bufferOverruns = AtomicLong(0)
     
     // --- Diagnostic counters for BUG #3 pipeline tracing ---
-    private val packetsDispatchedToOutput = AtomicLong(0)
     private val lastPacketReceivedTimestampNanos = AtomicLong(0)
     private var receiveDiagJob: Job? = null
 
@@ -66,13 +64,6 @@ class AudioReceiveEngine(
     // Latest audio amplitude for visual meter
     private var latestPeakAmplitude = 0
     private var latestIsSilent = true
-
-    // Output engine (Phase 9) - set after construction
-    private var outputEngine: AudioOutputEngine? = null
-
-    fun setOutputEngine(engine: AudioOutputEngine) {
-        outputEngine = engine
-    }
 
     /**
      * Initialize for a new stream (called on AUDIO_STREAM_INFO with new generation).
@@ -87,7 +78,6 @@ class AudioReceiveEngine(
             this.sampleRate = sampleRate
             this.channelCount = channelCount
             expectedSequence = 0
-            outputEngine?.onStreamInfo(generation, sampleRate, channelCount)
         }
     }
 
@@ -118,7 +108,6 @@ class AudioReceiveEngine(
         packetsOutOfOrder.set(0)
         bufferUnderruns.set(0)
         bufferOverruns.set(0)
-        packetsDispatchedToOutput.set(0)
         lastPacketReceivedTimestampNanos.set(0)
 
         // Start periodic stats reporting
@@ -129,7 +118,6 @@ class AudioReceiveEngine(
         amplitudeJob = scope.launch(Dispatchers.IO) { amplitudeReporter() }
 
         notifyStreamState("STREAMING", computeStats())
-        outputEngine?.onStreamStart(generation)
         Log.i(TAG, "Receiving started for generation $generation")
     }
 
@@ -159,7 +147,6 @@ class AudioReceiveEngine(
         latestPeakAmplitude = 0
         latestIsSilent = true
 
-        outputEngine?.onStreamStop(generation)
         notifyStreamState("STOPPED", null)
         Log.i(TAG, "Receiving stopped for generation $generation")
     }
@@ -240,25 +227,22 @@ class AudioReceiveEngine(
 
         jitterBuffer[index] = packet
         bufferTail = seq + 1
-
-        // Feed to output engine (Phase 9)
-        outputEngine?.onAudioPacket(packet)
-        packetsDispatchedToOutput.incrementAndGet()
     }
 
     /**
      * Compute peak amplitude and silence detection from PCM payload.
-     * Payload is 16-bit stereo PCM (2 bytes per sample * 2 channels).
+     * Payload is 16-bit stereo PCM (2 bytes per sample * 2 channels), little-endian.
      */
     private fun computePayloadStats(payload: ByteArray): kotlin.Pair<Int, Boolean> {
         var peak = 0
         var nonZeroSamples = 0
-        // Process as 16-bit samples (2 bytes per sample)
+        // Process as signed 16-bit little-endian samples (2 bytes per sample)
         for (i in 0 until payload.size step 2) {
             if (i + 1 < payload.size) {
                 val lowByte = payload[i].toInt() and 0xFF
                 val highByte = payload[i + 1].toInt() and 0xFF
-                val sample = lowByte + (highByte * 256)
+                // Correct signed 16-bit reconstruction: little-endian
+                val sample = (highByte shl 8) or lowByte
                 val absSample = if (sample < 0) -sample else sample
                 if (absSample > peak) peak = absSample
                 if (absSample > 0) nonZeroSamples++
@@ -349,7 +333,6 @@ class AudioReceiveEngine(
         packetsOutOfOrder.set(0)
         bufferUnderruns.set(0)
         bufferOverruns.set(0)
-        packetsDispatchedToOutput.set(0)
         lastPacketReceivedTimestampNanos.set(0)
         latestPeakAmplitude = 0
         latestIsSilent = true
@@ -424,7 +407,6 @@ class AudioReceiveEngine(
                         "packetsLost=${packetsLost.get()} packetsOutOfOrder=${packetsOutOfOrder.get()} " +
                         "bufferDepth=${getBufferDepth()} bufferDepthMs=${getBufferDepthMs()} " +
                         "underruns=${bufferUnderruns.get()} overruns=${bufferOverruns.get()} " +
-                        "dispatchedToOutput=${packetsDispatchedToOutput.get()} " +
                         "lastPacketAgeMs=$lastPacketAgeMs"
                 )
             }

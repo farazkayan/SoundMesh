@@ -184,7 +184,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         )
 
         // Wire receive engine to output engine
-        receiveEngine?.setOutputEngine(outputEngine!!)
+        outputEngine!!.setReceiveEngine(receiveEngine!!)
 
         // ---- Discovery ----
         discoveryService = DiscoveryService(this)
@@ -885,27 +885,6 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         Log.d(TAG, "[WriterDebug] sendProtocolMessage: messageType preview = ${message.take(minOf(200, message.length))}")
         return buildAndEnqueueJson(message)
     }
-                    frame[0] = (payload.size shr 24).toByte()
-                    frame[1] = (payload.size shr 16).toByte()
-                    frame[2] = (payload.size shr 8).toByte()
-                    frame[3] = payload.size.toByte()
-                    System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
-                    
-                    Log.d(TAG, "[WriterDebug] sendProtocolMessage: messageType preview = ${message.take(minOf(200, message.length))}")
-                    val outputStream = socket.getOutputStream()
-                    outputStream.write(frame)
-                    outputStream.flush()
-                    socketWritesSucceeded.incrementAndGet()
-                    socketBytesWritten.addAndGet(frame.size.toLong())
-                    lastSocketWriteTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "sendProtocolMessage failed", e)
-                socketWritesFailed.incrementAndGet()
-            }
-        }
-        return true
-    }
 
     override fun disconnect() {
         Log.d(TAG, "[HostLifecycle] disconnect() called")
@@ -1179,15 +1158,18 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         val startedAtNanos = payload.optLong("startedAtNanos", 0)
                         Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_INFO: sr=$sampleRate ch=$channelCount gen=$generation")
                         receiveEngine?.onStreamInfo(sessionId, generation, sampleRate, channelCount)
+                        outputEngine?.onStreamInfo(generation, sampleRate, channelCount)
                     }
                 }
                 "AUDIO_STREAM_START" -> {
                     Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_START: gen=$generation")
                     scope.launch { receiveEngine?.onStreamStart(generation) }
+                    scope.launch { outputEngine?.onStreamStart(generation) }
                 }
                 "AUDIO_STREAM_STOP" -> {
                     Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_STOP: gen=$generation")
                     scope.launch { receiveEngine?.onStreamStop(generation) }
+                    scope.launch { outputEngine?.onStreamStop(generation) }
                 }
                 "AUDIO_PACKET" -> {
                     val payload = json.optJSONObject("payload")
@@ -1501,7 +1483,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         val socket = connectionSocket ?: return false
         socketWritesAttempted.incrementAndGet()
         return try {
-            writerChannel.trySend(frame)
+            writerChannel.trySend(frame).isSuccess
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enqueue frame", e)
             socketWritesFailed.incrementAndGet()
@@ -1525,3 +1507,4 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         val payload = jsonString.toByteArray(StandardCharsets.UTF_8)
         return buildAndEnqueueFrame(payload)
     }
+}

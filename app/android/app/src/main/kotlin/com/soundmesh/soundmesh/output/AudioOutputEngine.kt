@@ -11,13 +11,14 @@ import android.util.Log
 import com.soundmesh.soundmesh.AudioOutputPlatform
 import com.soundmesh.soundmesh.OutputState
 import com.soundmesh.soundmesh.transport.AudioPacket
+import com.soundmesh.soundmesh.transport.AudioReceiveEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Phase 9 — Audio Output Engine using Android AudioTrack.
@@ -52,18 +53,33 @@ class AudioOutputEngine(
     private var currentGeneration = 0L
     private var drainJob: Job? = null
     private var audioTrack: AudioTrack? = null
-    private var writeThread: Thread? = null
-    private var isWriteThreadRunning = AtomicBoolean(false)
+    private var receiveEngine: AudioReceiveEngine? = null
 
-    // Channel for frames from receive engine to output engine
-    private var frameChannel = Channel<AudioPacket>(capacity = 100)
+    // Frame timing: 20ms per frame at 44.1kHz stereo 16-bit = 3528 bytes
+    private val frameSizeBytes = AtomicLong(0)
+    private val frameDurationMs = 20L
 
     // Audio route monitoring
     private var audioManager: AudioManager? = null
     private var lastKnownDeviceId = -1
 
+    // Diagnostic counters
+    private val packetsWritten = AtomicLong(0)
+    private val bytesWritten = AtomicLong(0)
+    private val writeErrors = AtomicLong(0)
+    private val underrunsReported = AtomicLong(0)
+    private var diagJob: Job? = null
+
     init {
         audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager?
+    }
+
+    /**
+     * Set the receive engine to pull packets from.
+     * Must be called before onStreamStart().
+     */
+    fun setReceiveEngine(engine: AudioReceiveEngine) {
+        receiveEngine = engine
     }
 
     /**
@@ -79,8 +95,9 @@ class AudioOutputEngine(
             currentSampleRate = sampleRate
             currentChannelCount = channelCount
 
-            // Create NEW channel after reset() closed the old one
-            frameChannel = Channel<AudioPacket>(capacity = 100)
+            // Calculate frame size in bytes (20ms at sampleRate, channelCount, 16-bit)
+            val frameSize = (sampleRate.toLong() * channelCount * 2 * frameDurationMs / 1000)
+            frameSizeBytes.set(frameSize)
 
             // Create AudioTrack
             val success = createAudioTrack(sampleRate, channelCount)
@@ -170,13 +187,41 @@ class AudioOutputEngine(
             return
         }
 
-        // Start the frame drain coroutine
-        drainJob = scope.launch(Dispatchers.IO) { drainFrames() }
+        if (receiveEngine == null) {
+            Log.e(TAG, "Cannot start output: receiveEngine not set")
+            scope.launch {
+                notifyOutputState("ERROR", "OUTPUT_NOT_READY", "Receive engine not connected")
+            }
+            return
+        }
 
-        // Start AudioTrack
+        // Start AudioTrack first
         audioTrack?.play()
+
+        // Wait for AudioTrack to reach PLAYING state (with timeout)
+        val track = audioTrack!!
+        var playState = track.playState
+        var waitCount = 0
+        while (playState != AudioTrack.PLAYSTATE_PLAYING && waitCount < 50 && isOutputting.get()) {
+            Thread.sleep(10)
+            playState = track.playState
+            waitCount++
+        }
+
+        if (playState != AudioTrack.PLAYSTATE_PLAYING) {
+            Log.e(TAG, "AudioTrack failed to reach PLAYING state: $playState after ${waitCount * 10}ms")
+            scope.launch {
+                notifyOutputState("ERROR", "OUTPUT_INIT_FAILED", "AudioTrack failed to start: state=$playState")
+            }
+            return
+        }
+
+        Log.i(TAG, "AudioTrack reached PLAYING state after ${waitCount * 10}ms")
+
+        // Start the frame drain coroutine
         isOutputting.set(true)
-        isWriteThreadRunning.set(true)
+        drainJob = scope.launch(Dispatchers.IO) { drainFrames() }
+        diagJob = scope.launch(Dispatchers.IO) { diagnosticsReporter() }
 
         Log.i(TAG, "Output started for generation $generation")
         scope.launch {
@@ -201,10 +246,8 @@ class AudioOutputEngine(
         drainJob?.cancel()
         drainJob = null
 
-        isWriteThreadRunning.set(false)
-        writeThread?.interrupt()
-        writeThread?.join(1000)
-        writeThread = null
+        diagJob?.cancel()
+        diagJob = null
 
         audioTrack?.stop()
         audioTrack?.flush()
@@ -218,44 +261,43 @@ class AudioOutputEngine(
     }
 
     /**
-     * Feed a packet from AudioReceiveEngine into the output engine.
-     * Called by the receive engine when a packet is ready for playback.
-     */
-    fun onAudioPacket(packet: AudioPacket) {
-        if (!isOutputting.get()) return
-
-        // Non-blocking send to channel
-        scope.launch {
-            try {
-                frameChannel.send(packet)
-            } catch (e: ClosedReceiveChannelException) {
-                // Channel closed, output stopped
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to enqueue output frame seq=${packet.sequenceNumber}", e)
-            }
-        }
-    }
-
-    /**
-     * Drain frames from channel and write to AudioTrack.
+     * Drain frames from receive engine's jitter buffer and write to AudioTrack.
      * Runs on IO dispatcher.
      */
     private suspend fun drainFrames() {
         try {
-            for (packet in frameChannel) {
-                if (!isOutputting.get()) break
+            while (isOutputting.get()) {
+                val packet = receiveEngine?.pollNextPacket()
+
+                if (packet == null) {
+                    // Underrun - no packet available yet
+                    underrunsReported.incrementAndGet()
+                    // Wait for next frame period before polling again
+                    delay(frameDurationMs)
+                    continue
+                }
 
                 val written = writeToAudioTrack(packet)
 
+                if (written > 0) {
+                    packetsWritten.incrementAndGet()
+                    bytesWritten.addAndGet(written.toLong())
+                }
+
                 if (written < packet.payload.size) {
                     Log.w(TAG, "Partial write: $written/${packet.payload.size} bytes, seq=${packet.sequenceNumber}")
+                    writeErrors.incrementAndGet()
                     scope.launch {
                         notifyOutputState("OUTPUT_UNDERRUN", "OUTPUT_UNDERRUN", "Output buffer underrun (partial write)")
                     }
                 }
+
+                // Small delay to avoid busy-waiting when packets arrive faster than we can write
+                // This also provides backpressure to the jitter buffer
+                if (written == packet.payload.size) {
+                    delay(1) // Minimal yield when keeping up
+                }
             }
-        } catch (e: ClosedReceiveChannelException) {
-            // Normal shutdown
         } catch (e: Exception) {
             Log.e(TAG, "Drain loop failed", e)
             scope.launch {
@@ -266,8 +308,26 @@ class AudioOutputEngine(
 
     private fun writeToAudioTrack(packet: AudioPacket): Int {
         val track = audioTrack ?: return 0
-        if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+        val playState = track.playState
+
+        if (playState != AudioTrack.PLAYSTATE_PLAYING) {
+            Log.w(TAG, "writeToAudioTrack: playState=$playState (expected PLAYING), seq=${packet.sequenceNumber}")
             return 0
+        }
+
+        // Diagnostic: log PCM stats at write point (first 10 packets per session)
+        if (packetsWritten.get() < 10) {
+            var peak = 0
+            var nonZero = 0
+            for (i in 0 until packet.payload.size step 2) {
+                if (i + 1 < packet.payload.size) {
+                    val s = (packet.payload[i + 1].toInt() shl 8) or (packet.payload[i].toInt() and 0xFF)
+                    val a = if (s < 0) -s else s
+                    if (a > peak) peak = a
+                    if (a > 0) nonZero++
+                }
+            }
+            Log.i(TAG, "PCM write: seq=${packet.sequenceNumber} bytes=${packet.payload.size} peak=$peak nonZero=$nonZero/${packet.payload.size/2}")
         }
 
         var offset = 0
@@ -276,8 +336,15 @@ class AudioOutputEngine(
             val bytesToWrite = minOf(totalBytes - offset, 4096)
             val written = track.write(packet.payload, offset, bytesToWrite, AudioTrack.WRITE_BLOCKING)
             if (written < 0) {
-                Log.e(TAG, "AudioTrack write error: $written")
+                Log.e(TAG, "AudioTrack write error: $written (seq=${packet.sequenceNumber})")
+                writeErrors.incrementAndGet()
                 return offset
+            }
+            if (written == 0) {
+                // WRITE_BLOCKING should not return 0, but handle defensively
+                Log.w(TAG, "AudioTrack.write returned 0, retrying...")
+                Thread.sleep(1)
+                continue
             }
             offset += written
         }
@@ -320,24 +387,41 @@ class AudioOutputEngine(
         currentGeneration = 0
         currentSampleRate = 0
         currentChannelCount = 0
+        frameSizeBytes.set(0)
         drainJob?.cancel()
         drainJob = null
-
-        isWriteThreadRunning.set(false)
-        writeThread?.interrupt()
-        writeThread = null
+        diagJob?.cancel()
+        diagJob = null
 
         audioTrack?.stop()
         audioTrack?.flush()
         audioTrack?.release()
         audioTrack = null
 
+        packetsWritten.set(0)
+        bytesWritten.set(0)
+        writeErrors.set(0)
+        underrunsReported.set(0)
+    }
+
+    /** Periodic diagnostic reporter for pipeline tracing. */
+    private suspend fun diagnosticsReporter() {
         try {
-            frameChannel.close()
-            Log.w(TAG, "frameChannel closed in reset()")
+            while (isOutputting.get()) {
+                delay(2000)
+                val bufferDepth = receiveEngine?.getBufferDepth() ?: -1
+                val bufferDepthMs = receiveEngine?.getBufferDepthMs() ?: -1
+                Log.i(
+                    TAG,
+                    "[DIAG] AudioOutput: packetsWritten=${packetsWritten.get()} " +
+                        "bytesWritten=${bytesWritten.get()} writeErrors=${writeErrors.get()} " +
+                        "underruns=${underrunsReported.get()} " +
+                        "bufferDepth=$bufferDepth bufferDepthMs=$bufferDepthMs " +
+                        "playState=${audioTrack?.playState ?: -1}"
+                )
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "Exception closing frameChannel in reset()", e)
-            // Ignore
+            Log.e(TAG, "Diagnostics reporter failed", e)
         }
     }
 }
