@@ -56,7 +56,7 @@ class AudioOutputEngine(
     private var isWriteThreadRunning = AtomicBoolean(false)
 
     // Channel for frames from receive engine to output engine
-    private val frameChannel = Channel<AudioPacket>(capacity = 100)
+    private var frameChannel = Channel<AudioPacket>(capacity = 100)
 
     // Audio route monitoring
     private var audioManager: AudioManager? = null
@@ -71,12 +71,16 @@ class AudioOutputEngine(
      * Called when AUDIO_STREAM_INFO is received with a new generation.
      */
     fun onStreamInfo(generation: Long, sampleRate: Int, channelCount: Int) {
+        Log.i(TAG, "onStreamInfo called: generation=$generation, currentGeneration=$currentGeneration, sampleRate=$sampleRate, channelCount=$channelCount")
         if (generation > currentGeneration) {
             Log.i(TAG, "New stream generation for output: $generation (was $currentGeneration), format=${sampleRate}Hz/${channelCount}ch")
             reset()
             currentGeneration = generation
             currentSampleRate = sampleRate
             currentChannelCount = channelCount
+
+            // Create NEW channel after reset() closed the old one
+            frameChannel = Channel<AudioPacket>(capacity = 100)
 
             // Create AudioTrack
             val success = createAudioTrack(sampleRate, channelCount)
@@ -140,6 +144,7 @@ class AudioOutputEngine(
      * Start output (called on AUDIO_STREAM_START).
      */
     suspend fun onStreamStart(generation: Long) {
+        Log.i(TAG, "onStreamStart called: generation=$generation, currentGeneration=$currentGeneration, isOutputting=${isOutputting.get()}, isInitialized=${isInitialized.get()}")
         // Be lenient: accept if generation matches OR if we haven't received stream info yet (currentGeneration == 0)
         // This handles the case where AUDIO_STREAM_START arrives before AUDIO_STREAM_INFO is processed
         if (currentGeneration != 0L && generation != currentGeneration) {
@@ -183,6 +188,7 @@ class AudioOutputEngine(
      * Stop output (called on AUDIO_STREAM_STOP or generation change).
      */
     suspend fun onStreamStop(generation: Long) {
+        Log.i(TAG, "onStreamStop called: generation=$generation, currentGeneration=$currentGeneration, isOutputting=${isOutputting.get()}")
         if (generation != currentGeneration) {
             Log.d(TAG, "Stream stop for old generation: $generation (current: $currentGeneration)")
             return
@@ -308,6 +314,7 @@ class AudioOutputEngine(
      * Reset all state (called on generation change or error).
      */
     fun reset() {
+        Log.w(TAG, "reset() called - currentGeneration=$currentGeneration, isOutputting=${isOutputting.get()}")
         isOutputting.set(false)
         isInitialized.set(false)
         currentGeneration = 0
@@ -327,7 +334,9 @@ class AudioOutputEngine(
 
         try {
             frameChannel.close()
+            Log.w(TAG, "frameChannel closed in reset()")
         } catch (e: Exception) {
+            Log.w(TAG, "Exception closing frameChannel in reset()", e)
             // Ignore
         }
     }
