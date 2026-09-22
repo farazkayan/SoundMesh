@@ -193,23 +193,26 @@ class AudioReceiveEngine(
 
         // Handle sequence wrapping (unlikely with 32-bit but be safe)
         if (seq < expectedSequence) {
-            // Duplicate or very late packet
+            // Duplicate or very late packet (already consumed or too old)
             Log.d(TAG, "Duplicate/late packet: seq=$seq (expected=$expectedSequence)")
             return
         }
 
-        // Gap detection - only fire for genuine skips (seq > expectedSequence + 1)
-        // If seq == expectedSequence, it's the next expected packet - update expectedSequence
+        // Gap detection - only declare loss for genuine multi-packet gaps (> 1)
+        // For gap == 1 (single packet reordering), do NOT advance expectedSequence.
+        // Store the future packet in the jitter buffer and wait for the missing packet.
+        // pollNextPacket() will naturally handle the sequencing when the expected packet arrives.
         if (seq > expectedSequence) {
             val gap = seq - expectedSequence
             if (gap > 1) {
-                // Genuine gap (skip), not just the next sequential packet
+                // Genuine gap (skip) - missing packets unlikely to arrive
                 packetsLost.addAndGet(gap.toLong())
                 packetsOutOfOrder.incrementAndGet()
                 Log.w(TAG, "Packet gap detected: expected=$expectedSequence got=$seq (gap=$gap)")
+                expectedSequence = seq + 1
             }
-            // Update expectedSequence to the next expected after this packet
-            expectedSequence = seq + 1
+            // For gap == 1: do NOT advance expectedSequence.
+            // The future packet is stored in jitter buffer; expected packet may still arrive.
         } else if (seq == expectedSequence) {
             // Normal sequential arrival - advance expected sequence
             expectedSequence = seq + 1
