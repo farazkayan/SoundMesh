@@ -129,11 +129,12 @@ class AudioOutputEngine(
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build()
 
-            // Calculate buffer size - 20ms frames, target ~200ms buffer
+            // Calculate buffer size - 20ms frames, target ~100ms buffer (5 frames)
+            // 5 frames = 100ms, safely above jitter buffer (60ms) and device minimum
             val frameSize = (sampleRate * channelCount * 2 * 20 / 1000) // bytes per 20ms frame
-            val bufferSize = frameSize * 10 // ~200ms buffer
+            val bufferSize = frameSize * 5 // ~100ms buffer
             val minBufferSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, AudioFormat.ENCODING_PCM_16BIT)
-            val finalBufferSize = maxOf(bufferSize, minBufferSize * 2)
+            val finalBufferSize = maxOf(bufferSize, minBufferSize)
 
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(audioAttributes)
@@ -323,12 +324,7 @@ class AudioOutputEngine(
                         notifyOutputState("OUTPUT_UNDERRUN", "OUTPUT_UNDERRUN", "Output buffer underrun (partial write)")
                     }
                 }
-
-                // Small delay to avoid busy-waiting when packets arrive faster than we can write
-                // This also provides backpressure to the jitter buffer
-                if (written == packet.payload.size) {
-                    delay(1) // Minimal yield when keeping up
-                }
+                // No delay on full write - WRITE_BLOCKING naturally paces playback
             }
         } catch (e: Exception) {
             Log.e(TAG, "Drain loop failed", e)

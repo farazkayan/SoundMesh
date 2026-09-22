@@ -71,7 +71,8 @@ class AudioTransportEngine(
     private var pendingSendJob: Job? = null
 
     // Channel for sending packets from capture thread to network thread
-    private val packetChannel = Channel<AudioPacket>(capacity = 50)
+    // Capacity 5 = 100ms buffer (5 × 20ms frames), matches jitter buffer target (60ms) with safety margin
+    private val packetChannel = Channel<AudioPacket>(capacity = 5)
 
     /**
      * Start streaming for a new capture session.
@@ -113,7 +114,8 @@ class AudioTransportEngine(
         queueSize.set(0)
 
         // Start the packet sender coroutine
-        pendingSendJob = scope.launch(Dispatchers.IO) { packetSender() }
+        // CPU-bound (JSON/Base64), sendProtocolMessage is non-blocking (trySend)
+        pendingSendJob = scope.launch(Dispatchers.Default) { packetSender() }
         transportDiagJob = scope.launch(Dispatchers.IO) { transportDiagnosticsReporter() }
 
         // Send AUDIO_STREAM_INFO message with format info FIRST (synchronously wait)
