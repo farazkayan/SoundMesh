@@ -963,6 +963,61 @@ class OutputError {
   }
 }
 
+class PipelineError {
+  PipelineError({
+    required this.code,
+    required this.message,
+    required this.generation,
+  });
+
+  String code;
+
+  String message;
+
+  int generation;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      code,
+      message,
+      generation,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static PipelineError decode(Object result) {
+    result as List<Object?>;
+    return PipelineError(
+      code: result[0]! as String,
+      message: result[1]! as String,
+      generation: result[2]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PipelineError || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(code, other.code) && _deepEquals(message, other.message) && _deepEquals(generation, other.generation);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PipelineError(code: $code, message: $message, generation: $generation)';
+  }
+}
+
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -1016,6 +1071,9 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is OutputError) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
+    }    else if (value is PipelineError) {
+      buffer.putUint8(144);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -1054,6 +1112,8 @@ class _PigeonCodec extends StandardMessageCodec {
         return OutputState.decode(readValue(buffer)!);
       case 143:
         return OutputError.decode(readValue(buffer)!);
+      case 144:
+        return PipelineError.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -1870,5 +1930,148 @@ abstract class AudioReceiveFlutterApi {
         });
       }
     }
+  }
+}
+
+abstract class PipelineFlutterApi {
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  void onPipelineStateChanged(String state, int generation);
+
+  void onPipelineError(PipelineError error);
+
+  static void setUp(PipelineFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.PipelineFlutterApi.onPipelineStateChanged$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_state = args[0]! as String;
+          final int arg_generation = args[1]! as int;
+          try {
+            api.onPipelineStateChanged(arg_state, arg_generation);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.PipelineFlutterApi.onPipelineError$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final PipelineError arg_error = args[0]! as PipelineError;
+          try {
+            api.onPipelineError(arg_error);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+  }
+}
+
+class PipelinePlatform {
+  /// Constructor for [PipelinePlatform]. The [binaryMessenger] named argument is
+  /// available for dependency injection. If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  PipelinePlatform({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  Future<void> startPipeline() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.PipelinePlatform.startPipeline$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<void> stopPipeline() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.PipelinePlatform.stopPipeline$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+  }
+
+  Future<int> getPipelineGeneration() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.PipelinePlatform.getPipelineGeneration$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as int;
+  }
+
+  Future<String> getPipelineState() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.PipelinePlatform.getPipelineState$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as String;
   }
 }

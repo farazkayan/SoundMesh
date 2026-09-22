@@ -96,6 +96,8 @@ class ReceiveStateNotifier extends StateNotifier<ReceiveUiStateData> with Widget
     switch (state) {
       case 'IDLE':
         return ReceiveUiState.idle;
+      case 'STREAMING':
+      case 'RECOVERING':
       case 'RECEIVING':
         return ReceiveUiState.receiving;
       case 'STOPPED':

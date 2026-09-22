@@ -37,15 +37,15 @@ class AudioReceiveEngine(
 
     private val isReceiving = AtomicBoolean(false)
     private var currentGeneration = 0L
-    private var expectedSequence = 0
+    private var readHead = 0 // Next sequence to CONSUME (pollNextPacket)
+    private var writeHead = 0 // Highest sequence RECEIVED + 1 (onAudioPacket)
     private var sessionId: String? = null
     private var sampleRate = 0
     private var channelCount = 0
 
     // Ring buffer for jitter buffering (indexed by sequenceNumber % capacity)
     private val jitterBuffer = Array<AudioPacket?>(JITTER_BUFFER_PACKETS * 2) { null } // 2x for wrap safety
-    private var bufferHead = 0 // Oldest sequence in buffer
-    private var bufferTail = 0 // Next sequence to write
+    private var bufferHead = 0 // Oldest sequence in buffer (== readHead when healthy)
 
     // Statistics
     private val packetsReceived = AtomicLong(0)
@@ -77,7 +77,8 @@ class AudioReceiveEngine(
             this.sessionId = sessionId
             this.sampleRate = sampleRate
             this.channelCount = channelCount
-            expectedSequence = 0
+            readHead = 0
+            writeHead = 0
         }
     }
 
@@ -99,6 +100,8 @@ class AudioReceiveEngine(
         // If we received stream start before stream info, adopt the generation
         if (currentGeneration == 0L) {
             currentGeneration = generation
+            readHead = 0
+            writeHead = 0
             Log.i(TAG, "Adopting generation from AUDIO_STREAM_START: $generation")
         }
 
@@ -161,6 +164,8 @@ class AudioReceiveEngine(
         // adopt the packet's generation
         if (currentGeneration == 0L) {
             currentGeneration = packet.streamGeneration
+            readHead = 0
+            writeHead = 0
             Log.i(TAG, "Adopting generation from first AUDIO_PACKET: $currentGeneration")
         }
 
@@ -192,31 +197,20 @@ class AudioReceiveEngine(
         }
 
         // Handle sequence wrapping (unlikely with 32-bit but be safe)
-        if (seq < expectedSequence) {
-            // Duplicate or very late packet (already consumed or too old)
-            Log.d(TAG, "Duplicate/late packet: seq=$seq (expected=$expectedSequence)")
+        // Packets older than readHead are already consumed or declared lost
+        if (seq < readHead) {
+            Log.d(TAG, "Duplicate/late packet: seq=$seq (readHead=$readHead)")
             return
         }
 
-        // Gap detection - only declare loss for genuine multi-packet gaps (> 1)
-        // For gap == 1 (single packet reordering), do NOT advance expectedSequence.
-        // Store the future packet in the jitter buffer and wait for the missing packet.
-        // pollNextPacket() will naturally handle the sequencing when the expected packet arrives.
-        if (seq > expectedSequence) {
-            val gap = seq - expectedSequence
-            if (gap > 1) {
-                // Genuine gap (skip) - missing packets unlikely to arrive
-                packetsLost.addAndGet(gap.toLong())
-                packetsOutOfOrder.incrementAndGet()
-                Log.w(TAG, "Packet gap detected: expected=$expectedSequence got=$seq (gap=$gap)")
-                expectedSequence = seq + 1
-            }
-            // For gap == 1: do NOT advance expectedSequence.
-            // The future packet is stored in jitter buffer; expected packet may still arrive.
-        } else if (seq == expectedSequence) {
-            // Normal sequential arrival - advance expected sequence
-            expectedSequence = seq + 1
+        // Track out-of-order arrivals (any packet ahead of readHead)
+        if (seq >= readHead) {
+            packetsOutOfOrder.incrementAndGet()
         }
+
+        // Update writeHead to track highest received sequence + 1
+        // Use max to prevent writeHead from going backwards on out-of-order arrival
+        writeHead = maxOf(writeHead, seq + 1)
 
         // Insert into jitter buffer
         val index = seq % jitterBuffer.size
@@ -225,11 +219,10 @@ class AudioReceiveEngine(
         if (existing != null) {
             // Overrun - buffer slot already occupied (wrapped around)
             bufferOverruns.incrementAndGet()
-            Log.w(TAG, "Jitter buffer overrun at index $index (seq=$seq) bufferDepth=${getBufferDepth()} expectedSeq=$expectedSequence")
+            Log.w(TAG, "Jitter buffer overrun at index $index (seq=$seq) bufferDepth=${getBufferDepth()} readHead=$readHead writeHead=$writeHead")
         }
 
         jitterBuffer[index] = packet
-        bufferTail = seq + 1
     }
 
     /**
@@ -259,23 +252,35 @@ class AudioReceiveEngine(
     /**
      * Get the next packet in sequence for output (called by Phase 9 output engine).
      * Returns null if not yet available (underrun).
+     * If the missing packet is beyond jitter buffer capacity, declares it lost and advances.
      */
     fun pollNextPacket(): AudioPacket? {
         if (!isReceiving.get()) return null
 
-        val index = expectedSequence % jitterBuffer.size
+        val index = readHead % jitterBuffer.size
         val packet = jitterBuffer[index]
 
         if (packet == null) {
             // Underrun - packet not yet arrived
+            // Check if we've waited long enough (beyond jitter buffer capacity)
+            // writeHead is highest received + 1, so writeHead - readHead = packets ahead available
+            if (writeHead - readHead > JITTER_BUFFER_PACKETS) {
+                // Missing packet is beyond reordering window — declare genuine loss
+                packetsLost.incrementAndGet()
+                Log.w(TAG, "Declaring packet $readHead lost (writeHead=$writeHead, gap=${writeHead - readHead})")
+                readHead++
+                bufferHead = readHead
+                bufferUnderruns.incrementAndGet()
+                return null
+            }
             bufferUnderruns.incrementAndGet()
             return null
         }
 
         // Packet available - consume it
         jitterBuffer[index] = null
-        expectedSequence++
-        bufferHead = expectedSequence
+        readHead++
+        bufferHead = readHead
         return packet
     }
 
@@ -284,7 +289,7 @@ class AudioReceiveEngine(
      */
     fun getBufferDepth(): Int {
         var depth = 0
-        for (i in expectedSequence until bufferTail) {
+        for (i in readHead until writeHead) {
             if (jitterBuffer[i % jitterBuffer.size] != null) depth++
         }
         return depth
@@ -324,13 +329,13 @@ class AudioReceiveEngine(
     fun reset() {
         isReceiving.set(false)
         currentGeneration = 0
-        expectedSequence = 0
+        readHead = 0
+        writeHead = 0
         sessionId = null
         sampleRate = 0
         channelCount = 0
         for (i in jitterBuffer.indices) jitterBuffer[i] = null
         bufferHead = 0
-        bufferTail = 0
         packetsReceived.set(0)
         packetsLost.set(0)
         packetsOutOfOrder.set(0)

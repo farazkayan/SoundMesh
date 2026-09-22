@@ -900,6 +900,51 @@ data class OutputError (
     return "OutputError(code=$code, message=$message)"
   }
 }
+
+/** Generated class from Pigeon that represents data sent in messages. */
+data class PipelineError (
+  val code: String,
+  val message: String,
+  val generation: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): PipelineError {
+      val code = pigeonVar_list[0] as String
+      val message = pigeonVar_list[1] as String
+      val generation = pigeonVar_list[2] as Long
+      return PipelineError(code, message, generation)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      code,
+      message,
+      generation,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as PipelineError
+    return SoundMeshMessagesPigeonUtils.deepEquals(this.code, other.code) && SoundMeshMessagesPigeonUtils.deepEquals(this.message, other.message) && SoundMeshMessagesPigeonUtils.deepEquals(this.generation, other.generation)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.code)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.message)
+    result = 31 * result + SoundMeshMessagesPigeonUtils.deepHash(this.generation)
+    return result
+  }
+  override fun toString(): String {
+    return "PipelineError(code=$code, message=$message, generation=$generation)"
+  }
+}
 private open class SoundMeshMessagesPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -978,6 +1023,11 @@ private open class SoundMeshMessagesPigeonCodec : StandardMessageCodec() {
           OutputError.fromList(it)
         }
       }
+      144.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          PipelineError.fromList(it)
+        }
+      }
       else -> super.readValueOfType(type, buffer)
     }
   }
@@ -1041,6 +1091,10 @@ private open class SoundMeshMessagesPigeonCodec : StandardMessageCodec() {
       }
       is OutputError -> {
         stream.write(143)
+        writeValue(stream, value.toList())
+      }
+      is PipelineError -> {
+        stream.write(144)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -1790,6 +1844,138 @@ class AudioReceiveFlutterApi(private val binaryMessenger: BinaryMessenger, priva
         } else {
           continuation.resumeWithException(SoundMeshMessagesPigeonUtils.createConnectionError(channelName))
         } 
+      }
+    }
+  }
+}
+/** Generated class from Pigeon that represents Flutter messages that can be called from Kotlin. */
+class PipelineFlutterApi(private val binaryMessenger: BinaryMessenger, private val messageChannelSuffix: String = "") {
+  companion object {
+    /** The codec used by PipelineFlutterApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      SoundMeshMessagesPigeonCodec()
+    }
+  }
+  suspend fun onPipelineStateChanged(stateArg: String, generationArg: Long)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    return suspendCancellableCoroutine { continuation ->
+      val channelName = "dev.flutter.pigeon.soundmesh.PipelineFlutterApi.onPipelineStateChanged$separatedMessageChannelSuffix"
+      val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+      channel.send(listOf(stateArg, generationArg)) {
+        if (it is List<*>) {
+          if (it.size > 1) {
+            continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))
+          } else {
+            continuation.resume(Unit)
+          }
+        } else {
+          continuation.resumeWithException(SoundMeshMessagesPigeonUtils.createConnectionError(channelName))
+        } 
+      }
+    }
+  }
+  suspend fun onPipelineError(errorArg: PipelineError)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    return suspendCancellableCoroutine { continuation ->
+      val channelName = "dev.flutter.pigeon.soundmesh.PipelineFlutterApi.onPipelineError$separatedMessageChannelSuffix"
+      val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+      channel.send(listOf(errorArg)) {
+        if (it is List<*>) {
+          if (it.size > 1) {
+            continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))
+          } else {
+            continuation.resume(Unit)
+          }
+        } else {
+          continuation.resumeWithException(SoundMeshMessagesPigeonUtils.createConnectionError(channelName))
+        } 
+      }
+    }
+  }
+}
+/** Generated interface from Pigeon that represents a handler of messages from Flutter. */
+interface PipelinePlatform {
+  suspend fun startPipeline()
+  suspend fun stopPipeline()
+  fun getPipelineGeneration(): Long
+  fun getPipelineState(): String
+
+  companion object {
+    /** The codec used by PipelinePlatform. */
+    val codec: MessageCodec<Any?> by lazy {
+      SoundMeshMessagesPigeonCodec()
+    }
+    /** Sets up an instance of `PipelinePlatform` to handle messages through the `binaryMessenger`. */
+    @JvmOverloads
+    fun setUp(binaryMessenger: BinaryMessenger, api: PipelinePlatform?, messageChannelSuffix: String = "") {
+      val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.soundmesh.PipelinePlatform.startPipeline$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                api.startPipeline()
+                listOf(null)
+              } catch (exception: Throwable) {
+                SoundMeshMessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.soundmesh.PipelinePlatform.stopPipeline$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                api.stopPipeline()
+                listOf(null)
+              } catch (exception: Throwable) {
+                SoundMeshMessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.soundmesh.PipelinePlatform.getPipelineGeneration$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.getPipelineGeneration())
+            } catch (exception: Throwable) {
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.soundmesh.PipelinePlatform.getPipelineState$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            val wrapped: List<Any?> = try {
+              listOf(api.getPipelineState())
+            } catch (exception: Throwable) {
+              SoundMeshMessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
       }
     }
   }
