@@ -1242,6 +1242,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
 
         // Start single-writer serialization coroutine
         writerJob?.cancel()
+        try { writerChannel.close() } catch (e: Exception) {}
         writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 200)
         writerJob = scope.launch(Dispatchers.IO) { writerLoop(socket) }
 
@@ -1365,6 +1366,13 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         } catch (e: Exception) {}
         clientSocket = null
         closeServerSocket()
+
+        // Stop audio engines (safe to call when already stopped)
+        scope.launch { captureEngine?.stop() }
+        scope.launch { transportEngine?.stopStreaming() }
+        receiveEngine?.reset()
+        outputEngine?.reset()
+
         Log.d(TAG, "[HostLifecycle] stopAll: completed")
     }
 
@@ -1412,6 +1420,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     }
 
     override fun onDestroy() {
+        stopAll()
+        scope.cancel()
         discoveryService.dispose()
         super.onDestroy()
     }
