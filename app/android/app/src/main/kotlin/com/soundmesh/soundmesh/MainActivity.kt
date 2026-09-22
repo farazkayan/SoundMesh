@@ -1467,7 +1467,13 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 } catch (e: Exception) {
                     Log.e(TAG, "Writer loop frame write failed", e)
                     socketWritesFailed.incrementAndGet()
-                    // Socket error will be detected by reader loop; close channel to stop writer
+
+                    try {
+                        socket.close()
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Failed to close socket after writer failure", e2)
+                    }
+
                     writerChannel.close()
                     break
                 }
