@@ -243,3 +243,26 @@ abstract class AudioReceiveFlutterApi {
   void onStreamStateChanged(String state, ReceiveStats? stats);
   void onAudioLevelUpdate(int peakAmplitude, bool isSilent);
 }
+
+class PipelineError {
+  final String code;
+  final String message;
+  final int generation;
+  PipelineError({required this.code, required this.message, required this.generation});
+}
+
+@FlutterApi()
+abstract class PipelineFlutterApi {
+  void onPipelineStateChanged(String state, int generation);
+  void onPipelineError(PipelineError error);
+}
+
+@HostApi()
+abstract class PipelinePlatform {
+  @async
+  void startPipeline();
+  @async
+  void stopPipeline();
+  int getPipelineGeneration();
+  String getPipelineState();
+}

@@ -51,7 +51,7 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkHostPlatform,
-    AudioCapturePlatform, AudioReceivePlatform, AudioOutputPlatform {
+    AudioCapturePlatform, AudioReceivePlatform, AudioOutputPlatform, PipelinePlatform {
     private val TAG = "NetworkHandler"
     private val DEFAULT_PORT = 8765
 
@@ -125,6 +125,14 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     // ---- Phase 9: audio output ----
     private var outputEngine: AudioOutputEngine? = null
 
+    // ---- Phase 10: pipeline coordination ----
+    private var pipelineState = "IDLE"
+    private var pipelineGeneration = 0L
+    private var pipelineFlutterApi: PipelineFlutterApi? = null
+    private var pipelineWatchdogJob: Job? = null
+    private var lastAudioActivityNanos = AtomicLong(0)
+    private val PIPELINE_STALL_THRESHOLD_MS = 5000L
+
     // ---- Discovery ----
     private lateinit var discoveryService: DiscoveryService
     private val discoveryChannelName = "soundmesh/discovery"
@@ -163,6 +171,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         // ---- Phase 9: AudioOutputPlatform ----
         AudioOutputPlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
         outputFlutterApi = AudioOutputFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
+
+        // ---- Phase 10: PipelinePlatform ----
+        PipelinePlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
+        pipelineFlutterApi = PipelineFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
 
         // Create transport engines
         transportEngine = AudioTransportEngine(
@@ -320,6 +332,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             notifyNotificationUpdate = { isReceivingAudio, isSilent -> notifyCaptureNotificationUpdate(isReceivingAudio, isSilent) },
             onFrameCaptured = { data, byteCount, timestamp ->
                 transportEngine?.onPcmFrame(data, byteCount, timestamp)
+                recordAudioActivity()
             },
         )
         return helper
@@ -1173,27 +1186,28 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                     scope.launch { receiveEngine?.onStreamStop(generation) }
                     scope.launch { outputEngine?.onStreamStop(generation) }
                 }
-                "AUDIO_PACKET" -> {
-                    val payload = json.optJSONObject("payload")
-                    if (payload != null) {
-                        val base64Data = payload.optString("data", "")
-                        val sequence = payload.optInt("sequence", 0)
-                        val captureTimestamp = payload.optLong("captureTimestamp", 0)
-                        if (base64Data.isNotEmpty()) {
-                            val wireBytes = Base64.decode(base64Data, Base64.NO_WRAP)
-                            val packet = AudioPacket.fromByteArray(wireBytes)
-                            packet?.let {
-                                // Override sequence and timestamp from envelope (source of truth)
-                                val updatedPacket = it.copy(
-                                    sequenceNumber = sequence,
-                                    captureTimestampNanos = captureTimestamp,
-                                )
-                                receiveEngine?.onAudioPacket(updatedPacket)
-                                audioPacketsDispatched.incrementAndGet()
+"AUDIO_PACKET" -> {
+                        val payload = json.optJSONObject("payload")
+                        if (payload != null) {
+                            val base64Data = payload.optString("data", "")
+                            val sequence = payload.optInt("sequence", 0)
+                            val captureTimestamp = payload.optLong("captureTimestamp", 0)
+                            if (base64Data.isNotEmpty()) {
+                                val wireBytes = Base64.decode(base64Data, Base64.NO_WRAP)
+                                val packet = AudioPacket.fromByteArray(wireBytes)
+                                packet?.let {
+                                    // Override sequence and timestamp from envelope (source of truth)
+                                    val updatedPacket = it.copy(
+                                        sequenceNumber = sequence,
+                                        captureTimestampNanos = captureTimestamp,
+                                    )
+                                    receiveEngine?.onAudioPacket(updatedPacket)
+                                    audioPacketsDispatched.incrementAndGet()
+                                    recordAudioActivity()
+                                }
                             }
                         }
                     }
-                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "[AudioTransport] Failed to handle audio message", e)
@@ -1367,13 +1381,206 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         clientSocket = null
         closeServerSocket()
 
-        // Stop audio engines (safe to call when already stopped)
-        scope.launch { captureEngine?.stop() }
-        scope.launch { transportEngine?.stopStreaming() }
-        receiveEngine?.reset()
-        outputEngine?.reset()
+        // Stop pipeline (includes audio engines)
+        scope.launch { stopPipeline() }
 
         Log.d(TAG, "[HostLifecycle] stopAll: completed")
+    }
+
+    // ---- Phase 10: Pipeline coordination ----
+
+    /**
+     * Start the complete capture-to-output pipeline with explicit ordering and rollback.
+     * Order: Capture → Transport → (Receive/Output auto-start via network messages)
+     * If any stage fails, previously started stages are stopped.
+     */
+    override suspend fun startPipeline(): Unit {
+        Log.i(TAG, "[Pipeline] startPipeline called")
+        if (pipelineState == "ACTIVE") {
+            Log.w(TAG, "[Pipeline] Pipeline already active, ignoring startPipeline")
+            return
+        }
+
+        val generation = ++pipelineGeneration
+        pipelineState = "STARTING"
+        notifyPipelineState("STARTING", generation)
+        lastAudioActivityNanos.set(SystemClock.elapsedRealtimeNanos())
+
+        try {
+            // Stage 1: Start capture
+            Log.i(TAG, "[Pipeline] Stage 1: Starting capture (gen=$generation)")
+            pipelineState = "CAPTURE_STARTING"
+            notifyPipelineState("CAPTURE_STARTING", generation)
+
+            val captureResult = captureEngine?.start()
+                ?: throw IllegalStateException("Capture engine not initialized")
+
+            if (!captureResult.success) {
+                val error = captureResult.error
+                    ?: CaptureError(CaptureErrorClassifier.CAPTURE_START_FAILED, "Unknown capture failure")
+                throw IllegalStateException("Capture failed: ${error.code} - ${error.message}")
+            }
+
+            val captureMetadata = captureResult.metadata
+                ?: throw IllegalStateException("Capture succeeded but no metadata returned")
+
+            // Stage 2: Start transport (host only)
+            if (isHosting) {
+                Log.i(TAG, "[Pipeline] Stage 2: Starting transport (gen=$generation)")
+                pipelineState = "TRANSPORT_STARTING"
+                notifyPipelineState("TRANSPORT_STARTING", generation)
+
+                transportEngine?.startStreaming(captureMetadata)
+
+                // Wait briefly for transport to be ready
+                kotlinx.coroutines.delay(200)
+            }
+
+            // Stage 3: Start pipeline watchdog for silent stall detection
+            startPipelineWatchdog(generation)
+
+            pipelineState = "ACTIVE"
+            notifyPipelineState("ACTIVE", generation)
+            Log.i(TAG, "[Pipeline] Pipeline started successfully (gen=$generation)")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "[Pipeline] startPipeline failed: ${e.message}", e)
+            pipelineState = "FAILED"
+            notifyPipelineError(PipelineError("PIPELINE_START_FAILED", e.message ?: "Unknown error", generation))
+            notifyPipelineState("FAILED", generation)
+
+            // Rollback: stop any stages that were started
+            rollbackPipeline(generation)
+            throw e
+        }
+    }
+
+    /**
+     * Stop the complete pipeline in safe order.
+     * Order: Output → Receive → Transport → Capture
+     * Idempotent: safe to call multiple times.
+     */
+    override suspend fun stopPipeline(): Unit {
+        Log.i(TAG, "[Pipeline] stopPipeline called (state=$pipelineState, gen=$pipelineGeneration)")
+        if (pipelineState == "IDLE" || pipelineState == "FAILED") {
+            Log.d(TAG, "[Pipeline] Pipeline already stopped, idempotent stopPipeline")
+            return
+        }
+
+        val generation = pipelineGeneration
+        pipelineState = "STOPPING"
+        notifyPipelineState("STOPPING", generation)
+
+        // Stop watchdog first
+        stopPipelineWatchdog()
+
+        // Stage 1: Stop audible output
+        Log.d(TAG, "[Pipeline] Stage 1: Stopping output")
+        scope.launch { outputEngine?.onStreamStop(generation) }
+
+        // Stage 2: Stop receiving/consuming stream data
+        Log.d(TAG, "[Pipeline] Stage 2: Stopping receive")
+        scope.launch { receiveEngine?.onStreamStop(generation) }
+
+        // Stage 3: Stop transport/network audio production
+        Log.d(TAG, "[Pipeline] Stage 3: Stopping transport")
+        scope.launch { transportEngine?.stopStreaming() }
+
+        // Stage 4: Stop capture
+        Log.d(TAG, "[Pipeline] Stage 4: Stopping capture")
+        scope.launch { captureEngine?.stop() }
+
+        // Stage 5: Cancel lifecycle coroutines/jobs (handled by stopAll for broader cleanup)
+        // But ensure pipeline-specific jobs are cancelled
+        cancelPipelineJobs()
+
+        pipelineState = "IDLE"
+        pipelineGeneration = 0
+        notifyPipelineState("IDLE", 0)
+        Log.i(TAG, "[Pipeline] Pipeline stopped")
+    }
+
+    private fun rollbackPipeline(generation: Long) {
+        Log.w(TAG, "[Pipeline] Rolling back pipeline (gen=$generation)")
+        scope.launch { outputEngine?.onStreamStop(generation) }
+        scope.launch { receiveEngine?.onStreamStop(generation) }
+        scope.launch { transportEngine?.stopStreaming() }
+        scope.launch { captureEngine?.stop() }
+        cancelPipelineJobs()
+    }
+
+    private fun cancelPipelineJobs() {
+        pipelineWatchdogJob?.cancel()
+        pipelineWatchdogJob = null
+    }
+
+    private fun startPipelineWatchdog(generation: Long) {
+        stopPipelineWatchdog()
+        pipelineWatchdogJob = scope.launch {
+            try {
+                while (pipelineState == "ACTIVE" && pipelineGeneration == generation) {
+                    kotlinx.coroutines.delay(2000)
+                    val now = SystemClock.elapsedRealtimeNanos()
+                    val lastActivityAgeMs = if (lastAudioActivityNanos.get() > 0) {
+                        (now - lastAudioActivityNanos.get()) / 1_000_000
+                    } else -1L
+
+                    // Only check for stall if we've had audio activity before
+                    if (lastActivityAgeMs > 0 && lastActivityAgeMs > PIPELINE_STALL_THRESHOLD_MS) {
+                        // Verify we're not in the middle of intentional stop/start
+                        if (pipelineState == "ACTIVE" && pipelineGeneration == generation) {
+                            Log.w(TAG, "[Pipeline] Silent stall detected: no audio activity for ${lastActivityAgeMs}ms")
+                            notifyPipelineError(PipelineError("SILENT_STALL_DETECTED", "No audio frame/packet activity for ${lastActivityAgeMs}ms", generation))
+                            // Transition to failed and rollback
+                            pipelineState = "FAILED"
+                            notifyPipelineState("FAILED", generation)
+                            rollbackPipeline(generation)
+                            break
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Expected on stop
+            } catch (e: Exception) {
+                Log.e(TAG, "[Pipeline] Watchdog failed", e)
+            }
+        }
+        Log.d(TAG, "[Pipeline] Watchdog started (threshold=${PIPELINE_STALL_THRESHOLD_MS}ms)")
+    }
+
+    private fun stopPipelineWatchdog() {
+        pipelineWatchdogJob?.cancel()
+        pipelineWatchdogJob = null
+        Log.d(TAG, "[Pipeline] Watchdog stopped")
+    }
+
+    // Called from capture/transport/receive/output when audio frames/packets flow
+    private fun recordAudioActivity() {
+        lastAudioActivityNanos.set(SystemClock.elapsedRealtimeNanos())
+    }
+
+    override fun getPipelineGeneration(): Long = pipelineGeneration
+
+    override fun getPipelineState(): String = pipelineState
+
+    private suspend fun notifyPipelineState(state: String, generation: Long) {
+        withContext(Dispatchers.Main) {
+            try {
+                pipelineFlutterApi?.onPipelineStateChanged(state, generation)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify pipeline state", e)
+            }
+        }
+    }
+
+    private suspend fun notifyPipelineError(error: PipelineError) {
+        withContext(Dispatchers.Main) {
+            try {
+                pipelineFlutterApi?.onPipelineError(error)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify pipeline error", e)
+            }
+        }
     }
 
     private suspend fun notifyMessage(message: String) {

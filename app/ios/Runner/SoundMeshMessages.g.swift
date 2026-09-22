@@ -894,6 +894,51 @@ struct OutputError: Hashable, CustomStringConvertible {
   }
 }
 
+/// Generated class from Pigeon that represents data sent in messages.
+struct PipelineError: Hashable, CustomStringConvertible {
+  var code: String
+  var message: String
+  var generation: Int64
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> PipelineError? {
+    let code = pigeonVar_list[0] as! String
+    let message = pigeonVar_list[1] as! String
+    let generation = pigeonVar_list[2] as! Int64
+
+    return PipelineError(
+      code: code,
+      message: message,
+      generation: generation
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      code,
+      message,
+      generation,
+    ]
+  }
+  static func == (lhs: PipelineError, rhs: PipelineError) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return SoundMeshMessagesPigeonInternal.deepEquals(lhs.code, rhs.code) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.message, rhs.message) && SoundMeshMessagesPigeonInternal.deepEquals(lhs.generation, rhs.generation)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("PipelineError")
+    SoundMeshMessagesPigeonInternal.deepHash(value: code, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: message, hasher: &hasher)
+    SoundMeshMessagesPigeonInternal.deepHash(value: generation, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "PipelineError(code: \(String(describing: code)), message: \(String(describing: message)), generation: \(String(describing: generation)))"
+  }
+}
+
 private class SoundMeshMessagesPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -927,6 +972,8 @@ private class SoundMeshMessagesPigeonCodecReader: FlutterStandardReader {
       return OutputState.fromList(self.readValue() as! [Any?])
     case 143:
       return OutputError.fromList(self.readValue() as! [Any?])
+    case 144:
+      return PipelineError.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -979,6 +1026,9 @@ private class SoundMeshMessagesPigeonCodecWriter: FlutterStandardWriter {
       super.writeValue(value.toList())
     } else if let value = value as? OutputError {
       super.writeByte(143)
+      super.writeValue(value.toList())
+    } else if let value = value as? PipelineError {
+      super.writeByte(144)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -1723,6 +1773,135 @@ class AudioReceiveFlutterApi: AudioReceiveFlutterApiProtocol {
           continuation.resume()
         }
       }
+    }
+  }
+}
+
+/// Generated protocol from Pigeon that represents Flutter messages that can be called from Swift.
+protocol PipelineFlutterApiProtocol {
+  func onPipelineStateChanged(state stateArg: String, generation generationArg: Int64) async throws
+  func onPipelineError(error errorArg: PipelineError) async throws
+}
+class PipelineFlutterApi: PipelineFlutterApiProtocol {
+  private let binaryMessenger: FlutterBinaryMessenger
+  private let messageChannelSuffix: String
+  init(binaryMessenger: FlutterBinaryMessenger, messageChannelSuffix: String = "") {
+    self.binaryMessenger = binaryMessenger
+    self.messageChannelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+  }
+  var codec: SoundMeshMessagesPigeonCodec {
+    return SoundMeshMessagesPigeonCodec.shared
+  }
+  func onPipelineStateChanged(state stateArg: String, generation generationArg: Int64) async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+      let channelName: String = "dev.flutter.pigeon.soundmesh.PipelineFlutterApi.onPipelineStateChanged\(messageChannelSuffix)"
+      let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+      channel.sendMessage([stateArg, generationArg] as [Any?]) { response in
+        guard let listResponse = response as? [Any?] else {
+          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+          return
+        }
+        if listResponse.count > 1 {
+          let code: String = listResponse[0] as! String
+          let message: String? = nilOrValue(listResponse[1])
+          let details: String? = nilOrValue(listResponse[2])
+          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+        } else {
+          continuation.resume()
+        }
+      }
+    }
+  }
+  func onPipelineError(error errorArg: PipelineError) async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+      let channelName: String = "dev.flutter.pigeon.soundmesh.PipelineFlutterApi.onPipelineError\(messageChannelSuffix)"
+      let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+      channel.sendMessage([errorArg] as [Any?]) { response in
+        guard let listResponse = response as? [Any?] else {
+          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+          return
+        }
+        if listResponse.count > 1 {
+          let code: String = listResponse[0] as! String
+          let message: String? = nilOrValue(listResponse[1])
+          let details: String? = nilOrValue(listResponse[2])
+          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+        } else {
+          continuation.resume()
+        }
+      }
+    }
+  }
+}
+/// Generated protocol from Pigeon that represents a handler of messages from Flutter.
+protocol PipelinePlatform {
+  func startPipeline() async throws
+  func stopPipeline() async throws
+  func getPipelineGeneration() throws -> Int64
+  func getPipelineState() throws -> String
+}
+
+/// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
+class PipelinePlatformSetup {
+  static var codec: FlutterStandardMessageCodec { SoundMeshMessagesPigeonCodec.shared }
+  /// Sets up an instance of `PipelinePlatform` to handle messages through the `binaryMessenger`.
+  static func setUp(binaryMessenger: FlutterBinaryMessenger, api: PipelinePlatform?, messageChannelSuffix: String = "") {
+    let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+    let startPipelineChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.PipelinePlatform.startPipeline\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      startPipelineChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            try await api.startPipeline()
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      startPipelineChannel.setMessageHandler(nil)
+    }
+    let stopPipelineChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.PipelinePlatform.stopPipeline\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      stopPipelineChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            try await api.stopPipeline()
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      stopPipelineChannel.setMessageHandler(nil)
+    }
+    let getPipelineGenerationChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.PipelinePlatform.getPipelineGeneration\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getPipelineGenerationChannel.setMessageHandler { _, reply in
+        do {
+          let result = try api.getPipelineGeneration()
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      getPipelineGenerationChannel.setMessageHandler(nil)
+    }
+    let getPipelineStateChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.soundmesh.PipelinePlatform.getPipelineState\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getPipelineStateChannel.setMessageHandler { _, reply in
+        do {
+          let result = try api.getPipelineState()
+          reply(wrapResult(result))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      getPipelineStateChannel.setMessageHandler(nil)
     }
   }
 }
