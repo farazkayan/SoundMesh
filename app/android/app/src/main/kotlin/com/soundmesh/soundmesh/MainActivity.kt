@@ -100,7 +100,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private var networkDiagJob: Job? = null
 
     // --- Single-writer serialization for TCP frames (BUG #3 fix) ---
-    private val writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 100)
+    @Volatile private var writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 100)
     private var writerJob: Job? = null
 
     private var flutterApi: NetworkFlutterApi? = null
@@ -782,8 +782,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
 
         Log.d(TAG, "[HostLifecycle] acceptConnection: about to notifyState(connected) for accepted connection, gen=$generation")
-        notifyState("connected")
         startReading(socket)
+        notifyState("connected")
         startHeartbeat()
     }
 
@@ -859,8 +859,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                     return@launch
                 }
                 Log.d(TAG, "[Connection] TCP connected to $ipAddress:$port")
-                notifyState("connected")
                 startReading(socket)
+                notifyState("connected")
                 startHeartbeat()
             }
             true
@@ -1240,6 +1240,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
 
         // Start single-writer serialization coroutine
         writerJob?.cancel()
+        writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 100)
         writerJob = scope.launch(Dispatchers.IO) { writerLoop(socket) }
 
         readerJob = scope.launch {
@@ -1481,9 +1482,11 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     /** Enqueue a complete frame for serialized writing. Returns true if enqueued. */
     private fun enqueueFrame(frame: ByteArray): Boolean {
         val socket = connectionSocket ?: return false
+        val channel = writerChannel
         socketWritesAttempted.incrementAndGet()
+
         return try {
-            writerChannel.trySend(frame).isSuccess
+            channel.trySend(frame).isSuccess
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enqueue frame", e)
             socketWritesFailed.incrementAndGet()
