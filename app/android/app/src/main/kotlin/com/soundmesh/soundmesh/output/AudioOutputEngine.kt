@@ -218,6 +218,24 @@ class AudioOutputEngine(
 
         Log.i(TAG, "AudioTrack reached PLAYING state after ${waitCount * 10}ms")
 
+        // Wait for receive buffer to reach healthy level before starting playback
+        // This prevents initial underrun storm. Timeout after ~500ms.
+        val receiveEngineRef = receiveEngine!!
+        var bufferReady = false
+        var waitCount2 = 0
+        while (!bufferReady && waitCount2 < 50 && isOutputting.get()) {
+            if (receiveEngineRef.isHealthy()) {
+                bufferReady = true
+                Log.i(TAG, "Receive buffer healthy, depth=${receiveEngineRef.getBufferDepth()} packets, ${receiveEngineRef.getBufferDepthMs()}ms")
+            } else {
+                Thread.sleep(10)
+                waitCount2++
+            }
+        }
+        if (!bufferReady) {
+            Log.w(TAG, "Starting playback with unhealthy buffer (depth=${receiveEngineRef.getBufferDepth()}) after ${waitCount2 * 10}ms timeout")
+        }
+
         // Start the frame drain coroutine
         isOutputting.set(true)
         drainJob = scope.launch(Dispatchers.IO) { drainFrames() }

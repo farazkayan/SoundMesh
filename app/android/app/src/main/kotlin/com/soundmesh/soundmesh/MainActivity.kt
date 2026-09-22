@@ -772,6 +772,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 false
             } else {
                 connectionSocket = socket
+                socket.setTcpNoDelay(true)
                 true
             }
         }
@@ -812,6 +813,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                     // Bounded connect timeout: the OS default can block for
                     // minutes, outliving Dart's 10s handshake timeout.
                     socket.connect(InetSocketAddress(ipAddress, port.toInt()), CONNECT_TIMEOUT_MS)
+                    socket.setTcpNoDelay(true)
                 } catch (e: Exception) {
                     Log.e(TAG, "[Connection] TCP connect failed to $ipAddress:$port", e)
                     if (isCurrentConnection(generation)) {
@@ -1240,7 +1242,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
 
         // Start single-writer serialization coroutine
         writerJob?.cancel()
-        writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 100)
+        writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 200)
         writerJob = scope.launch(Dispatchers.IO) { writerLoop(socket) }
 
         readerJob = scope.launch {
@@ -1492,7 +1494,15 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         socketWritesAttempted.incrementAndGet()
 
         return try {
-            channel.trySend(frame).isSuccess
+            val result = channel.trySend(frame)
+            if (result.isSuccess) {
+                true
+            } else {
+                // Channel full - this is the primary packet loss source under load
+                socketWritesFailed.incrementAndGet()
+                Log.w(TAG, "Writer queue full, dropping frame (capacity=200)")
+                false
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enqueue frame", e)
             socketWritesFailed.incrementAndGet()

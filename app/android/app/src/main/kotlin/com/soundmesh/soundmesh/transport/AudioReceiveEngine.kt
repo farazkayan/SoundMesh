@@ -30,9 +30,9 @@ class AudioReceiveEngine(
     private val TAG = "AudioReceiveEngine"
 
     companion object {
-        // Jitter buffer: target 100ms = 5 packets at 20ms each
-        const val JITTER_BUFFER_PACKETS = 5
-        const val MIN_HEALTHY_PACKETS = 2
+        // Jitter buffer: target 60ms = 3 packets at 20ms each (reduced from 100ms for Phase 9 streaming)
+        const val JITTER_BUFFER_PACKETS = 3
+        const val MIN_HEALTHY_PACKETS = 1
     }
 
     private val isReceiving = AtomicBoolean(false)
