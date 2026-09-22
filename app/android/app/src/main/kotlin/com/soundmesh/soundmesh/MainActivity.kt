@@ -20,11 +20,13 @@ import com.soundmesh.soundmesh.capture.MediaProjectionHelper
 import com.soundmesh.soundmesh.capture.CaptureDiagnostics
 import com.soundmesh.soundmesh.FrameArrivalStats
 import com.soundmesh.soundmesh.discovery.DiscoveryService
+import com.soundmesh.soundmesh.output.AudioOutputEngine
 import com.soundmesh.soundmesh.transport.AudioPacket
 import com.soundmesh.soundmesh.transport.AudioReceiveEngine
 import com.soundmesh.soundmesh.transport.AudioTransportEngine
 import com.soundmesh.soundmesh.ReceiveState
 import com.soundmesh.soundmesh.ReceiveStats
+import com.soundmesh.soundmesh.OutputState
 import com.soundmesh.soundmesh.StreamingMetadata
 import com.soundmesh.soundmesh.StreamingState
 import io.flutter.embedding.android.FlutterActivity
@@ -46,9 +48,10 @@ import java.net.Socket
 import java.net.SocketException
 import java.net.NetworkInterface
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkHostPlatform,
-    AudioCapturePlatform, AudioReceivePlatform {
+    AudioCapturePlatform, AudioReceivePlatform, AudioOutputPlatform {
     private val TAG = "NetworkHandler"
     private val DEFAULT_PORT = 8765
 
@@ -78,6 +81,28 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private var lastKnownHostPort = 8765
     private var currentParticipantId: String? = null
 
+    // --- Diagnostic counters for BUG #3 pipeline tracing ---
+    private val socketWritesAttempted = AtomicLong(0)
+    private val socketWritesSucceeded = AtomicLong(0)
+    private val socketWritesFailed = AtomicLong(0)
+    private val socketBytesWritten = AtomicLong(0)
+    private val lastSocketWriteTimestampNanos = AtomicLong(0)
+
+    private val networkBytesReceived = AtomicLong(0)
+    private val networkFramesDecoded = AtomicLong(0)
+    private val lastNetworkReceiveTimestampNanos = AtomicLong(0)
+
+    private val packetsParsed = AtomicLong(0)
+    private val packetsParseFailed = AtomicLong(0)
+    private val audioPacketsDispatched = AtomicLong(0)
+    private val lastPacketParsedTimestampNanos = AtomicLong(0)
+
+    private var networkDiagJob: Job? = null
+
+    // --- Single-writer serialization for TCP frames (BUG #3 fix) ---
+    @Volatile private var writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 100)
+    private var writerJob: Job? = null
+
     private var flutterApi: NetworkFlutterApi? = null
 
     // ---- Phase 5: external audio capture (feasibility spike) ----
@@ -95,6 +120,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private var transportEngine: AudioTransportEngine? = null
     private var receiveEngine: AudioReceiveEngine? = null
     private var receiveFlutterApi: AudioReceiveFlutterApi? = null
+    private var outputFlutterApi: AudioOutputFlutterApi? = null
+
+    // ---- Phase 9: audio output ----
+    private var outputEngine: AudioOutputEngine? = null
 
     // ---- Discovery ----
     private lateinit var discoveryService: DiscoveryService
@@ -131,6 +160,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         AudioReceivePlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
         receiveFlutterApi = AudioReceiveFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
 
+        // ---- Phase 9: AudioOutputPlatform ----
+        AudioOutputPlatform.setUp(flutterEngine.dartExecutor.binaryMessenger, this)
+        outputFlutterApi = AudioOutputFlutterApi(flutterEngine.dartExecutor.binaryMessenger)
+
         // Create transport engines
         transportEngine = AudioTransportEngine(
             context = this,
@@ -142,7 +175,16 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         receiveEngine = AudioReceiveEngine(
             scope = scope,
             notifyStreamState = { state, stats -> notifyReceiveState(state, stats) },
+            notifyAudioLevel = { peakAmplitude, isSilent -> notifyReceiveAudioLevel(peakAmplitude, isSilent) },
         )
+        outputEngine = AudioOutputEngine(
+            context = this,
+            scope = scope,
+            notifyOutputState = { state, errorCode, errorMessage -> notifyOutputState(state, errorCode, errorMessage) },
+        )
+
+        // Wire receive engine to output engine
+        outputEngine!!.setReceiveEngine(receiveEngine!!)
 
         // ---- Discovery ----
         discoveryService = DiscoveryService(this)
@@ -399,6 +441,12 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         return receiveEngine?.getState() ?: ReceiveState(state = "IDLE", stats = null)
     }
 
+    // ---- Phase 9: AudioOutputPlatform ----
+
+    override fun getOutputState(): OutputState {
+        return outputEngine?.getState() ?: OutputState(state = "ERROR", bufferedMs = 0)
+    }
+
     override fun isIgnoringBatteryOptimizations(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             // Before Android 6.0, no battery optimization exists
@@ -524,6 +572,38 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 receiveFlutterApi?.onStreamStateChanged(state, stats)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to notify receive state", e)
+            }
+        }
+    }
+
+    private suspend fun notifyReceiveAudioLevel(peakAmplitude: Int, isSilent: Boolean) {
+        withContext(Dispatchers.Main) {
+            try {
+                receiveFlutterApi?.onAudioLevelUpdate(peakAmplitude.toLong(), isSilent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify receive audio level", e)
+            }
+        }
+    }
+
+    private suspend fun notifyOutputState(state: String, errorCode: String?, errorMessage: String?) {
+        withContext(Dispatchers.Main) {
+            try {
+                when (state) {
+                    "OUTPUT_STARTED" -> outputFlutterApi?.onOutputStateChanged("PLAYING", 0)
+                    "OUTPUT_STOPPED" -> outputFlutterApi?.onOutputStateChanged("STOPPED", 0)
+                    "OUTPUT_UNDERRUN" -> outputFlutterApi?.onOutputStateChanged("UNDERRUN", 0)
+                    "OUTPUT_ROUTE_CHANGED" -> outputFlutterApi?.onOutputStateChanged("ROUTE_CHANGED", 0)
+                    "ERROR" -> {
+                        outputFlutterApi?.onOutputStateChanged("ERROR", 0)
+                        if (errorCode != null && errorMessage != null) {
+                            outputFlutterApi?.onOutputError(errorCode, errorMessage)
+                        }
+                    }
+                    else -> outputFlutterApi?.onOutputStateChanged(state, 0)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to notify output state", e)
             }
         }
     }
@@ -692,6 +772,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 false
             } else {
                 connectionSocket = socket
+                socket.setTcpNoDelay(true)
                 true
             }
         }
@@ -702,8 +783,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
 
         Log.d(TAG, "[HostLifecycle] acceptConnection: about to notifyState(connected) for accepted connection, gen=$generation")
-        notifyState("connected")
         startReading(socket)
+        notifyState("connected")
         startHeartbeat()
     }
 
@@ -732,6 +813,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                     // Bounded connect timeout: the OS default can block for
                     // minutes, outliving Dart's 10s handshake timeout.
                     socket.connect(InetSocketAddress(ipAddress, port.toInt()), CONNECT_TIMEOUT_MS)
+                    socket.setTcpNoDelay(true)
                 } catch (e: Exception) {
                     Log.e(TAG, "[Connection] TCP connect failed to $ipAddress:$port", e)
                     if (isCurrentConnection(generation)) {
@@ -779,8 +861,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                     return@launch
                 }
                 Log.d(TAG, "[Connection] TCP connected to $ipAddress:$port")
-                notifyState("connected")
                 startReading(socket)
+                notifyState("connected")
                 startHeartbeat()
             }
             true
@@ -792,91 +874,18 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     }
 
     override fun sendMessage(message: String): Boolean {
-        val socket = connectionSocket ?: return false
-        scope.launch {
-            // The coroutine body must catch its own exceptions: an uncaught
-            // IOException (e.g. write to a closed socket) would crash the app.
-            try {
-                withContext(Dispatchers.IO) {
-                    val payload = message.toByteArray(StandardCharsets.UTF_8)
-                    val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
-                    frame[0] = (payload.size shr 24).toByte()
-                    frame[1] = (payload.size shr 16).toByte()
-                    frame[2] = (payload.size shr 8).toByte()
-                    frame[3] = payload.size.toByte()
-                    System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
-                    
-                    Log.d(TAG, "[WriterDebug] sendMessage: socket=$socket, socket.isConnected=${socket.isConnected}, socket.isClosed=${socket.isClosed}")
-                    Log.d(TAG, "[WriterDebug] sendMessage: payloadSize=${payload.size}, frameSize=${frame.size}")
-                    Log.d(TAG, "[WriterDebug] sendMessage: frame header bytes = ${frame[0].toInt() and 0xFF}, ${frame[1].toInt() and 0xFF}, ${frame[2].toInt() and 0xFF}, ${frame[3].toInt() and 0xFF}")
-                    Log.d(TAG, "[WriterDebug] sendMessage: payload preview = ${message.take(minOf(200, message.length))}")
-                    
-                    val outputStream = socket.getOutputStream()
-                    Log.d(TAG, "[WriterDebug] sendMessage: got outputStream=$outputStream")
-                    Log.d(TAG, "[WriterDebug] sendMessage: BEFORE write")
-                    outputStream.write(frame)
-                    Log.d(TAG, "[WriterDebug] sendMessage: AFTER write, BEFORE flush")
-                    outputStream.flush()
-                    Log.d(TAG, "[WriterDebug] sendMessage: AFTER flush")
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "[WriterDebug] sendMessage: Exception: ${e.javaClass.simpleName}: ${e.message}", e)
-            }
-        }
-        return true
+        return buildAndEnqueueJson(message)
     }
 
     override fun sendChatMessage(text: String): Boolean {
-        val socket = connectionSocket ?: return false
-        scope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    // Dart constructs the full ProtocolMessage.chat JSON and passes it to sendChatMessage
-                    val payload = text.toByteArray(StandardCharsets.UTF_8)
-                    val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
-                    frame[0] = (payload.size shr 24).toByte()
-                    frame[1] = (payload.size shr 16).toByte()
-                    frame[2] = (payload.size shr 8).toByte()
-                    frame[3] = payload.size.toByte()
-                    System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
-                    
-                    Log.d(TAG, "[WriterDebug] sendChatMessage: text length=${text.length}")
-                    val outputStream = socket.getOutputStream()
-                    outputStream.write(frame)
-                    outputStream.flush()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "sendChatMessage failed", e)
-            }
-        }
-        return true
+        // Dart constructs the full ProtocolMessage.chat JSON and passes it to sendChatMessage
+        Log.d(TAG, "[WriterDebug] sendChatMessage: text length=${text.length}")
+        return buildAndEnqueueJson(text)
     }
 
     override fun sendProtocolMessage(message: String): Boolean {
-        val socket = connectionSocket ?: return false
-        scope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    val payload = message.toByteArray(StandardCharsets.UTF_8)
-                    val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
-                    frame[0] = (payload.size shr 24).toByte()
-                    frame[1] = (payload.size shr 16).toByte()
-                    frame[2] = (payload.size shr 8).toByte()
-                    frame[3] = payload.size.toByte()
-                    System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
-                    
-                    Log.d(TAG, "[WriterDebug] sendProtocolMessage: messageType preview = ${message.take(minOf(200, message.length))}")
-                    val outputStream = socket.getOutputStream()
-                    outputStream.write(frame)
-                    outputStream.flush()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "sendProtocolMessage failed", e)
-            }
-        }
-        return true
+        Log.d(TAG, "[WriterDebug] sendProtocolMessage: messageType preview = ${message.take(minOf(200, message.length))}")
+        return buildAndEnqueueJson(message)
     }
 
     override fun disconnect() {
@@ -1042,33 +1051,16 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private fun sendPing() {
         val socket = connectionSocket ?: return
         val participantId = currentParticipantId ?: getFallbackDeviceId()
-        scope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    val pingJson = JSONObject().apply {
-                        put("protocolVersion", 1)
-                        put("messageId", java.util.UUID.randomUUID().toString())
-                        put("messageType", "PING")
-                        put("senderId", participantId)
-                        put("generation", 0)
-                        put("timestamp", System.currentTimeMillis())
-                    }.toString()
-                    val payload = pingJson.toByteArray(StandardCharsets.UTF_8)
-                    val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
-                    frame[0] = (payload.size shr 24).toByte()
-                    frame[1] = (payload.size shr 16).toByte()
-                    frame[2] = (payload.size shr 8).toByte()
-                    frame[3] = payload.size.toByte()
-                    System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
-                    val outputStream = socket.getOutputStream()
-                    outputStream.write(frame)
-                    outputStream.flush()
-                    Log.d(TAG, "[Heartbeat] Sent PING")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "[Heartbeat] Failed to send PING: ${e.javaClass.simpleName}: ${e.message}")
-            }
-        }
+        val pingJson = JSONObject().apply {
+            put("protocolVersion", 1)
+            put("messageId", java.util.UUID.randomUUID().toString())
+            put("messageType", "PING")
+            put("senderId", participantId)
+            put("generation", 0)
+            put("timestamp", System.currentTimeMillis())
+        }.toString()
+        Log.d(TAG, "[Heartbeat] Sent PING")
+        buildAndEnqueueJson(pingJson)
     }
 
     private suspend fun handleHeartbeatTimeout() {
@@ -1151,6 +1143,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     }
 
     private fun handleAudioMessage(message: String) {
+        packetsParsed.incrementAndGet()
+        lastPacketParsedTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
         try {
             val json = JSONObject(message)
             val messageType = json.optString("messageType", "")
@@ -1166,15 +1160,18 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         val startedAtNanos = payload.optLong("startedAtNanos", 0)
                         Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_INFO: sr=$sampleRate ch=$channelCount gen=$generation")
                         receiveEngine?.onStreamInfo(sessionId, generation, sampleRate, channelCount)
+                        outputEngine?.onStreamInfo(generation, sampleRate, channelCount)
                     }
                 }
                 "AUDIO_STREAM_START" -> {
                     Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_START: gen=$generation")
                     scope.launch { receiveEngine?.onStreamStart(generation) }
+                    scope.launch { outputEngine?.onStreamStart(generation) }
                 }
                 "AUDIO_STREAM_STOP" -> {
                     Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_STOP: gen=$generation")
                     scope.launch { receiveEngine?.onStreamStop(generation) }
+                    scope.launch { outputEngine?.onStreamStop(generation) }
                 }
                 "AUDIO_PACKET" -> {
                     val payload = json.optJSONObject("payload")
@@ -1192,6 +1189,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                                     captureTimestampNanos = captureTimestamp,
                                 )
                                 receiveEngine?.onAudioPacket(updatedPacket)
+                                audioPacketsDispatched.incrementAndGet()
                             }
                         }
                     }
@@ -1199,6 +1197,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             }
         } catch (e: Exception) {
             Log.e(TAG, "[AudioTransport] Failed to handle audio message", e)
+            packetsParseFailed.incrementAndGet()
         }
     }
 
@@ -1206,34 +1205,17 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         val socket = connectionSocket ?: return
         val participantId = currentParticipantId ?: getFallbackDeviceId()
         val originalMessageId = pingJson.optString("messageId", "")
-        scope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    val pongJson = JSONObject().apply {
-                        put("protocolVersion", 1)
-                        put("messageId", java.util.UUID.randomUUID().toString())
-                        put("messageType", "PONG")
-                        put("senderId", participantId)
-                        put("generation", 0)
-                        put("timestamp", System.currentTimeMillis())
-                        put("payload", JSONObject().put("originalMessageId", originalMessageId))
-                    }.toString()
-                    val payload = pongJson.toByteArray(StandardCharsets.UTF_8)
-                    val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
-                    frame[0] = (payload.size shr 24).toByte()
-                    frame[1] = (payload.size shr 16).toByte()
-                    frame[2] = (payload.size shr 8).toByte()
-                    frame[3] = payload.size.toByte()
-                    System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
-                    val outputStream = socket.getOutputStream()
-                    outputStream.write(frame)
-                    outputStream.flush()
-                    Log.d(TAG, "[Heartbeat] Sent PONG")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "[Heartbeat] Failed to send PONG: ${e.javaClass.simpleName}: ${e.message}")
-            }
-        }
+        val pongJson = JSONObject().apply {
+            put("protocolVersion", 1)
+            put("messageId", java.util.UUID.randomUUID().toString())
+            put("messageType", "PONG")
+            put("senderId", participantId)
+            put("generation", 0)
+            put("timestamp", System.currentTimeMillis())
+            put("payload", JSONObject().put("originalMessageId", originalMessageId))
+        }.toString()
+        Log.d(TAG, "[Heartbeat] Sent PONG")
+        buildAndEnqueueJson(pongJson)
     }
 
     private fun startReading(socket: Socket) {
@@ -1244,6 +1226,25 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
         Log.d(TAG, "[HostLifecycle] startReading: starting reader for generation=$generation (connectionGeneration=$connectionGeneration)")
         Log.d(TAG, "[ReaderDebug] startReading: socket=$socket, socket.isConnected=${socket.isConnected}, socket.isClosed=${socket.isClosed}")
+        
+        // Reset diagnostic counters for new connection
+        networkBytesReceived.set(0)
+        networkFramesDecoded.set(0)
+        lastNetworkReceiveTimestampNanos.set(0)
+        packetsParsed.set(0)
+        packetsParseFailed.set(0)
+        audioPacketsDispatched.set(0)
+        lastPacketParsedTimestampNanos.set(0)
+        
+        // Start network diagnostics reporter
+        networkDiagJob?.cancel()
+        networkDiagJob = scope.launch(Dispatchers.IO) { networkDiagnosticsReporter() }
+
+        // Start single-writer serialization coroutine
+        writerJob?.cancel()
+        writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 200)
+        writerJob = scope.launch(Dispatchers.IO) { writerLoop(socket) }
+
         readerJob = scope.launch {
             val inputStream = socket.getInputStream()
             Log.d(TAG, "[ReaderDebug] startReading: got inputStream=$inputStream")
@@ -1276,8 +1277,12 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         continue
                     }
 
+                    networkBytesReceived.addAndGet(bytesRead.toLong())
+                    lastNetworkReceiveTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
+
                     val messages = decoder.accept(buffer, 0, bytesRead)
                     for (message in messages) {
+                        networkFramesDecoded.incrementAndGet()
                         Log.d(TAG, "[ReaderDebug] Decoded message: ${message.take(minOf(200, message.length))}...")
                         // Handle heartbeat messages locally
                         if (isHeartbeatMessage(message)) {
@@ -1344,6 +1349,13 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
 
         readerJob?.cancel()
         readerJob = null
+        writerJob?.cancel()
+        writerJob = null
+        try {
+            writerChannel.close()
+        } catch (e: Exception) {}
+        networkDiagJob?.cancel()
+        networkDiagJob = null
         try {
             connectionSocket?.close()
         } catch (e: Exception) {}
@@ -1402,5 +1414,116 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     override fun onDestroy() {
         discoveryService.dispose()
         super.onDestroy()
+    }
+
+    /** Periodic network diagnostics reporter for pipeline tracing (BUG #3). */
+    private suspend fun networkDiagnosticsReporter() {
+        try {
+            while (connectionSocket != null && connectionSocket!!.isConnected && !connectionSocket!!.isClosed) {
+                kotlinx.coroutines.delay(2000)
+                val now = SystemClock.elapsedRealtimeNanos()
+                val lastWriteAgeMs = if (lastSocketWriteTimestampNanos.get() > 0) {
+                    (now - lastSocketWriteTimestampNanos.get()) / 1_000_000
+                } else -1L
+                val lastReceiveAgeMs = if (lastNetworkReceiveTimestampNanos.get() > 0) {
+                    (now - lastNetworkReceiveTimestampNanos.get()) / 1_000_000
+                } else -1L
+                val lastParseAgeMs = if (lastPacketParsedTimestampNanos.get() > 0) {
+                    (now - lastPacketParsedTimestampNanos.get()) / 1_000_000
+                } else -1L
+                Log.i(
+                    TAG,
+                    "[DIAG] Socket: writesAttempted=${socketWritesAttempted.get()} " +
+                        "writesSucceeded=${socketWritesSucceeded.get()} writesFailed=${socketWritesFailed.get()} " +
+                        "bytesWritten=${socketBytesWritten.get()} lastWriteAgeMs=$lastWriteAgeMs"
+                )
+                Log.i(
+                    TAG,
+                    "[DIAG] Network: bytesReceived=${networkBytesReceived.get()} " +
+                        "framesDecoded=${networkFramesDecoded.get()} lastReceiveAgeMs=$lastReceiveAgeMs"
+                )
+                Log.i(
+                    TAG,
+                    "[DIAG] Parser: packetsParsed=${packetsParsed.get()} " +
+                        "packetsParseFailed=${packetsParseFailed.get()} " +
+                        "audioPacketsDispatched=${audioPacketsDispatched.get()} " +
+                        "lastParseAgeMs=$lastParseAgeMs"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Network diagnostics reporter failed", e)
+        }
+    }
+
+    /** Single-writer loop: serializes all TCP frame writes to prevent interleaving (BUG #3 fix). */
+    private suspend fun writerLoop(socket: Socket) {
+        val outputStream = socket.getOutputStream()
+        try {
+            for (frame in writerChannel) {
+                try {
+                    outputStream.write(frame)
+                    outputStream.flush()
+                    socketWritesSucceeded.incrementAndGet()
+                    socketBytesWritten.addAndGet(frame.size.toLong())
+                    lastSocketWriteTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
+                } catch (e: Exception) {
+                    Log.e(TAG, "Writer loop frame write failed", e)
+                    socketWritesFailed.incrementAndGet()
+
+                    try {
+                        socket.close()
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Failed to close socket after writer failure", e2)
+                    }
+
+                    writerChannel.close()
+                    break
+                }
+            }
+        } catch (e: kotlinx.coroutines.channels.ClosedReceiveChannelException) {
+            // Normal shutdown
+        } catch (e: Exception) {
+            Log.e(TAG, "Writer loop failed", e)
+        }
+    }
+
+    /** Enqueue a complete frame for serialized writing. Returns true if enqueued. */
+    private fun enqueueFrame(frame: ByteArray): Boolean {
+        val socket = connectionSocket ?: return false
+        val channel = writerChannel
+        socketWritesAttempted.incrementAndGet()
+
+        return try {
+            val result = channel.trySend(frame)
+            if (result.isSuccess) {
+                true
+            } else {
+                // Channel full - this is the primary packet loss source under load
+                socketWritesFailed.incrementAndGet()
+                Log.w(TAG, "Writer queue full, dropping frame (capacity=200)")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enqueue frame", e)
+            socketWritesFailed.incrementAndGet()
+            false
+        }
+    }
+
+    /** Helper to construct a framed payload and enqueue it. */
+    private fun buildAndEnqueueFrame(payload: ByteArray): Boolean {
+        val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
+        frame[0] = (payload.size shr 24).toByte()
+        frame[1] = (payload.size shr 16).toByte()
+        frame[2] = (payload.size shr 8).toByte()
+        frame[3] = payload.size.toByte()
+        System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
+        return enqueueFrame(frame)
+    }
+
+    /** Helper to construct a framed JSON string and enqueue it. */
+    private fun buildAndEnqueueJson(jsonString: String): Boolean {
+        val payload = jsonString.toByteArray(StandardCharsets.UTF_8)
+        return buildAndEnqueueFrame(payload)
     }
 }

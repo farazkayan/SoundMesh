@@ -13,22 +13,30 @@ class ReceiveUiStateData {
   final ReceiveUiState state;
   final ReceiveStats? stats;
   final String? error;
+  final int peakAmplitude;
+  final bool isSilent;
 
   const ReceiveUiStateData({
     this.state = ReceiveUiState.idle,
     this.stats,
     this.error,
+    this.peakAmplitude = 0,
+    this.isSilent = true,
   });
 
   ReceiveUiStateData copyWith({
     ReceiveUiState? state,
     ReceiveStats? stats,
     String? error,
+    int? peakAmplitude,
+    bool? isSilent,
   }) {
     return ReceiveUiStateData(
       state: state ?? this.state,
       stats: stats ?? this.stats,
       error: error ?? this.error,
+      peakAmplitude: peakAmplitude ?? this.peakAmplitude,
+      isSilent: isSilent ?? this.isSilent,
     );
   }
 }
@@ -60,7 +68,20 @@ class ReceiveStateNotifier extends StateNotifier<ReceiveUiStateData> with Widget
       state: uiState,
       stats: stats,
       error: null,
+      // Reset amplitude when stream state changes to non-receiving
+      peakAmplitude: (uiState == ReceiveUiState.receiving) ? (stats?.peakAmplitude ?? 0) : 0,
+      isSilent: (uiState == ReceiveUiState.receiving) ? (stats?.isSilent ?? true) : true,
     );
+  }
+
+  void handleAudioLevelUpdate(int peakAmplitude, bool isSilent) {
+    // Only update if we're in receiving state; otherwise ignore (meter should be zero)
+    if (state.state == ReceiveUiState.receiving) {
+      state = state.copyWith(
+        peakAmplitude: peakAmplitude,
+        isSilent: isSilent,
+      );
+    }
   }
 
   void handleError(String code, String message) {
@@ -103,6 +124,11 @@ class _ReceiveFlutterApiImpl implements AudioReceiveFlutterApi {
   @override
   void onStreamStateChanged(String state, ReceiveStats? stats) {
     _notifier.handleStreamStateChanged(state, stats);
+  }
+
+  @override
+  void onAudioLevelUpdate(int peakAmplitude, bool isSilent) {
+    _notifier.handleAudioLevelUpdate(peakAmplitude, isSilent);
   }
 }
 

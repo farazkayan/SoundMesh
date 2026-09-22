@@ -24,13 +24,15 @@ class AudioReceiveEngine(
     private val scope: CoroutineScope,
     /** Notify Flutter of receive state changes (STREAMING/RECOVERING/FAILED/STOPPED). */
     private val notifyStreamState: suspend (state: String, stats: ReceiveStats?) -> Unit,
+    /** Notify Flutter of audio level updates for visual meter (peakAmplitude 0-32767, isSilent). */
+    private val notifyAudioLevel: suspend (peakAmplitude: Int, isSilent: Boolean) -> Unit,
 ) {
     private val TAG = "AudioReceiveEngine"
 
     companion object {
-        // Jitter buffer: target 100ms = 5 packets at 20ms each
-        const val JITTER_BUFFER_PACKETS = 5
-        const val MIN_HEALTHY_PACKETS = 2
+        // Jitter buffer: target 60ms = 3 packets at 20ms each (reduced from 100ms for Phase 9 streaming)
+        const val JITTER_BUFFER_PACKETS = 3
+        const val MIN_HEALTHY_PACKETS = 1
     }
 
     private val isReceiving = AtomicBoolean(false)
@@ -51,7 +53,17 @@ class AudioReceiveEngine(
     private val packetsOutOfOrder = AtomicLong(0)
     private val bufferUnderruns = AtomicLong(0)
     private val bufferOverruns = AtomicLong(0)
+    
+    // --- Diagnostic counters for BUG #3 pipeline tracing ---
+    private val lastPacketReceivedTimestampNanos = AtomicLong(0)
+    private var receiveDiagJob: Job? = null
+
     private var statsJob: Job? = null
+    private var amplitudeJob: Job? = null
+
+    // Latest audio amplitude for visual meter
+    private var latestPeakAmplitude = 0
+    private var latestIsSilent = true
 
     /**
      * Initialize for a new stream (called on AUDIO_STREAM_INFO with new generation).
@@ -73,7 +85,9 @@ class AudioReceiveEngine(
      * Start receiving (called on AUDIO_STREAM_START).
      */
     suspend fun onStreamStart(generation: Long) {
-        if (generation != currentGeneration) {
+        // Be lenient: accept if generation matches OR if we haven't received stream info yet (currentGeneration == 0)
+        // This handles the case where AUDIO_STREAM_START arrives before AUDIO_STREAM_INFO is processed
+        if (currentGeneration != 0L && generation != currentGeneration) {
             Log.w(TAG, "Stream start for wrong generation: $generation (current: $currentGeneration)")
             return
         }
@@ -82,8 +96,26 @@ class AudioReceiveEngine(
             return
         }
 
+        // If we received stream start before stream info, adopt the generation
+        if (currentGeneration == 0L) {
+            currentGeneration = generation
+            Log.i(TAG, "Adopting generation from AUDIO_STREAM_START: $generation")
+        }
+
+        // Reset diagnostic counters
+        packetsReceived.set(0)
+        packetsLost.set(0)
+        packetsOutOfOrder.set(0)
+        bufferUnderruns.set(0)
+        bufferOverruns.set(0)
+        lastPacketReceivedTimestampNanos.set(0)
+
         // Start periodic stats reporting
         statsJob = scope.launch(Dispatchers.IO) { statsReporter() }
+        receiveDiagJob = scope.launch(Dispatchers.IO) { receiveDiagnosticsReporter() }
+
+        // Start fast amplitude reporting for visual meter (~40-60ms updates)
+        amplitudeJob = scope.launch(Dispatchers.IO) { amplitudeReporter() }
 
         notifyStreamState("STREAMING", computeStats())
         Log.i(TAG, "Receiving started for generation $generation")
@@ -105,6 +137,16 @@ class AudioReceiveEngine(
         statsJob?.cancel()
         statsJob = null
 
+        amplitudeJob?.cancel()
+        amplitudeJob = null
+
+        receiveDiagJob?.cancel()
+        receiveDiagJob = null
+
+        // Reset amplitude to zero when stopped
+        latestPeakAmplitude = 0
+        latestIsSilent = true
+
         notifyStreamState("STOPPED", null)
         Log.i(TAG, "Receiving stopped for generation $generation")
     }
@@ -114,6 +156,13 @@ class AudioReceiveEngine(
      */
     fun onAudioPacket(packet: AudioPacket) {
         if (!isReceiving.get()) return
+
+        // If we haven't adopted a generation yet (e.g., packets arrive before STREAM_START),
+        // adopt the packet's generation
+        if (currentGeneration == 0L) {
+            currentGeneration = packet.streamGeneration
+            Log.i(TAG, "Adopting generation from first AUDIO_PACKET: $currentGeneration")
+        }
 
         // Discard stale generations
         if (packet.streamGeneration < currentGeneration) {
@@ -126,11 +175,16 @@ class AudioReceiveEngine(
         }
 
         packetsReceived.incrementAndGet()
+        lastPacketReceivedTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
 
         val seq = packet.sequenceNumber
 
         // Compute payload audio stats (peak amplitude, silence detection)
         val (peakAmplitude, isSilent) = computePayloadStats(packet.payload)
+
+        // Update latest amplitude for visual meter
+        latestPeakAmplitude = peakAmplitude
+        latestIsSilent = isSilent
 
         // Periodic logging for packet flow verification (every 50 packets ~ 1 second)
         if (seq % 50 == 0) {
@@ -177,17 +231,18 @@ class AudioReceiveEngine(
 
     /**
      * Compute peak amplitude and silence detection from PCM payload.
-     * Payload is 16-bit stereo PCM (2 bytes per sample * 2 channels).
+     * Payload is 16-bit stereo PCM (2 bytes per sample * 2 channels), little-endian.
      */
     private fun computePayloadStats(payload: ByteArray): kotlin.Pair<Int, Boolean> {
         var peak = 0
         var nonZeroSamples = 0
-        // Process as 16-bit samples (2 bytes per sample)
+        // Process as signed 16-bit little-endian samples (2 bytes per sample)
         for (i in 0 until payload.size step 2) {
             if (i + 1 < payload.size) {
                 val lowByte = payload[i].toInt() and 0xFF
                 val highByte = payload[i + 1].toInt() and 0xFF
-                val sample = lowByte + (highByte * 256)
+                // Correct signed 16-bit reconstruction: little-endian
+                val sample = (highByte shl 8) or lowByte
                 val absSample = if (sample < 0) -sample else sample
                 if (absSample > peak) peak = absSample
                 if (absSample > 0) nonZeroSamples++
@@ -278,8 +333,15 @@ class AudioReceiveEngine(
         packetsOutOfOrder.set(0)
         bufferUnderruns.set(0)
         bufferOverruns.set(0)
+        lastPacketReceivedTimestampNanos.set(0)
+        latestPeakAmplitude = 0
+        latestIsSilent = true
         statsJob?.cancel()
         statsJob = null
+        amplitudeJob?.cancel()
+        amplitudeJob = null
+        receiveDiagJob?.cancel()
+        receiveDiagJob = null
     }
 
     private suspend fun statsReporter() {
@@ -293,6 +355,21 @@ class AudioReceiveEngine(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Stats reporter failed", e)
+        }
+    }
+
+    /**
+     * Fast amplitude reporter for visual meter updates (~40-60ms).
+     * Reports latest peak amplitude and silence state to Flutter for real-time VU meter.
+     */
+    private suspend fun amplitudeReporter() {
+        try {
+            while (isReceiving.get()) {
+                notifyAudioLevel(latestPeakAmplitude, latestIsSilent)
+                kotlinx.coroutines.delay(50) // ~20ms * 2.5 packets = 50ms
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Amplitude reporter failed", e)
         }
     }
 
@@ -310,6 +387,31 @@ class AudioReceiveEngine(
             lossRate = lossRate,
             timestampNanos = SystemClock.elapsedRealtimeNanos(),
             isHealthy = isHealthy(),
+            peakAmplitude = latestPeakAmplitude.toLong(),
+            isSilent = latestIsSilent,
         )
+    }
+
+    /** Periodic diagnostic reporter for pipeline tracing (BUG #3). */
+    private suspend fun receiveDiagnosticsReporter() {
+        try {
+            while (isReceiving.get()) {
+                kotlinx.coroutines.delay(2000)
+                val now = SystemClock.elapsedRealtimeNanos()
+                val lastPacketAgeMs = if (lastPacketReceivedTimestampNanos.get() > 0) {
+                    (now - lastPacketReceivedTimestampNanos.get()) / 1_000_000
+                } else -1L
+                Log.i(
+                    TAG,
+                    "[DIAG] AudioReceive: packetsReceived=${packetsReceived.get()} " +
+                        "packetsLost=${packetsLost.get()} packetsOutOfOrder=${packetsOutOfOrder.get()} " +
+                        "bufferDepth=${getBufferDepth()} bufferDepthMs=${getBufferDepthMs()} " +
+                        "underruns=${bufferUnderruns.get()} overruns=${bufferOverruns.get()} " +
+                        "lastPacketAgeMs=$lastPacketAgeMs"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Receive diagnostics reporter failed", e)
+        }
     }
 }

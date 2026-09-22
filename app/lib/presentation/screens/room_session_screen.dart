@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
 import 'package:soundmesh/application/providers/capture_provider.dart';
+import 'package:soundmesh/application/providers/output_provider.dart';
+import 'package:soundmesh/application/providers/receive_provider.dart';
 import 'package:soundmesh/core/design_system/index.dart';
 import 'package:soundmesh/presentation/components/empty_state.dart';
 import 'package:soundmesh/presentation/components/loading_indicator.dart';
@@ -15,6 +17,7 @@ class RoomPlaybackScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(applicationStateProvider);
     final captureState = ref.watch(captureStateProvider);
+    final receiveState = ref.watch(receiveStateProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -23,15 +26,16 @@ class RoomPlaybackScreen extends ConsumerWidget {
             horizontal: SMSpacing.xl,
             vertical: SMSpacing.xl,
           ),
-          child: _buildContent(context, appState, captureState, ref),
+          child: _buildContent(context, appState, captureState, receiveState, ref),
         ),
       ),
     );
   }
 
-  Widget _buildContent(BuildContext context, ApplicationState appState, CaptureUiStateData captureState, WidgetRef ref) {
+  Widget _buildContent(BuildContext context, ApplicationState appState, CaptureUiStateData captureState, ReceiveUiStateData receiveState, WidgetRef ref) {
     final sync = appState.sync;
     final syncStatus = sync?.syncState ?? SMSyncStatus.unknown;
+    final isHost = appState.isHost == true;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -50,7 +54,18 @@ class RoomPlaybackScreen extends ConsumerWidget {
         SizedBox(height: SMSpacing.xl),
         _buildSyncStatusCard(syncStatus),
         SizedBox(height: SMSpacing.xxl),
-        _buildCaptureDebugSection(context, captureState, ref),
+        // Receive debug section - PARTICIPANT ONLY
+        if (!isHost) ...[
+          _buildReceiveDebugSection(context, receiveState),
+          SizedBox(height: SMSpacing.xxl),
+        ],
+        // Capture debug section - HOST ONLY
+        if (isHost) ...[
+          _buildCaptureDebugSection(context, captureState, ref),
+          SizedBox(height: SMSpacing.xxl),
+        ],
+        // Output debug section - shown for both (both have output)
+        _buildOutputDebugSection(context, ref),
       ],
     );
   }
@@ -506,6 +521,251 @@ class RoomPlaybackScreen extends ConsumerWidget {
   }
 }
 
+  Widget _buildOutputDebugSection(BuildContext context, WidgetRef ref) {
+    final outputState = ref.watch(outputStateProvider);
+    final state = outputState.state;
+    final bufferedMs = outputState.bufferedMs;
+    final error = outputState.error;
+
+    final isPlaying = state == OutputUiState.playing;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // DEBUG BANNER
+        Container(
+          padding: EdgeInsets.all(SMSpacing.md),
+          decoration: BoxDecoration(
+            color: SMColors.warning.withValues(alpha: 0.15),
+            border: Border.all(color: SMColors.warning, width: 2),
+            borderRadius: BorderRadius.circular(SMRadius.medium),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: SMColors.warning, size: 20),
+              SizedBox(width: SMSpacing.sm),
+              Expanded(
+                child: Text(
+                  'DEBUG BUILD ONLY — Output Engine Test UI',
+                  style: SMTypography.caption.copyWith(
+                    color: SMColors.warning,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: SMSpacing.lg),
+
+        // State Display
+        SMCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Output State',
+                style: SMTypography.label.copyWith(color: SMColors.secondaryText),
+              ),
+              SizedBox(height: SMSpacing.xs),
+              _OutputStateBadge(state: state),
+              SizedBox(height: SMSpacing.md),
+              Divider(color: SMColors.divider),
+              SizedBox(height: SMSpacing.md),
+              Text(
+                'Buffer Status',
+                style: SMTypography.label.copyWith(color: SMColors.secondaryText),
+              ),
+              SizedBox(height: SMSpacing.xs),
+              _BufferStatusIndicator(
+                bufferedMs: bufferedMs,
+                isPlaying: isPlaying,
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: SMSpacing.md),
+
+        // Error Display
+        if (error != null) ...[
+          SMCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.error_outline, color: SMColors.error, size: 20),
+                    SizedBox(width: SMSpacing.sm),
+                    Text(
+                      'Output Error',
+                      style: SMTypography.label.copyWith(color: SMColors.error),
+                    ),
+                  ],
+                ),
+                SizedBox(height: SMSpacing.xs),
+                Text(
+                  error,
+                  style: SMTypography.body.copyWith(color: SMColors.error),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: SMSpacing.md),
+        ],
+      ],
+    );
+  }
+
+class _OutputStateBadge extends StatelessWidget {
+  const _OutputStateBadge({required this.state});
+
+  final OutputUiState state;
+
+  @override
+  Widget build(BuildContext context) {
+    Color bgColor;
+    Color textColor;
+    String label;
+
+    switch (state) {
+      case OutputUiState.idle:
+        bgColor = SMColors.mutedText.withValues(alpha: 0.2);
+        textColor = SMColors.mutedText;
+        label = 'IDLE';
+        break;
+      case OutputUiState.starting:
+        bgColor = SMColors.warning.withValues(alpha: 0.2);
+        textColor = SMColors.warning;
+        label = 'STARTING';
+        break;
+      case OutputUiState.playing:
+        bgColor = SMColors.soundmeshBlue.withValues(alpha: 0.2);
+        textColor = SMColors.soundmeshBlue;
+        label = 'PLAYING';
+        break;
+      case OutputUiState.underrun:
+        bgColor = SMColors.warning.withValues(alpha: 0.2);
+        textColor = SMColors.warning;
+        label = 'UNDERRUN';
+        break;
+      case OutputUiState.stopped:
+        bgColor = SMColors.secondaryText.withValues(alpha: 0.2);
+        textColor = SMColors.secondaryText;
+        label = 'STOPPED';
+        break;
+      case OutputUiState.failed:
+        bgColor = SMColors.error.withValues(alpha: 0.2);
+        textColor = SMColors.error;
+        label = 'FAILED';
+        break;
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: SMSpacing.md, vertical: SMSpacing.sm),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(SMRadius.small),
+        border: Border.all(color: textColor.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        label,
+        style: SMTypography.caption.copyWith(
+          color: textColor,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _BufferStatusIndicator extends StatelessWidget {
+  const _BufferStatusIndicator({
+    required this.bufferedMs,
+    required this.isPlaying,
+  });
+
+  final int bufferedMs;
+  final bool isPlaying;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isPlaying) {
+      return Row(
+        children: [
+          Icon(
+            Icons.radio_button_unchecked,
+            color: SMColors.mutedText,
+            size: 16,
+          ),
+          SizedBox(width: SMSpacing.sm),
+          Text(
+            'Not playing — start streaming to see buffer status',
+            style: SMTypography.caption.copyWith(color: SMColors.mutedText),
+          ),
+        ],
+      );
+    }
+
+    Color indicatorColor;
+    String statusText;
+    String detailText;
+
+    if (bufferedMs < 50) {
+      indicatorColor = SMColors.error;
+      statusText = 'LOW BUFFER';
+      detailText = 'Buffer: ${bufferedMs}ms (target ~200ms)';
+    } else if (bufferedMs < 100) {
+      indicatorColor = SMColors.warning;
+      statusText = 'BUFFERING';
+      detailText = 'Buffer: ${bufferedMs}ms (target ~200ms)';
+    } else {
+      indicatorColor = SMColors.success;
+      statusText = 'HEALTHY';
+      detailText = 'Buffer: ${bufferedMs}ms';
+    }
+
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: indicatorColor,
+            boxShadow: [
+              BoxShadow(
+                color: indicatorColor.withValues(alpha: 0.5),
+                blurRadius: 8,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+        ),
+        SizedBox(width: SMSpacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                statusText,
+                style: SMTypography.body.copyWith(
+                  color: indicatorColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                detailText,
+                style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _CaptureStateBadge extends StatelessWidget {
   const _CaptureStateBadge({required this.state});
 
@@ -771,6 +1031,296 @@ class _MetadataRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+Widget _buildReceiveDebugSection(BuildContext context, ReceiveUiStateData receiveState) {
+  final state = receiveState.state;
+  final stats = receiveState.stats;
+  final peakAmplitude = receiveState.peakAmplitude;
+  final isSilent = receiveState.isSilent;
+
+  final isReceiving = state == ReceiveUiState.receiving;
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      // DEBUG BANNER
+      Container(
+        padding: EdgeInsets.all(SMSpacing.md),
+        decoration: BoxDecoration(
+          color: SMColors.warning.withValues(alpha: 0.15),
+          border: Border.all(color: SMColors.warning, width: 2),
+          borderRadius: BorderRadius.circular(SMRadius.medium),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: SMColors.warning, size: 20),
+            SizedBox(width: SMSpacing.sm),
+            Expanded(
+              child: Text(
+                'DEBUG BUILD ONLY — Receive Engine Test UI',
+                style: SMTypography.caption.copyWith(
+                  color: SMColors.warning,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      SizedBox(height: SMSpacing.lg),
+
+      // State Display
+      SMCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Receive State',
+              style: SMTypography.label.copyWith(color: SMColors.secondaryText),
+            ),
+            SizedBox(height: SMSpacing.xs),
+            _ReceiveStateBadge(state: state),
+            SizedBox(height: SMSpacing.md),
+            Divider(color: SMColors.divider),
+            SizedBox(height: SMSpacing.md),
+            Text(
+              'Audio Level Meter',
+              style: SMTypography.label.copyWith(color: SMColors.secondaryText),
+            ),
+            SizedBox(height: SMSpacing.xs),
+            _AudioLevelMeter(
+              peakAmplitude: peakAmplitude,
+              isSilent: isSilent,
+              isReceiving: isReceiving,
+            ),
+            SizedBox(height: SMSpacing.md),
+            Divider(color: SMColors.divider),
+            SizedBox(height: SMSpacing.md),
+            Text(
+              'Receive Stats',
+              style: SMTypography.label.copyWith(color: SMColors.secondaryText),
+            ),
+            SizedBox(height: SMSpacing.xs),
+            if (stats != null) ...[
+              _MetadataRow(label: 'Packets Received', value: stats.packetsReceived.toString()),
+              _MetadataRow(label: 'Packets Lost', value: stats.packetsLost.toString()),
+              _MetadataRow(label: 'Out of Order', value: stats.packetsOutOfOrder.toString()),
+              _MetadataRow(label: 'Buffer Depth', value: '${stats.bufferDepthMs} ms'),
+              _MetadataRow(label: 'Loss Rate', value: '${(stats.lossRate * 100).toStringAsFixed(2)}%'),
+              _MetadataRow(label: 'Healthy', value: stats.isHealthy.toString()),
+              _MetadataRow(label: 'Peak Amplitude', value: stats.peakAmplitude.toString()),
+              _MetadataRow(label: 'Silent', value: stats.isSilent.toString()),
+            ] else ...[
+              Text(
+                'No stats available',
+                style: SMTypography.caption.copyWith(color: SMColors.mutedText),
+              ),
+            ],
+          ],
+        ),
+      ),
+      SizedBox(height: SMSpacing.md),
+
+      // Error Display
+      if (receiveState.error != null) ...[
+        SMCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.error_outline, color: SMColors.error, size: 20),
+                  SizedBox(width: SMSpacing.sm),
+                  Text(
+                    'Receive Error',
+                    style: SMTypography.label.copyWith(color: SMColors.error),
+                  ),
+                ],
+              ),
+              SizedBox(height: SMSpacing.xs),
+              Text(
+                receiveState.error!,
+                style: SMTypography.body.copyWith(color: SMColors.error),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: SMSpacing.md),
+      ],
+    ],
+  );
+}
+
+class _ReceiveStateBadge extends StatelessWidget {
+  const _ReceiveStateBadge({required this.state});
+
+  final ReceiveUiState state;
+
+  @override
+  Widget build(BuildContext context) {
+    Color bgColor;
+    Color textColor;
+    String label;
+
+    switch (state) {
+      case ReceiveUiState.idle:
+        bgColor = SMColors.mutedText.withValues(alpha: 0.2);
+        textColor = SMColors.mutedText;
+        label = 'IDLE';
+        break;
+      case ReceiveUiState.receiving:
+        bgColor = SMColors.soundmeshBlue.withValues(alpha: 0.2);
+        textColor = SMColors.soundmeshBlue;
+        label = 'RECEIVING';
+        break;
+      case ReceiveUiState.stopped:
+        bgColor = SMColors.secondaryText.withValues(alpha: 0.2);
+        textColor = SMColors.secondaryText;
+        label = 'STOPPED';
+        break;
+      case ReceiveUiState.failed:
+        bgColor = SMColors.error.withValues(alpha: 0.2);
+        textColor = SMColors.error;
+        label = 'FAILED';
+        break;
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: SMSpacing.md, vertical: SMSpacing.sm),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(SMRadius.small),
+        border: Border.all(color: textColor.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        label,
+        style: SMTypography.caption.copyWith(
+          color: textColor,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioLevelMeter extends StatelessWidget {
+  const _AudioLevelMeter({
+    required this.peakAmplitude,
+    required this.isSilent,
+    required this.isReceiving,
+  });
+
+  final int peakAmplitude;
+  final bool isSilent;
+  final bool isReceiving;
+
+  @override
+  Widget build(BuildContext context) {
+    // Normalize 0-32767 to 0.0-1.0
+    // Only show meter when receiving, otherwise show empty
+    final fillRatio = isReceiving ? (peakAmplitude / 32767.0).clamp(0.0, 1.0) : 0.0;
+    final displaySilent = !isReceiving || isSilent;
+
+    Color meterColor;
+    if (!isReceiving) {
+      meterColor = SMColors.mutedText;
+    } else if (isSilent) {
+      meterColor = SMColors.warning;
+    } else if (fillRatio > 0.7) {
+      meterColor = SMColors.error; // Hot - clipping risk
+    } else if (fillRatio > 0.4) {
+      meterColor = SMColors.success;
+    } else {
+      meterColor = SMColors.soundmeshBlue;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Horizontal VU meter bar
+        Container(
+          height: 24,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: SMColors.surface,
+            borderRadius: BorderRadius.circular(SMRadius.small),
+            border: Border.all(color: SMColors.divider),
+          ),
+          child: Stack(
+            children: [
+              // Background track
+              Container(
+                width: double.infinity,
+                height: double.infinity,
+                decoration: BoxDecoration(
+                  color: SMColors.surface,
+                  borderRadius: BorderRadius.circular(SMRadius.small),
+                ),
+              ),
+              // Animated fill bar
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 50),
+                curve: Curves.easeOut,
+                width: double.infinity,
+                height: double.infinity,
+                child: FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: fillRatio,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: meterColor,
+                      borderRadius: BorderRadius.circular(SMRadius.small),
+                    ),
+                  ),
+                ),
+              ),
+              // Center label
+              Center(
+                child: Text(
+                  isReceiving
+                      ? (displaySilent ? 'SILENT' : '${(fillRatio * 100).toInt()}%')
+                      : 'STOPPED',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: SMColors.primaryText,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: SMSpacing.xs),
+        // Detail text
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: meterColor,
+              ),
+            ),
+            SizedBox(width: SMSpacing.sm),
+            Expanded(
+              child: Text(
+                isReceiving
+                    ? (displaySilent
+                        ? 'Receiving — silent (peak: $peakAmplitude)'
+                        : 'Receiving — audio active (peak: $peakAmplitude / 32767)')
+                    : 'Not receiving — meter at zero',
+                style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
+              ),
+            ),
+          ],
+        ),
+],
     );
   }
 }

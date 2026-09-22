@@ -704,6 +704,9 @@ class NetworkRepository {
     _cancelHandshakeTimer();
     _transitionTo(NetworkConnectionState.ready, reason: 'Join accepted');
     _transitionToRoomLifecycleState(RoomLifecycleState.ready);
+    // Participant side: we have formally joined the room
+    _participantJoined = true;
+    debugPrint('[RoomLifecycle] Participant: JOIN_ACCEPTED received, participantJoined=true');
     // Handshake complete - heartbeat already configured in _handleWelcome
   }
 

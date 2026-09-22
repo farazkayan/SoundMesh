@@ -52,6 +52,20 @@ class AudioTransportEngine(
     private var currentChannelCount = 0
     private var sessionId: String? = null
 
+    // --- Diagnostic counters for BUG #3 pipeline tracing ---
+    private val framesAccumulated = AtomicLong(0)
+    private val packetsCreated = AtomicLong(0)
+    private val packetsEnqueued = AtomicLong(0)
+    private val packetsEnqueueFailed = AtomicLong(0)
+    private val packetsDequeued = AtomicLong(0)
+    private val packetsSent = AtomicLong(0)
+    private val packetsSendFailed = AtomicLong(0)
+    private val bytesSent = AtomicLong(0)
+    private val lastActivityTimestampNanos = AtomicLong(0)
+    private var transportDiagJob: Job? = null
+    // Approximate queue size (enqueued - dequeued)
+    private val queueSize = AtomicLong(0)
+
     // Accumulator for partial frames
     private val frameAccumulator = java.io.ByteArrayOutputStream()
     private var pendingSendJob: Job? = null
@@ -86,13 +100,26 @@ class AudioTransportEngine(
 
         isStreaming.set(true)
 
+        // Reset diagnostic counters
+        framesAccumulated.set(0)
+        packetsCreated.set(0)
+        packetsEnqueued.set(0)
+        packetsEnqueueFailed.set(0)
+        packetsDequeued.set(0)
+        packetsSent.set(0)
+        packetsSendFailed.set(0)
+        bytesSent.set(0)
+        lastActivityTimestampNanos.set(0)
+        queueSize.set(0)
+
         // Start the packet sender coroutine
         pendingSendJob = scope.launch(Dispatchers.IO) { packetSender() }
+        transportDiagJob = scope.launch(Dispatchers.IO) { transportDiagnosticsReporter() }
 
-        // Send AUDIO_STREAM_INFO message with format info
+        // Send AUDIO_STREAM_INFO message with format info FIRST (synchronously wait)
         sendStreamInfo(metadata)
 
-        // Send AUDIO_STREAM_START to signal participants
+        // Then send AUDIO_STREAM_START to signal participants (synchronously wait)
         sendStreamStart(metadata)
 
         notifyStreamState("STREAMING", metadata)
@@ -113,6 +140,8 @@ class AudioTransportEngine(
 
         // Cancel sender and drain channel
         pendingSendJob?.cancel()
+        transportDiagJob?.cancel()
+        transportDiagJob = null
         try {
             packetChannel.close()
         } catch (e: Exception) {
@@ -133,6 +162,7 @@ class AudioTransportEngine(
             return
         }
 
+        framesAccumulated.incrementAndGet()
         frameAccumulator.write(pcmData, 0, byteCount)
 
         // Emit full frames
@@ -160,6 +190,8 @@ class AudioTransportEngine(
                     payload = frameBytes,
                 )
 
+                packetsCreated.incrementAndGet()
+
                 // Periodic logging for packet flow verification (every 50 packets ~ 1 second)
                 if (seq % 50 == 0) {
                     Log.i(TAG, "Packetizing: seq=$seq generation=$currentGeneration timestamp=$captureTimestampNanos")
@@ -169,10 +201,13 @@ class AudioTransportEngine(
                 scope.launch {
                     try {
                         packetChannel.send(packet)
+                        packetsEnqueued.incrementAndGet()
+                        queueSize.incrementAndGet()
                     } catch (e: ClosedReceiveChannelException) {
                         // Channel closed, streaming stopped
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to enqueue packet seq=$seq", e)
+                        packetsEnqueueFailed.incrementAndGet()
                     }
                 }
             } else {
@@ -190,6 +225,9 @@ class AudioTransportEngine(
         try {
             for (packet in packetChannel) {
                 if (!isStreaming.get()) break
+
+                packetsDequeued.incrementAndGet()
+                queueSize.decrementAndGet()
 
                 val wireBytes = AudioPacket.toByteArray(packet)
                 // Wrap in our protocol envelope with messageType = "AUDIO_PACKET"
@@ -209,6 +247,13 @@ class AudioTransportEngine(
                 json.append("}}")
 
                 val sent = sendProtocolMessage(json.toString())
+                if (sent) {
+                    packetsSent.incrementAndGet()
+                    bytesSent.addAndGet(wireBytes.size.toLong())
+                    lastActivityTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
+                } else {
+                    packetsSendFailed.incrementAndGet()
+                }
                 if (!sent) {
                     Log.w(TAG, "Failed to send audio packet seq=${packet.sequenceNumber}")
                 } else if (packet.sequenceNumber % 50 == 0) {
@@ -287,6 +332,30 @@ class AudioTransportEngine(
             StreamingState(state = "STREAMING", metadata = metadata)
         } else {
             StreamingState(state = "IDLE", metadata = null)
+        }
+    }
+
+    /** Periodic diagnostic reporter for pipeline tracing (BUG #3). */
+    private suspend fun transportDiagnosticsReporter() {
+        try {
+            while (isStreaming.get()) {
+                kotlinx.coroutines.delay(2000)
+                val now = SystemClock.elapsedRealtimeNanos()
+                val lastActivityAgeMs = if (lastActivityTimestampNanos.get() > 0) {
+                    (now - lastActivityTimestampNanos.get()) / 1_000_000
+                } else -1L
+                Log.i(
+                    TAG,
+                    "[DIAG] Transport: framesAccumulated=${framesAccumulated.get()} " +
+                        "packetsCreated=${packetsCreated.get()} packetsEnqueued=${packetsEnqueued.get()} " +
+                        "packetsEnqueueFailed=${packetsEnqueueFailed.get()} packetsDequeued=${packetsDequeued.get()} " +
+                        "packetsSent=${packetsSent.get()} packetsSendFailed=${packetsSendFailed.get()} " +
+                        "bytesSent=${bytesSent.get()} queueSize=${queueSize.get()} " +
+                        "lastActivityAgeMs=$lastActivityAgeMs"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Transport diagnostics reporter failed", e)
         }
     }
 }

@@ -129,6 +129,8 @@ class ReceiveStats {
   final double lossRate;
   final int timestampNanos;
   final bool isHealthy;
+  final int peakAmplitude;
+  final bool isSilent;
   ReceiveStats({
     required this.packetsReceived,
     required this.packetsLost,
@@ -137,6 +139,8 @@ class ReceiveStats {
     required this.lossRate,
     required this.timestampNanos,
     required this.isHealthy,
+    this.peakAmplitude = 0,
+    this.isSilent = true,
   });
 }
 
@@ -144,6 +148,29 @@ class ReceiveState {
   final String state;
   final ReceiveStats? stats;
   ReceiveState({required this.state, this.stats});
+}
+
+class OutputState {
+  final String state;
+  final int bufferedMs;
+  OutputState({required this.state, required this.bufferedMs});
+}
+
+class OutputError {
+  final String code;
+  final String message;
+  OutputError({required this.code, required this.message});
+}
+
+@HostApi()
+abstract class AudioOutputPlatform {
+  OutputState getOutputState();
+}
+
+@FlutterApi()
+abstract class AudioOutputFlutterApi {
+  void onOutputStateChanged(String state, int bufferedMs);
+  void onOutputError(String errorCode, String errorMessage);
 }
 
 @HostApi()
@@ -214,4 +241,5 @@ abstract class AudioCaptureFlutterApi {
 @FlutterApi()
 abstract class AudioReceiveFlutterApi {
   void onStreamStateChanged(String state, ReceiveStats? stats);
+  void onAudioLevelUpdate(int peakAmplitude, bool isSilent);
 }

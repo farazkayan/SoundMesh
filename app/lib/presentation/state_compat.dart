@@ -246,11 +246,11 @@ class CoreStateController extends ChangeNotifier {
   }
 
   Future<void> createRoom({dynamic request}) async {
-    await _ref.read(createRoomFlowProvider.notifier).createRoom();
+    await _ref.read(createRoomFlowProvider.notifier).createRoom(ref: _ref);
   }
 
   Future<void> joinRoom({dynamic request}) async {
-    await _ref.read(joinRoomFlowProvider.notifier).joinRoom();
+    await _ref.read(joinRoomFlowProvider.notifier).joinRoom(ref: _ref);
   }
 
   Future<void> startCapture(dynamic request) async {

@@ -737,6 +737,8 @@ class ReceiveStats {
     required this.lossRate,
     required this.timestampNanos,
     required this.isHealthy,
+    required this.peakAmplitude,
+    required this.isSilent,
   });
 
   int packetsReceived;
@@ -753,6 +755,10 @@ class ReceiveStats {
 
   bool isHealthy;
 
+  int peakAmplitude;
+
+  bool isSilent;
+
   List<Object?> _toList() {
     return <Object?>[
       packetsReceived,
@@ -762,6 +768,8 @@ class ReceiveStats {
       lossRate,
       timestampNanos,
       isHealthy,
+      peakAmplitude,
+      isSilent,
     ];
   }
 
@@ -778,6 +786,8 @@ class ReceiveStats {
       lossRate: result[4]! as double,
       timestampNanos: result[5]! as int,
       isHealthy: result[6]! as bool,
+      peakAmplitude: result[7]! as int,
+      isSilent: result[8]! as bool,
     );
   }
 
@@ -790,7 +800,7 @@ class ReceiveStats {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(packetsReceived, other.packetsReceived) && _deepEquals(packetsLost, other.packetsLost) && _deepEquals(packetsOutOfOrder, other.packetsOutOfOrder) && _deepEquals(bufferDepthMs, other.bufferDepthMs) && _deepEquals(lossRate, other.lossRate) && _deepEquals(timestampNanos, other.timestampNanos) && _deepEquals(isHealthy, other.isHealthy);
+    return _deepEquals(packetsReceived, other.packetsReceived) && _deepEquals(packetsLost, other.packetsLost) && _deepEquals(packetsOutOfOrder, other.packetsOutOfOrder) && _deepEquals(bufferDepthMs, other.bufferDepthMs) && _deepEquals(lossRate, other.lossRate) && _deepEquals(timestampNanos, other.timestampNanos) && _deepEquals(isHealthy, other.isHealthy) && _deepEquals(peakAmplitude, other.peakAmplitude) && _deepEquals(isSilent, other.isSilent);
   }
 
   @override
@@ -799,7 +809,7 @@ class ReceiveStats {
 
   @override
   String toString() {
-    return 'ReceiveStats(packetsReceived: $packetsReceived, packetsLost: $packetsLost, packetsOutOfOrder: $packetsOutOfOrder, bufferDepthMs: $bufferDepthMs, lossRate: $lossRate, timestampNanos: $timestampNanos, isHealthy: $isHealthy)';
+    return 'ReceiveStats(packetsReceived: $packetsReceived, packetsLost: $packetsLost, packetsOutOfOrder: $packetsOutOfOrder, bufferDepthMs: $bufferDepthMs, lossRate: $lossRate, timestampNanos: $timestampNanos, isHealthy: $isHealthy, peakAmplitude: $peakAmplitude, isSilent: $isSilent)';
   }
 }
 
@@ -853,6 +863,106 @@ class ReceiveState {
   }
 }
 
+class OutputState {
+  OutputState({
+    required this.state,
+    required this.bufferedMs,
+  });
+
+  String state;
+
+  int bufferedMs;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      state,
+      bufferedMs,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static OutputState decode(Object result) {
+    result as List<Object?>;
+    return OutputState(
+      state: result[0]! as String,
+      bufferedMs: result[1]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! OutputState || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(state, other.state) && _deepEquals(bufferedMs, other.bufferedMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'OutputState(state: $state, bufferedMs: $bufferedMs)';
+  }
+}
+
+class OutputError {
+  OutputError({
+    required this.code,
+    required this.message,
+  });
+
+  String code;
+
+  String message;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      code,
+      message,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static OutputError decode(Object result) {
+    result as List<Object?>;
+    return OutputError(
+      code: result[0]! as String,
+      message: result[1]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! OutputError || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(code, other.code) && _deepEquals(message, other.message);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'OutputError(code: $code, message: $message)';
+  }
+}
+
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -900,6 +1010,12 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is ReceiveState) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
+    }    else if (value is OutputState) {
+      buffer.putUint8(142);
+      writeValue(buffer, value.encode());
+    }    else if (value is OutputError) {
+      buffer.putUint8(143);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -934,8 +1050,101 @@ class _PigeonCodec extends StandardMessageCodec {
         return ReceiveStats.decode(readValue(buffer)!);
       case 141:
         return ReceiveState.decode(readValue(buffer)!);
+      case 142:
+        return OutputState.decode(readValue(buffer)!);
+      case 143:
+        return OutputError.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
+    }
+  }
+}
+
+class AudioOutputPlatform {
+  /// Constructor for [AudioOutputPlatform]. The [binaryMessenger] named argument is
+  /// available for dependency injection. If it is left null, the default
+  /// BinaryMessenger will be used which routes to the host platform.
+  AudioOutputPlatform({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
+      : pigeonVar_binaryMessenger = binaryMessenger,
+        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  final BinaryMessenger? pigeonVar_binaryMessenger;
+
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  final String pigeonVar_messageChannelSuffix;
+
+  Future<OutputState> getOutputState() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.AudioOutputPlatform.getOutputState$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as OutputState;
+  }
+}
+
+abstract class AudioOutputFlutterApi {
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  void onOutputStateChanged(String state, int bufferedMs);
+
+  void onOutputError(String errorCode, String errorMessage);
+
+  static void setUp(AudioOutputFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.AudioOutputFlutterApi.onOutputStateChanged$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_state = args[0]! as String;
+          final int arg_bufferedMs = args[1]! as int;
+          try {
+            api.onOutputStateChanged(arg_state, arg_bufferedMs);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.AudioOutputFlutterApi.onOutputError$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_errorCode = args[0]! as String;
+          final String arg_errorMessage = args[1]! as String;
+          try {
+            api.onOutputError(arg_errorCode, arg_errorMessage);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
     }
   }
 }
@@ -1613,6 +1822,8 @@ abstract class AudioReceiveFlutterApi {
 
   void onStreamStateChanged(String state, ReceiveStats? stats);
 
+  void onAudioLevelUpdate(int peakAmplitude, bool isSilent);
+
   static void setUp(AudioReceiveFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
     messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
     {
@@ -1628,6 +1839,28 @@ abstract class AudioReceiveFlutterApi {
           final ReceiveStats? arg_stats = args[1] as ReceiveStats?;
           try {
             api.onStreamStateChanged(arg_state, arg_stats);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.AudioReceiveFlutterApi.onAudioLevelUpdate$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final int arg_peakAmplitude = args[0]! as int;
+          final bool arg_isSilent = args[1]! as bool;
+          try {
+            api.onAudioLevelUpdate(arg_peakAmplitude, arg_isSilent);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

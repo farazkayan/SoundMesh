@@ -64,6 +64,14 @@ class AudioCaptureEngine(
     private var mediaProjection: MediaProjection? = null
     private val generationCounter = AtomicLong(0)
     @Volatile private var currentMetadata: CaptureMetadata? = null
+
+    // --- Diagnostic counters for BUG #3 pipeline tracing ---
+    private val framesCaptured = AtomicLong(0)
+    private val bytesCaptured = AtomicLong(0)
+    private val framesForwardedToTransport = AtomicLong(0)
+    private val lastFrameTimestampNanos = AtomicLong(0)
+    private var captureDiagJob: Job? = null
+
     private val diagnostics = CaptureDiagnostics(scope) { stats ->
         scope.launch {
             notifyFrameStats(stats)
@@ -227,7 +235,12 @@ class AudioCaptureEngine(
         notifyState(CaptureSessionState.CAPTURING.name, metadata)
 
         isRunning.set(true)
+        framesCaptured.set(0)
+        bytesCaptured.set(0)
+        framesForwardedToTransport.set(0)
+        lastFrameTimestampNanos.set(0)
         readJob = scope.launch(Dispatchers.IO) { readLoop(record, bufferBytes) }
+        captureDiagJob = scope.launch(Dispatchers.IO) { captureDiagnosticsReporter() }
 
         Log.i(
             TAG,
@@ -250,9 +263,13 @@ class AudioCaptureEngine(
                 when {
                     readBytes > 0 -> {
                         diagnostics.recordFrame(readBuffer, readBytes)
+                        framesCaptured.incrementAndGet()
+                        bytesCaptured.addAndGet(readBytes.toLong())
                         // Forward frame to transport layer (Phase 8)
                         val captureTimestamp = SystemClock.elapsedRealtimeNanos()
+                        lastFrameTimestampNanos.set(captureTimestamp)
                         onFrameCaptured?.invoke(readBuffer, readBytes, captureTimestamp)
+                        framesForwardedToTransport.incrementAndGet()
                         // NOTE: No SOURCE_APP_BLOCKED heuristic here.
                         // "No audio currently playing" is a normal, expected state —
                         // not an error. The isReceivingAudio/isSilent flags in FrameArrivalStats
@@ -342,6 +359,8 @@ class AudioCaptureEngine(
     /** Release record + projection + service. Idempotent. */
     private fun cleanupCaptureResources() {
         diagnostics.stop()
+        captureDiagJob?.cancel()
+        captureDiagJob = null
         runCatching { audioRecord?.stop() }
         runCatching { audioRecord?.release() }
         audioRecord = null
@@ -352,6 +371,26 @@ class AudioCaptureEngine(
         mediaProjection = null
         AudioCaptureService.setStopListener(null)
         AudioCaptureService.stop(context)
+    }
+
+    /** Periodic diagnostic reporter for pipeline tracing (BUG #3). */
+    private suspend fun captureDiagnosticsReporter() {
+        try {
+            while (isRunning.get()) {
+                kotlinx.coroutines.delay(2000)
+                val now = SystemClock.elapsedRealtimeNanos()
+                val lastFrameAgeMs = if (lastFrameTimestampNanos.get() > 0) {
+                    (now - lastFrameTimestampNanos.get()) / 1_000_000
+                } else -1L
+                Log.i(
+                    TAG,
+                    "[DIAG] Capture: frames=${framesCaptured.get()} bytes=${bytesCaptured.get()} " +
+                        "forwarded=${framesForwardedToTransport.get()} lastFrameAgeMs=$lastFrameAgeMs"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Capture diagnostics reporter failed", e)
+        }
     }
 
     /** Current metadata for getCaptureState(); null unless CAPTURING. */

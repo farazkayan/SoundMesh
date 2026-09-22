@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/network_repository.dart';
 import '../protocol.dart';
 import '../room/room_lifecycle.dart';
+import 'room_lifecycle_provider.dart';
+
 enum JoinRoomFlowStatus {
   idle,
   connecting,
@@ -262,7 +264,7 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
     state = state.copyWith(joinCode: code);
   }
 
-  Future<void> joinRoom() async {
+  Future<void> joinRoom({WidgetRef? ref}) async {
     developer.log(
       '[JOIN_TRACE] JoinRoomFlowNotifier: joinRoom ENTERED',
       name: 'SoundMesh.JoinRoomFlow',
@@ -342,6 +344,11 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
         '[JOIN_TRACE] JoinRoomFlowNotifier: connectToHost succeeded',
         name: 'SoundMesh.JoinRoomFlow',
       );
+      // Explicitly sync role after connectToHost to ensure RoomLifecycleNotifier
+      // has the correct role (participant) immediately, avoiding race condition.
+      if (ref != null) {
+        ref.read(roomLifecycleProvider.notifier).syncRoleAndParticipantState();
+      }
     }
   }
 

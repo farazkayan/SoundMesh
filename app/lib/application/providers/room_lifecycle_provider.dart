@@ -69,11 +69,16 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
           sessionId: _networkRepository.sessionId,
           roomId: _networkRepository.roomId,
         );
+        // Participant side: JOIN_ACCEPTED means we formally joined; sync role and participant state
+        _syncRoleAndParticipantState();
       } else if (messageType == ProtocolMessageType.joinRejected) {
         // Raw wire values must not leak into UI-facing state.
         final reasonStr = message.payload?['reason'] as String?;
         final reason = JoinRejectReasonX.fromWireValue(reasonStr ?? '') ?? JoinRejectReason.internalError;
         state = state.copyWith(closedReason: reason.friendlyMessage);
+      } else if (messageType == ProtocolMessageType.joinRequest) {
+        // Host side: JOIN_REQUEST received means a participant is joining; sync participant state
+        _syncRoleAndParticipantState();
       }
     });
 
@@ -84,6 +89,11 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
           sessionId: _networkRepository.sessionId,
           roomId: _networkRepository.roomId,
         );
+        // Connection ready: both role and participantJoined are now stable
+        _syncRoleAndParticipantState();
+      } else if (connState == NetworkConnectionState.disconnected) {
+        // Disconnected: reset participantJoined (role will be reset on next connect/host)
+        state = state.copyWith(participantJoined: false);
       }
     });
 
@@ -91,8 +101,23 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
       state = state.copyWith(errorMessage: 'Connection error: ${error.errorCode} - ${error.errorMessage}');
     });
 
-    // Initialize role from network repository
-    state = state.copyWith(role: _networkRepository.roomRole);
+    // Initial sync after subscriptions are established
+    _syncRoleAndParticipantState();
+  }
+
+  /// Reads current role and participantJoined from NetworkRepository and updates state.
+  /// Called at synchronization points where these values are guaranteed to be accurate.
+  void _syncRoleAndParticipantState() {
+    final role = _networkRepository.roomRole;
+    final participantJoined = _networkRepository.participantJoined;
+    debugPrint('[UILifecycle] RoomLifecycle: _syncRoleAndParticipantState -> role=$role, participantJoined=$participantJoined');
+    state = state.copyWith(role: role, participantJoined: participantJoined);
+  }
+
+  /// Public method to explicitly sync role and participantJoined from NetworkRepository.
+  /// Called by flow providers after intentional role changes (startHosting, connectToHost).
+  void syncRoleAndParticipantState() {
+    _syncRoleAndParticipantState();
   }
 
   void setParticipantDisplayName(String? displayName) {
