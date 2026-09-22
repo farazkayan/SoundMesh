@@ -67,7 +67,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     // cannot land after a new attempt's "connecting".
     private var connectionGeneration = 0L
     private var isHosting = false
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private val scope = CoroutineScope(Job() + Dispatchers.IO)
 
     // ---- Phase 6: Heartbeat and reconnection ----
     private var heartbeatIntervalMs = 5000L
@@ -1421,7 +1421,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
 
     override fun onDestroy() {
         stopAll()
-        scope.cancel()
+        scope.coroutineContext[Job]?.cancel()
         discoveryService.dispose()
         super.onDestroy()
     }

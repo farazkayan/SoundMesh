@@ -196,10 +196,24 @@ class AudioOutputEngine(
         }
 
         // Start AudioTrack first
-        audioTrack?.play()
-
-        // Wait for AudioTrack to reach PLAYING state (with timeout)
         val track = audioTrack!!
+
+        // Prime AudioTrack with one frame of silence to avoid startup crackle
+        // This writes silence to the native buffer before play() begins rendering
+        val silenceBytes = frameSizeBytes.get().toInt()
+        val silence = ByteArray(silenceBytes)
+        var written = 0
+        while (written < silenceBytes) {
+            val result = track.write(silence, written, silenceBytes - written, AudioTrack.WRITE_BLOCKING)
+            if (result < 0) {
+                Log.e(TAG, "AudioTrack silence write error: $result")
+                break
+            }
+            written += result
+        }
+        Log.i(TAG, "AudioTrack primed with ${written}B silence")
+
+        track.play()
         var playState = track.playState
         var waitCount = 0
         while (playState != AudioTrack.PLAYSTATE_PLAYING && waitCount < 50 && isOutputting.get()) {
