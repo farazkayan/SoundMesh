@@ -1019,6 +1019,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             notifyState("connected")
             startReading(socket)
             startHeartbeat()
+            // Network reconnected: resume pipeline watchdog for current generation
+            if (pipelineState == "ACTIVE") {
+                startPipelineWatchdog(pipelineGeneration)
+            }
             synchronized(hostingLock) {
                 isReconnecting = false
                 reconnectAttempts = 0
@@ -1086,7 +1090,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             notifyConnectionError("HEARTBEAT_TIMEOUT", "Participant heartbeat timeout")
             notifyState("disconnected")
         } else {
-            // Participant: initiate reconnection
+            // Participant: pause pipeline watchdog during reconnection
+            stopPipelineWatchdog()
             if (!isReconnecting) {
                 isReconnecting = true
                 reconnectAttempts = 0
@@ -1316,6 +1321,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             // emit a stale "disconnected" after a new attempt's "connecting".
             if (isCurrentConnection(generation)) {
                 Log.d(TAG, "[HostLifecycle] startReading: reader ending, notifying disconnected for generation=$generation")
+                // Network disconnected: pause pipeline watchdog (will restart on reconnect)
+                stopPipelineWatchdog()
                 notifyState("disconnected")
             } else {
                 Log.d(TAG, "[HostLifecycle] startReading: reader ending, superseded (gen=$generation, currentGen=$connectionGeneration), not notifying disconnected")
