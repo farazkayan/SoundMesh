@@ -8,9 +8,6 @@ class RoomShell extends StatelessWidget {
 
   final Widget child;
 
-  // Third tab is session-framed per designv3.md §2: no "Playback" label and
-  // no media-transport iconography. Route names/paths are unchanged — this
-  // is a label/icon/style change only.
   static const List<_RoomTab> _tabs = [
     _RoomTab(
       routeName: AppRouter.roomDashboardPath,
@@ -23,12 +20,6 @@ class RoomShell extends StatelessWidget {
       path: AppRouter.roomDevicesPath,
       label: 'Devices',
       icon: Icons.router_outlined,
-    ),
-    _RoomTab(
-      routeName: AppRouter.roomSessionPath,
-      path: AppRouter.roomSessionPath,
-      label: 'Session',
-      icon: Icons.graphic_eq_outlined,
     ),
   ];
 

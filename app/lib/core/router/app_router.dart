@@ -4,7 +4,6 @@ import '../../presentation/screens/home_screen.dart';
   import '../../presentation/screens/join_room_screen.dart';
   import '../../presentation/screens/room_dashboard_screen.dart';
   import '../../presentation/screens/room_devices_screen.dart';
-  import '../../presentation/screens/room_session_screen.dart';
   import '../../presentation/screens/room_preparation_screen.dart';
   import '../../presentation/screens/qr_scan_screen.dart';
   import '../../presentation/screens/settings_screen.dart';
@@ -17,7 +16,6 @@ class AppRouter {
   static const String joinRoom = '/join-room';
   static const String roomDashboard = '/room';
   static const String roomDevices = '/room/devices';
-  static const String roomSession = '/room/session';
   static const String roomPreparation = '/room/preparation';
   static const String qrScan = '/qr-scan';
   static const String settings = '/settings';
@@ -29,7 +27,6 @@ class AppRouter {
   static const String joinRoomRoute = 'joinRoom';
   static const String roomDashboardRoute = 'roomDashboard';
   static const String roomDevicesRoute = 'roomDevices';
-  static const String roomSessionRoute = 'roomSession';
   static const String roomPreparationRoute = 'roomPreparation';
   static const String qrScanRoute = 'qrScan';
   static const String settingsRoute = 'settings';
@@ -41,7 +38,6 @@ class AppRouter {
   static const String joinRoomPath = '/join-room';
   static const String roomDashboardPath = '/room';
   static const String roomDevicesPath = '/room/devices';
-  static const String roomSessionPath = '/room/session';
   static const String roomPreparationPath = '/room/preparation';
   static const String qrScanPath = '/qr-scan';
   static const String settingsPath = '/settings';
@@ -60,8 +56,6 @@ class AppRouter {
         return _route(const RoomShell(child: RoomDashboardScreen()), settings);
       case AppRouter.roomDevices:
         return _route(RoomShell(child: RoomDevicesScreen()), settings);
-      case AppRouter.roomSession:
-        return _route(RoomShell(child: RoomPlaybackScreen()), settings);
       case AppRouter.roomPreparation:
         return _route(const RoomPreparationScreen(), settings);
       case AppRouter.qrScan:

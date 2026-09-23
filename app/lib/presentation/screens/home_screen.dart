@@ -15,35 +15,37 @@ class HomeScreen extends StatelessWidget {
       builder: (context, appState) {
         return Scaffold(
           backgroundColor: SoundMeshColors.background,
-          appBar: AppBar(
-            backgroundColor: SoundMeshColors.surface,
-            elevation: 0,
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.settings_outlined, size: 24),
-                color: SoundMeshColors.primaryText,
-                tooltip: 'Settings',
-                onPressed: () => Navigator.pushNamed(context, AppRouter.settings),
-              ),
-            ],
-          ),
           body: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                return SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: IntrinsicHeight(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SMSpacing.xl,
-                          vertical: SMSpacing.xl,
+                return Stack(
+                  children: [
+                    SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                        child: IntrinsicHeight(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: SMSpacing.xl,
+                              vertical: SMSpacing.xl,
+                            ),
+                            child: _buildBody(context, appState),
+                          ),
                         ),
-                        child: _buildBody(context, appState),
                       ),
                     ),
-                  ),
+                    Positioned(
+                      top: SMSpacing.md,
+                      right: SMSpacing.md,
+                      child: IconButton(
+                        icon: const Icon(Icons.settings_outlined, size: 24),
+                        color: SoundMeshColors.primaryText,
+                        tooltip: 'Settings',
+                        onPressed: () => Navigator.pushNamed(context, AppRouter.settings),
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
