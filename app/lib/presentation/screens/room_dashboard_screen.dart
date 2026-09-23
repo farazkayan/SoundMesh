@@ -21,12 +21,16 @@ class RoomDashboardScreen extends ConsumerWidget {
     final appState = ref.watch(applicationStateProvider);
     final createState = ref.watch(createRoomFlowProvider);
     final captureState = ref.watch(captureStateProvider);
+    final lifecycleState = ref.watch(roomLifecycleProvider);
 
     // Determine if background usage modal should show
     final isHost = appState.isHost == true;
     final isInRoom = _isInRoomState(appState.state);
     final backgroundUsageDisabled = captureState.isIgnoringBatteryOptimizations == false;
     final showBackgroundUsageModal = isHost && isInRoom && backgroundUsageDisabled;
+
+    // Determine if host-ended-room modal should show for participant
+    final showHostEndedModal = !isHost && lifecycleState.hostEndedRoom && isInRoom;
 
     return Scaffold(
       body: Stack(
@@ -43,6 +47,9 @@ class RoomDashboardScreen extends ConsumerWidget {
           // Background usage required modal - only for host in room
           if (showBackgroundUsageModal)
             const BackgroundUsageRequiredModal(),
+          // Host ended room modal - only for participant when host ends room
+          if (showHostEndedModal)
+            const _HostEndedRoomModal(),
         ],
       ),
     );
@@ -245,12 +252,12 @@ class RoomDashboardScreen extends ConsumerWidget {
           SizedBox(height: SMSpacing.xl),
         ],
 
-        // Leave room button
+        // Leave/End room button - host ends room, participant leaves room
         SMButton(
-          text: 'Leave Room',
+          text: isHost ? 'End Room' : 'Leave Room',
           icon: Icons.logout,
           variant: SMButtonVariant.danger,
-          onPressed: () => _showLeaveDialog(context),
+          onPressed: () => _showLeaveDialog(context, isHost),
         ),
         SizedBox(height: SMSpacing.xxl),
       ],
@@ -511,12 +518,12 @@ class RoomDashboardScreen extends ConsumerWidget {
           ),
         ),
         SizedBox(height: SMSpacing.xl),
-        // Leave room button
+        // Leave/End room button - host ends room, participant leaves room
         SMButton(
-          text: 'Leave Room',
+          text: isHost ? 'End Room' : 'Leave Room',
           icon: Icons.logout,
           variant: SMButtonVariant.danger,
-          onPressed: () => _showLeaveDialog(context),
+          onPressed: () => _showLeaveDialog(context, isHost),
         ),
         SizedBox(height: SMSpacing.xxl),
       ],
@@ -537,6 +544,7 @@ class RoomDashboardScreen extends ConsumerWidget {
   ) {
     final state = appState.state;
     final isPlaying = state == SMAppState.playing;
+    final isHost = appState.isHost == true;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -618,11 +626,11 @@ class RoomDashboardScreen extends ConsumerWidget {
           ),
         ),
         SizedBox(height: SMSpacing.xl),
-        // Leave room button
+        // Leave/End room button - host ends room, participant leaves room
         SMButton(
-          text: 'Leave Room',
+          text: isHost ? 'End Room' : 'Leave Room',
           variant: SMButtonVariant.secondary,
-          onPressed: () => _showLeaveDialog(context),
+          onPressed: () => _showLeaveDialog(context, isHost),
         ),
         SizedBox(height: SMSpacing.xxl),
       ],
@@ -821,17 +829,19 @@ class RoomDashboardScreen extends ConsumerWidget {
     );
   }
 
-  void _showLeaveDialog(BuildContext context) {
+  void _showLeaveDialog(BuildContext context, bool isHost) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: SMColors.surfaceHighest,
         title: Text(
-          'Leave Room?',
+          isHost ? 'End Room?' : 'Leave Room?',
           style: SMTypography.title.copyWith(color: SMColors.primaryText),
         ),
         content: Text(
-          'The synchronized session will end for all connected devices.',
+          isHost
+              ? 'This will end the room for all connected devices.'
+              : 'You will leave the room. The host and other participants will continue.',
           style: SMTypography.body.copyWith(color: SMColors.secondaryText),
         ),
         actions: [
@@ -846,14 +856,18 @@ class RoomDashboardScreen extends ConsumerWidget {
             style: FilledButton.styleFrom(backgroundColor: SMColors.error),
             onPressed: () {
               Navigator.of(context).pop();
-              StateProvider.of(context).leaveRoom();
+              if (isHost) {
+                StateProvider.of(context).closeRoom();
+              } else {
+                StateProvider.of(context).leaveRoom();
+              }
               Navigator.pushNamedAndRemoveUntil(
                 context,
                 AppRouter.home,
                 (route) => false,
               );
             },
-            child: const Text('Leave Room'),
+            child: Text(isHost ? 'End Room' : 'Leave Room'),
           ),
         ],
       ),
@@ -883,13 +897,74 @@ class RoomDashboardScreen extends ConsumerWidget {
         children: [
           Icon(Icons.error_outline_rounded, color: SMColors.error, size: 20),
           const SizedBox(width: 12),
-          Expanded(
+Expanded(
             child: Text(
               error,
               style: TextStyle(color: SMColors.error, fontSize: 14),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Modal shown to participants when the host ends the room.
+class _HostEndedRoomModal extends ConsumerWidget {
+  const _HostEndedRoomModal();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PopScope(
+      canPop: false,
+      child: Material(
+        color: Colors.black54,
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: SMSpacing.xl),
+            child: SMCard(
+              elevated: true,
+              padding: EdgeInsets.all(SMSpacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: SMDimensions.emptyIconSize * 0.6,
+                    color: SMColors.warning,
+                  ),
+                  SizedBox(height: SMSpacing.lg),
+                  Text(
+                    'Host Ended the Room',
+                    style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: SMSpacing.md),
+                  Text(
+                    'The host has ended the synchronized session. You have been disconnected from the room.',
+                    style: SMTypography.body.copyWith(color: SMColors.secondaryText),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: SMSpacing.xl),
+                  SMButton(
+                    text: 'Back to Home',
+                    icon: Icons.home,
+                    variant: SMButtonVariant.primary,
+                    onPressed: () {
+                      // Reset room state and navigate to home
+                      ref.read(roomLifecycleProvider.notifier).leaveRoom();
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        AppRouter.home,
+                        (route) => false,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

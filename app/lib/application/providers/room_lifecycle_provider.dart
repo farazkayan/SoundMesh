@@ -16,6 +16,7 @@ class RoomLifecycleStateData {
   final bool participantJoined;
   final String? closedReason;
   final String? errorMessage;
+  final bool hostEndedRoom;
 
   const RoomLifecycleStateData({
     this.lifecycleState = RoomLifecycleState.created,
@@ -25,6 +26,7 @@ class RoomLifecycleStateData {
     this.participantJoined = false,
     this.closedReason,
     this.errorMessage,
+    this.hostEndedRoom = false,
   });
 
   RoomLifecycleStateData copyWith({
@@ -35,6 +37,7 @@ class RoomLifecycleStateData {
     bool? participantJoined,
     String? closedReason,
     String? errorMessage,
+    bool? hostEndedRoom,
     bool clearErrorMessage = false,
   }) {
     return RoomLifecycleStateData(
@@ -45,6 +48,7 @@ class RoomLifecycleStateData {
       participantJoined: participantJoined ?? this.participantJoined,
       closedReason: closedReason ?? this.closedReason,
       errorMessage: clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
+      hostEndedRoom: hostEndedRoom ?? this.hostEndedRoom,
     );
   }
 }
@@ -71,7 +75,11 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
       final messageType = ProtocolMessageTypeX.fromWireValue(message.messageType);
       if (messageType == ProtocolMessageType.roomClosed) {
         final reason = message.payload?['reason'] as String?;
-        state = state.copyWith(closedReason: reason ?? 'Room closed');
+        final isHostEnded = reason == 'Host ended the room';
+        state = state.copyWith(
+          closedReason: reason ?? 'Room closed',
+          hostEndedRoom: isHostEnded,
+        );
       } else if (messageType == ProtocolMessageType.joinAccepted) {
         state = state.copyWith(
           sessionId: _networkRepository.sessionId,
@@ -100,8 +108,12 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
         // Connection ready: both role and participantJoined are now stable
         _syncRoleAndParticipantState();
       } else if (connState == NetworkConnectionState.disconnected) {
-        // Disconnected: reset participantJoined (role will be reset on next connect/host)
-        state = state.copyWith(participantJoined: false);
+        // Disconnected: reset participantJoined and room/session IDs (role will be reset on next connect/host)
+        state = state.copyWith(
+          participantJoined: false,
+          roomId: null,
+          sessionId: null,
+        );
       }
     });
 
@@ -140,6 +152,7 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
     state = state.copyWith(
       lifecycleState: RoomLifecycleState.closed,
       closedReason: _networkRepository.roomClosedReason ?? 'Room ended',
+      hostEndedRoom: false,
     );
   }
 
@@ -149,6 +162,7 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
     state = state.copyWith(
       lifecycleState: RoomLifecycleState.closed,
       closedReason: _networkRepository.roomClosedReason ?? 'You left the room',
+      hostEndedRoom: false,
     );
   }
 

@@ -264,6 +264,10 @@ class CoreStateController extends ChangeNotifier {
   Future<void> leaveRoom() async {
     await _ref.read(roomLifecycleProvider.notifier).leaveRoom();
   }
+
+  Future<void> closeRoom() async {
+    await _ref.read(roomLifecycleProvider.notifier).closeRoom();
+  }
 }
 
 /// Provides a [CoreStateController] to the widget subtree.
