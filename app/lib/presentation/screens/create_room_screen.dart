@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:soundmesh/core/design_system/index.dart';
 import 'package:soundmesh/core/router/app_router.dart';
 import 'package:soundmesh/presentation/components/brand_logo.dart';
@@ -9,45 +11,47 @@ import 'package:soundmesh/presentation/components/surface.dart';
 import 'package:soundmesh/presentation/components/text_input.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/infrastructure/discovery/discovery_types.dart';
+import 'package:soundmesh/application/protocol.dart';
 import 'package:soundmesh/application/providers/create_room_flow_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
 import 'dart:developer' as developer;
 
-class CreateRoomScreen extends StatelessWidget {
+class CreateRoomScreen extends ConsumerWidget {
   const CreateRoomScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return StateBuilder(
-      builder: (context, appState) {
-        return Scaffold(
-          body: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                    child: IntrinsicHeight(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SMSpacing.xl,
-                          vertical: SMSpacing.xl,
-                        ),
-                        child: _buildContent(context, appState),
-                      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appState = ref.watch(applicationStateProvider);
+    final createState = ref.watch(createRoomFlowProvider);
+
+    return Scaffold(
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
+                ),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SMSpacing.xl,
+                      vertical: SMSpacing.xl,
                     ),
+                    child: _buildContent(context, appState, createState),
                   ),
-                );
-              },
-            ),
-          ),
-        );
-      },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 
-  Widget _buildContent(BuildContext context, ApplicationState appState) {
+  Widget _buildContent(BuildContext context, ApplicationState appState, CreateRoomFlowState createState) {
     final state = appState.state;
 
     developer.log(
@@ -77,16 +81,18 @@ class CreateRoomScreen extends StatelessWidget {
     if (state == SMAppState.roomReady || state == SMAppState.ready) {
       final joinCode = appState.joinCode ?? '';
       final isValidCode = isValidRoomCode(joinCode);
-      
+
       developer.log(
         'CreateRoomScreen: Showing room ready UI | joinCode=$joinCode | isValid=$isValidCode',
         name: 'SoundMesh.CreateRoomScreen',
       );
-      
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildTitle(state == SMAppState.ready ? 'Room Ready' : 'Room Created'),
+          _buildTitle(
+            state == SMAppState.ready ? 'Room Ready' : 'Room Created',
+          ),
           SizedBox(height: SMSpacing.md),
           Text(
             state == SMAppState.ready
@@ -96,11 +102,11 @@ class CreateRoomScreen extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           SizedBox(height: SMSpacing.xxl),
-          
-          // Prominent 6-digit code card
+
+          // Prominent 6-digit code card (compact)
           SMCard(
             elevated: true,
-            padding: EdgeInsets.all(SMSpacing.xl),
+            padding: EdgeInsets.all(SMSpacing.lg),
             child: Column(
               children: [
                 Icon(
@@ -108,69 +114,121 @@ class CreateRoomScreen extends StatelessWidget {
                   size: SMDimensions.emptyIconSize * 0.8,
                   color: SMColors.soundmeshBlue,
                 ),
-                SizedBox(height: SMSpacing.lg),
+                SizedBox(height: SMSpacing.md),
                 Text(
                   'Room Code',
-                  style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                  style: SMTypography.heading.copyWith(
+                    color: SMColors.primaryText,
+                  ),
                 ),
-                SizedBox(height: SMSpacing.md),
-                // Large 6-digit code display
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SMSpacing.xl,
-                    vertical: SMSpacing.lg,
-                  ),
-                  decoration: BoxDecoration(
-                    color: SMColors.surfaceHigh,
-                    borderRadius: BorderRadius.circular(SMRadius.large),
-                    border: Border.all(color: SMColors.soundmeshBlue.withValues(alpha: 0.5), width: 2),
-                  ),
-                  child: Text(
-                    isValidCode ? _formatCode(joinCode) : joinCode,
-                    style: SMTypography.display.copyWith(
-                      color: SMColors.primaryText,
-                      letterSpacing: 8,
-                      fontWeight: FontWeight.w700,
+                SizedBox(height: SMSpacing.sm),
+                // Large 6-digit code display with copy button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: SMSpacing.lg,
+                          vertical: SMSpacing.md,
+                        ),
+                        decoration: BoxDecoration(
+                          color: SMColors.surfaceHigh,
+                          borderRadius: BorderRadius.circular(SMRadius.large),
+                          border: Border.all(
+                            color: SMColors.soundmeshBlue.withValues(
+                              alpha: 0.5,
+                            ),
+                            width: 2,
+                          ),
+                        ),
+                        child: Text(
+                          isValidCode ? _formatCode(joinCode) : joinCode,
+                          style: SMTypography.display.copyWith(
+                            color: SMColors.primaryText,
+                            letterSpacing: 8,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    SizedBox(width: SMSpacing.sm),
+                    IconButton(
+                      icon: const Icon(Icons.copy, size: 20),
+                      color: SMColors.soundmeshBlue,
+                      tooltip: 'Copy code',
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: joinCode));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Room code copied to clipboard'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-                SizedBox(height: SMSpacing.md),
+                SizedBox(height: SMSpacing.sm),
                 Text(
                   'Other phones enter this code to join',
-                  style: SMTypography.caption.copyWith(color: SMColors.mutedText),
-                ),
-                SizedBox(height: SMSpacing.lg),
-                Text(
-                  'Room: ${appState.roomId ?? "—"}',
-                  style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
+                  style: SMTypography.caption.copyWith(
+                    color: SMColors.mutedText,
+                  ),
                 ),
                 SizedBox(height: SMSpacing.md),
                 Text(
-                  appState.isHost == true ? 'You are the host.' : 'You are a participant.',
-                  style: SMTypography.bodyEmphasis.copyWith(color: SMColors.primaryText),
+                  'Room: ${appState.roomId ?? "—"}',
+                  style: SMTypography.caption.copyWith(
+                    color: SMColors.secondaryText,
+                  ),
+                ),
+                SizedBox(height: SMSpacing.sm),
+                Text(
+                  appState.isHost == true
+                      ? 'You are the host.'
+                      : 'You are a participant.',
+                  style: SMTypography.bodyEmphasis.copyWith(
+                    color: SMColors.primaryText,
+                  ),
                 ),
               ],
             ),
+          ),
+          SizedBox(height: SMSpacing.lg),
+          // Show QR button
+          SMButton(
+            text: 'Show QR',
+            icon: Icons.qr_code,
+            variant: SMButtonVariant.secondary,
+            onPressed: () => _showQrDialog(context, createState),
           ),
           SizedBox(height: SMSpacing.xl),
           SMButton(
             text: 'Enter Room',
             icon: Icons.arrow_forward,
             variant: SMButtonVariant.primary,
-            onPressed: () => Navigator.pushReplacementNamed(context, AppRouter.roomDashboard),
+            onPressed: () => Navigator.pushReplacementNamed(
+              context,
+              AppRouter.roomDashboard,
+            ),
           ),
           SizedBox(height: SMSpacing.lg),
           SMButton(
             text: 'Back',
             variant: SMButtonVariant.secondary,
-            onPressed: () => Navigator.pushNamedAndRemoveUntil(context, AppRouter.home, (route) => false),
+            onPressed: () => Navigator.pushNamedAndRemoveUntil(
+              context,
+              AppRouter.home,
+              (route) => false,
+            ),
           ),
           SizedBox(height: SMSpacing.xxl),
         ],
       );
     }
 
-// Creating room → honest in-progress UI (no premature success).
+    // Creating room → honest in-progress UI (no premature success).
     if (state == SMAppState.creatingRoom) {
       return Center(
         child: Column(
@@ -183,8 +241,7 @@ class CreateRoomScreen extends StatelessWidget {
             Text(
               appState.message ?? 'Creating room…',
               textAlign: TextAlign.center,
-              style: SMTypography.heading
-                  .copyWith(color: SMColors.primaryText),
+              style: SMTypography.heading.copyWith(color: SMColors.primaryText),
             ),
             SizedBox(height: SMSpacing.md),
             Text(
@@ -194,12 +251,16 @@ class CreateRoomScreen extends StatelessWidget {
             ),
             SizedBox(height: SMSpacing.xl),
             SMButton(
-               text: 'Back',
-               variant: SMButtonVariant.secondary,
-               onPressed: () => Navigator.pushNamedAndRemoveUntil(context, AppRouter.home, (route) => false),
-               enabled: false,
-               isLoading: true,
-             ),
+              text: 'Back',
+              variant: SMButtonVariant.secondary,
+              onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRouter.home,
+                (route) => false,
+              ),
+              enabled: false,
+              isLoading: true,
+            ),
             SizedBox(height: SMSpacing.xxl),
           ],
         ),
@@ -213,9 +274,7 @@ class CreateRoomScreen extends StatelessWidget {
       children: [
         // Brand mark — container treatment per the Stitch export
         // (rounded-2xl surface fill, shadow-2xl shadow-black/40).
-        Center(
-          child: BrandLogo(size: 96),
-        ),
+        Center(child: BrandLogo(size: 96)),
         SizedBox(height: SMSpacing.md),
         _buildTitle('Create Room'),
         SizedBox(height: SMSpacing.md),
@@ -228,7 +287,8 @@ class CreateRoomScreen extends StatelessWidget {
           builder: (context, ref, _) => SMTextField(
             labelText: 'Room name',
             hintText: 'SoundMesh Room',
-            onChanged: (value) => ref.read(createRoomFlowProvider.notifier).setRoomName(value),
+            onChanged: (value) =>
+                ref.read(createRoomFlowProvider.notifier).setRoomName(value),
           ),
         ),
         SizedBox(height: SMSpacing.xl),
@@ -238,11 +298,7 @@ class CreateRoomScreen extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.sensors,
-                size: 20,
-                color: SMColors.soundmeshBlue,
-              ),
+              Icon(Icons.sensors, size: 20, color: SMColors.soundmeshBlue),
               SizedBox(width: SMSpacing.md),
               Expanded(
                 child: Column(
@@ -250,14 +306,16 @@ class CreateRoomScreen extends StatelessWidget {
                   children: [
                     Text(
                       'Zero setup needed',
-                      style: SMTypography.heading
-                          .copyWith(color: SMColors.primaryText),
+                      style: SMTypography.heading.copyWith(
+                        color: SMColors.primaryText,
+                      ),
                     ),
                     SizedBox(height: SMSpacing.xs),
                     Text(
                       'Phones on the same network or nearby can stream synchronously with low latency.',
-                      style: SMTypography.caption
-                          .copyWith(color: SMColors.secondaryText),
+                      style: SMTypography.caption.copyWith(
+                        color: SMColors.secondaryText,
+                      ),
                     ),
                   ],
                 ),
@@ -276,7 +334,11 @@ class CreateRoomScreen extends StatelessWidget {
         SMButton(
           text: 'Back',
           variant: SMButtonVariant.secondary,
-          onPressed: () => Navigator.pushNamedAndRemoveUntil(context, AppRouter.home, (route) => false),
+          onPressed: () => Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppRouter.home,
+            (route) => false,
+          ),
         ),
         SizedBox(height: SMSpacing.xxl),
       ],
@@ -326,5 +388,110 @@ class CreateRoomScreen extends StatelessWidget {
       return '${code.substring(0, 3)}-${code.substring(3, 6)}';
     }
     return code;
+  }
+
+  void _showQrDialog(BuildContext context, CreateRoomFlowState createState) {
+    final roomId = createState.roomId;
+    final hostIp = createState.localIpAddress;
+    final port = createState.port ?? 8765;
+    final joinCode = createState.joinCode;
+
+    if (roomId == null || hostIp == null || joinCode == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Room information not ready yet'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final payload = JoinPayload(
+      roomId: roomId,
+      hostAddress: hostIp,
+      hostPort: port,
+      protocolVersion: currentProtocolVersion,
+      code: joinCode,
+    );
+
+    final uriString = payload.toJoinUri();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: SMColors.surfaceHighest,
+        title: const Text(
+          'Room QR Code',
+          style: TextStyle(color: SMColors.primaryText),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 240.0,
+              height: 240.0,
+              child: QrImageView(
+                data: uriString,
+                version: QrVersions.auto,
+                size: 240.0,
+                backgroundColor: Colors.white,
+                eyeStyle: QrEyeStyle(
+                  eyeShape: QrEyeShape.square,
+                  color: SMColors.background,
+                ),
+                dataModuleStyle: QrDataModuleStyle(
+                  dataModuleShape: QrDataModuleShape.square,
+                  color: SMColors.background,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Scan with SoundMesh to join',
+              style: TextStyle(color: SMColors.secondaryText, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              uriString,
+              style: TextStyle(
+                color: SMColors.mutedText,
+                fontSize: 10,
+                fontFamily: 'monospace',
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Close',
+              style: TextStyle(color: SMColors.mutedText),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: SMColors.soundmeshBlue,
+            ),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: uriString));
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('QR code URI copied to clipboard'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            child: const Text(
+              'Copy URI',
+              style: TextStyle(color: SMColors.primaryText),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
