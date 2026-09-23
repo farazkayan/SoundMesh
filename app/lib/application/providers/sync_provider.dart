@@ -15,9 +15,12 @@ final syncRepositoryProvider = StateProvider<SyncRepository?>((ref) => null);
 final syncStatusProvider = StreamProvider<SyncStatus>((ref) {
   final repository = ref.watch(syncRepositoryProvider);
   if (repository == null) {
-    return const Stream<SyncStatus>.empty();
+    // Emit initial unsynchronized status instead of empty stream (which never emits)
+    // This prevents UI from staying stuck on "Loading..." when no sync session is active
+    return Stream.value(SyncStatus.unsynchronized(generation: 0));
   }
-  return repository.statusStream;
+  // Combine initial status with subsequent updates
+  return Stream.value(repository.currentStatus).asyncExpand((_) => repository.statusStream);
 });
 
 class _SyncRepositoryLifecycle {
