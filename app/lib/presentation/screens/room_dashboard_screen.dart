@@ -218,6 +218,12 @@ class RoomDashboardScreen extends ConsumerWidget {
           SizedBox(height: SMSpacing.xl),
         ],
 
+        // Audio Share toggle (host only)
+        if (isHost) ...[
+          AudioShareToggle(isHost: true),
+          SizedBox(height: SMSpacing.xl),
+        ],
+
         // Leave room button
         SMButton(
           text: 'Leave Room',
@@ -347,8 +353,9 @@ class RoomDashboardScreen extends ConsumerWidget {
         final state = appState.state;
         if (state == SMAppState.playing) return 'Audio sync active';
         if (state == SMAppState.paused) return 'Audio sync paused';
-        if (state == SMAppState.ready)
+        if (state == SMAppState.ready) {
           return 'Devices synchronized, ready for audio';
+        }
         return 'Ready';
       case RoomLifecycleState.closed:
         return 'Room closed';
