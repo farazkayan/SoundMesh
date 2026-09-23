@@ -20,6 +20,8 @@ enum ProtocolMessageType {
   audioStreamStop,
   audioBufferStatus,
   audioStreamError,
+  timeSyncRequest,
+  timeSyncResponse,
 }
 
 extension ProtocolMessageTypeX on ProtocolMessageType {
@@ -59,6 +61,10 @@ extension ProtocolMessageTypeX on ProtocolMessageType {
         return 'AUDIO_BUFFER_STATUS';
       case ProtocolMessageType.audioStreamError:
         return 'AUDIO_STREAM_ERROR';
+      case ProtocolMessageType.timeSyncRequest:
+        return 'TIME_SYNC_REQUEST';
+      case ProtocolMessageType.timeSyncResponse:
+        return 'TIME_SYNC_RESPONSE';
     }
   }
 
@@ -98,6 +104,10 @@ extension ProtocolMessageTypeX on ProtocolMessageType {
         return ProtocolMessageType.audioBufferStatus;
       case 'AUDIO_STREAM_ERROR':
         return ProtocolMessageType.audioStreamError;
+      case 'TIME_SYNC_REQUEST':
+        return ProtocolMessageType.timeSyncRequest;
+      case 'TIME_SYNC_RESPONSE':
+        return ProtocolMessageType.timeSyncResponse;
       default:
         return null;
     }

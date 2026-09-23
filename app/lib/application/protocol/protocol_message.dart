@@ -255,6 +255,52 @@ class ProtocolMessage {
     );
   }
 
+  factory ProtocolMessage.timeSyncRequest({
+    required String senderId,
+    required String sessionId,
+    required int t1,
+    int generation = 0,
+    int? timestamp,
+  }) {
+    return ProtocolMessage(
+      protocolVersion: currentProtocolVersion,
+      messageId: generateUuidV4(),
+      messageType: ProtocolMessageType.timeSyncRequest.wireValue,
+      sessionId: sessionId,
+      senderId: senderId,
+      generation: generation,
+      timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
+      payload: {
+        't1': t1,
+      },
+    );
+  }
+
+  factory ProtocolMessage.timeSyncResponse({
+    required String senderId,
+    required String sessionId,
+    required int t1,
+    required int t2,
+    required int t3,
+    int generation = 0,
+    int? timestamp,
+  }) {
+    return ProtocolMessage(
+      protocolVersion: currentProtocolVersion,
+      messageId: generateUuidV4(),
+      messageType: ProtocolMessageType.timeSyncResponse.wireValue,
+      sessionId: sessionId,
+      senderId: senderId,
+      generation: generation,
+      timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
+      payload: {
+        't1': t1,
+        't2': t2,
+        't3': t3,
+      },
+    );
+  }
+
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{
       'protocolVersion': protocolVersion,
