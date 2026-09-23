@@ -7,6 +7,11 @@ import 'package:soundmesh/core/design_system/index.dart';
 import 'package:soundmesh/presentation/components/index.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/infrastructure/discovery/discovery_types.dart';
+import 'package:soundmesh/application/protocol.dart';
+import 'package:soundmesh/application/providers/create_room_flow_provider.dart';
+import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
+import 'package:soundmesh/application/providers/capture_provider.dart';
+import 'package:soundmesh/application/room/room_lifecycle.dart';
 
 class RoomDashboardScreen extends ConsumerWidget {
   const RoomDashboardScreen({super.key});
