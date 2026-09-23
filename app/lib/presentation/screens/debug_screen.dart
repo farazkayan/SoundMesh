@@ -227,44 +227,6 @@ class DebugScreen extends ConsumerWidget {
         ),
         SizedBox(height: SMSpacing.lg),
 
-        // Battery Optimization Banner
-        if (captureState.isIgnoringBatteryOptimizations == false) ...[
-          SMCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.battery_alert, color: SMColors.warning, size: 20),
-                    SizedBox(width: SMSpacing.sm),
-                    Expanded(
-                      child: Text('Battery Optimization', style: SMTypography.label.copyWith(color: SMColors.warning)),
-                    ),
-                  ],
-                ),
-                SizedBox(height: SMSpacing.xs),
-                Text(
-                  'For reliable background capture, allow SoundMesh to run without battery restrictions. '
-                  'Otherwise, Android may stop audio capture when the app is backgrounded.',
-                  style: SMTypography.caption.copyWith(color: SMColors.secondaryText),
-                ),
-                SizedBox(height: SMSpacing.md),
-                FilledButton.icon(
-                  onPressed: () => notifier.requestIgnoreBatteryOptimizations(),
-                  icon: const Icon(Icons.battery_charging_full, size: 18),
-                  label: const Text('Allow Background Capture'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: SMColors.warning,
-                    foregroundColor: SMColors.onAccent,
-                    padding: EdgeInsets.symmetric(horizontal: SMSpacing.lg, vertical: SMSpacing.md),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: SMSpacing.md),
-        ],
-
         // State Display
         SMCard(
           child: Column(

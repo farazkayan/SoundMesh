@@ -5,6 +5,7 @@ import 'core/theme/soundmesh_theme.dart';
 import 'core/router/app_router.dart';
 import 'presentation/state_compat.dart';
 import 'application/providers/discovery_provider.dart';
+import 'presentation/components/background_usage_required_modal.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +39,14 @@ class SoundMeshApp extends ConsumerWidget {
           theme: SoundMeshTheme.darkTheme,
           initialRoute: AppRouter.home,
           onGenerateRoute: AppRouter.onGenerateRoute,
+          builder: (context, child) {
+            return Stack(
+              children: [
+                child!,
+                const BackgroundUsageRequiredModal(),
+              ],
+            );
+          },
         ),
       ),
     );
