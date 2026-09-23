@@ -20,18 +20,39 @@ class RoomDashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(applicationStateProvider);
     final createState = ref.watch(createRoomFlowProvider);
+    final captureState = ref.watch(captureStateProvider);
+
+    // Determine if background usage modal should show
+    final isHost = appState.isHost == true;
+    final isInRoom = _isInRoomState(appState.state);
+    final backgroundUsageDisabled = captureState.isIgnoringBatteryOptimizations == false;
+    final showBackgroundUsageModal = isHost && isInRoom && backgroundUsageDisabled;
 
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: SMSpacing.xl,
-            vertical: SMSpacing.xl,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: SMSpacing.xl,
+                vertical: SMSpacing.xl,
+              ),
+              child: _buildContent(context, ref, appState, createState),
+            ),
           ),
-          child: _buildContent(context, ref, appState, createState),
-        ),
+          // Background usage required modal - only for host in room
+          if (showBackgroundUsageModal)
+            const BackgroundUsageRequiredModal(),
+        ],
       ),
     );
+  }
+
+  bool _isInRoomState(SMAppState state) {
+    return state == SMAppState.roomReady ||
+        state == SMAppState.ready ||
+        state == SMAppState.playing ||
+        state == SMAppState.paused;
   }
 
   Widget _buildContent(

@@ -18,85 +18,100 @@ class BackgroundUsageRequiredModal extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    return Stack(
-      children: [
-        // Full-screen scrim
-        Container(
-          color: SMColors.scrim,
-        ),
-        // Modal dialog centered
-        Center(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: SMSpacing.xl),
-            child: SMCard(
-              elevated: true,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Icon and Title
-                  Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: SMColors.warning.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        children: [
+          // Full-screen scrim - blocks all interaction
+          GestureDetector(
+            onTap: () {}, // Consumes taps, prevents dismissal
+            child: Container(
+              color: SMColors.scrim,
+            ),
+          ),
+          // Modal dialog centered with proper constraints
+          Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width - SMSpacing.xl * 2,
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: SMSpacing.xl),
+                child: SMCard(
+                  elevated: true,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Icon and Title
+                        Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: SMColors.warning.withValues(alpha: 0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.battery_alert,
+                                color: SMColors.warning,
+                                size: 24,
+                              ),
+                            ),
+                            SizedBox(width: SMSpacing.md),
+                            Expanded(
+                              child: Text(
+                                'Background usage required',
+                                style: SMTypography.title.copyWith(
+                                  color: SMColors.primaryText,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        child: Icon(
-                          Icons.battery_alert,
-                          color: SMColors.warning,
-                          size: 24,
-                        ),
-                      ),
-                      SizedBox(width: SMSpacing.md),
-                      Expanded(
-                        child: Text(
-                          'Background usage required',
-                          style: SMTypography.title.copyWith(
-                            color: SMColors.primaryText,
+                        SizedBox(height: SMSpacing.lg),
+
+                        // Explanation
+                        Text(
+                          'SoundMesh requires permission to run in the background to reliably capture and synchronize audio across devices. Without this, Android may stop audio capture when the screen turns off or the app is minimized, breaking the synchronized session.',
+                          style: SMTypography.body.copyWith(
+                            color: SMColors.secondaryText,
+                            height: 1.5,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: SMSpacing.lg),
+                        SizedBox(height: SMSpacing.md),
 
-                  // Explanation
-                  Text(
-                    'SoundMesh requires permission to run in the background to reliably capture and synchronize audio across devices. Without this, Android may stop audio capture when the screen turns off or the app is minimized, breaking the synchronized session.',
-                    style: SMTypography.body.copyWith(
-                      color: SMColors.secondaryText,
-                      height: 1.5,
+                        Text(
+                          'This is required for SoundMesh to work correctly — not an optional recommendation.',
+                          style: SMTypography.body.copyWith(
+                            color: SMColors.warning,
+                            fontWeight: FontWeight.w600,
+                            height: 1.5,
+                          ),
+                        ),
+                        SizedBox(height: SMSpacing.xl),
+
+                        // Primary button
+                        SMButton(
+                          text: 'Allow background usage',
+                          icon: Icons.settings,
+                          variant: SMButtonVariant.primary,
+                          onPressed: () async {
+                            await notifier.requestIgnoreBatteryOptimizations();
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(height: SMSpacing.md),
-
-                  Text(
-                    'This is required for SoundMesh to work correctly — not an optional recommendation.',
-                    style: SMTypography.bodyEmphasis.copyWith(
-                      color: SMColors.warning,
-                      height: 1.5,
-                    ),
-                  ),
-                  SizedBox(height: SMSpacing.xl),
-
-                  // Primary button
-                  SMButton(
-                    text: 'Allow background usage',
-                    icon: Icons.settings,
-                    variant: SMButtonVariant.primary,
-                    onPressed: () async {
-                      await notifier.requestIgnoreBatteryOptimizations();
-                    },
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
