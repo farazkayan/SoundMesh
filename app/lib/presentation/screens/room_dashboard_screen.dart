@@ -564,6 +564,12 @@ class RoomDashboardScreen extends ConsumerWidget {
           SizedBox(height: SMSpacing.lg),
         ],
 
+        // Audio Share toggle (host only)
+        if (appState.isHost == true) ...[
+          AudioShareToggle(isHost: true),
+          SizedBox(height: SMSpacing.xl),
+        ],
+
         // Session status card
         SMCard(
           elevated: true,

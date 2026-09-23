@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:soundmesh/application/providers/capture_provider.dart';
 import 'package:soundmesh/core/design_system/index.dart';
+import 'package:soundmesh/presentation/components/button.dart';
+import 'package:soundmesh/presentation/components/surface.dart';
 
 class BackgroundUsageRequiredModal extends ConsumerWidget {
   const BackgroundUsageRequiredModal({super.key});
