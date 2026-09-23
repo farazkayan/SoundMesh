@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../repositories/network_repository.dart';
-import '../room/room_lifecycle.dart';
-import '../protocol/protocol_constants.dart';
+import 'package:soundmesh/application/repositories/network_repository.dart';
+import 'package:soundmesh/application/room/room_lifecycle.dart';
+import 'package:soundmesh/application/protocol/protocol_constants.dart';
+import 'package:soundmesh/application/providers/sync_provider.dart';
+import 'package:soundmesh/application/providers/discovery_provider.dart';
+import 'package:soundmesh/infrastructure/discovery/discovery_manager.dart';
 
 class RoomLifecycleStateData {
   final RoomLifecycleState lifecycleState;
@@ -48,12 +51,17 @@ class RoomLifecycleStateData {
 
 class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
   final NetworkRepository _networkRepository;
+  final DiscoveryManager _discoveryManager;
+  final Ref _ref;
   StreamSubscription? _lifecycleSubscription;
   StreamSubscription? _protocolMessageSubscription;
   StreamSubscription? _connectionStateSubscription;
   StreamSubscription? _connectionErrorSubscription;
 
-  RoomLifecycleNotifier(this._networkRepository) : super(const RoomLifecycleStateData()) {
+  RoomLifecycleNotifier(this._networkRepository, this._discoveryManager, this._ref) : super(const RoomLifecycleStateData()) {
+    // Watch sync lifecycle to ensure sync repository is active when network is connected
+    _ref.watch(syncLifecycleProvider);
+
     _lifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((lifecycleState) {
       debugPrint('[UILifecycle] RoomLifecycle: roomLifecycleState change -> $lifecycleState');
       state = state.copyWith(lifecycleState: lifecycleState);
@@ -127,6 +135,8 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
   Future<void> closeRoom() async {
     debugPrint('[UILifecycle] RoomLifecycle: closeRoom() called');
     await _networkRepository.closeRoom();
+    // Stop discovery broadcast so the room code is no longer advertised
+    await _discoveryManager.stopAll();
     state = state.copyWith(
       lifecycleState: RoomLifecycleState.closed,
       closedReason: _networkRepository.roomClosedReason ?? 'Room ended',
@@ -154,5 +164,6 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
 
 final roomLifecycleProvider = StateNotifierProvider<RoomLifecycleNotifier, RoomLifecycleStateData>((ref) {
   final networkRepo = ref.watch(networkRepositoryProvider);
-  return RoomLifecycleNotifier(networkRepo);
+  final discoveryManager = ref.watch(discoveryManagerProvider);
+  return RoomLifecycleNotifier(networkRepo, discoveryManager, ref);
 });

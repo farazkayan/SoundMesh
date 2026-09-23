@@ -1160,6 +1160,85 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
     }
 
+    private fun isSyncMessage(message: String): Boolean {
+        try {
+            val json = JSONObject(message)
+            val messageType = json.optString("messageType", "")
+            return messageType == "TIME_SYNC_REQUEST" ||
+                   messageType == "TIME_SYNC_RESPONSE"
+        } catch (e: Exception) {
+            return false
+        }
+    }
+
+    private fun handleSyncMessage(message: String) {
+        packetsParsed.incrementAndGet()
+        lastPacketParsedTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
+        try {
+            val json = JSONObject(message)
+            val messageType = json.optString("messageType", "")
+            val sessionId = json.optString("sessionId", "")
+            val generation = json.optLong("generation", 0)
+
+            when (messageType) {
+                "TIME_SYNC_REQUEST" -> {
+                    val payload = json.optJSONObject("payload")
+                    if (payload != null) {
+                        val t1 = payload.optLong("t1", 0)
+                        if (t1 > 0) {
+                            val t2 = SystemClock.elapsedRealtimeNanos()
+                            val t3 = SystemClock.elapsedRealtimeNanos()
+                            Log.i(TAG, "[Sync] Received TIME_SYNC_REQUEST: t1=$t1, gen=$generation")
+                            sendTimeSyncResponse(sessionId, generation, t1, t2, t3)
+                        }
+                    }
+                }
+                "TIME_SYNC_RESPONSE" -> {
+                    val payload = json.optJSONObject("payload")
+                    if (payload != null) {
+                        val t1 = payload.optLong("t1", 0)
+                        val t2 = payload.optLong("t2", 0)
+                        val t3 = payload.optLong("t3", 0)
+                        if (t1 > 0 && t2 > 0 && t3 > 0) {
+                            Log.i(TAG, "[Sync] Received TIME_SYNC_RESPONSE: t1=$t1 t2=$t2 t3=$t3, gen=$generation")
+                            // Notify Flutter sync repository
+                            // This will be handled by the sync repository on the Flutter side
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "[Sync] Failed to handle sync message", e)
+            packetsParseFailed.incrementAndGet()
+        }
+    }
+
+    private fun sendTimeSyncResponse(
+        sessionId: String,
+        generation: Long,
+        t1: Long,
+        t2: Long,
+        t3: Long,
+    ) {
+        val participantId = currentParticipantId ?: getFallbackDeviceId()
+        val response = JSONObject().apply {
+            put("protocolVersion", 1)
+            put("messageId", java.util.UUID.randomUUID().toString())
+            put("messageType", "TIME_SYNC_RESPONSE")
+            put("sessionId", sessionId)
+            put("senderId", participantId)
+            put("generation", generation)
+            put("timestamp", System.currentTimeMillis())
+            put("payload", JSONObject().apply {
+                put("t1", t1)
+                put("t2", t2)
+                put("t3", t3)
+            })
+        }.toString()
+        Log.d(TAG, "[Sync] Sent TIME_SYNC_RESPONSE: t1=$t1 t2=$t2 t3=$t3")
+        buildAndEnqueueJson(response)
+    }
+
     private fun handleAudioMessage(message: String) {
         packetsParsed.incrementAndGet()
         lastPacketParsedTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
@@ -1307,6 +1386,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         // Handle heartbeat messages locally
                         if (isHeartbeatMessage(message)) {
                             handleHeartbeatMessage(message)
+                        } else if (isSyncMessage(message)) {
+                            handleSyncMessage(message)
                         } else if (isAudioMessage(message)) {
                             handleAudioMessage(message)
                         } else {
@@ -1387,6 +1468,9 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         } catch (e: Exception) {}
         clientSocket = null
         closeServerSocket()
+
+        // Stop discovery broadcast so the room code is no longer advertised
+        discoveryService.stopBroadcast()
 
         // Stop pipeline (includes audio engines)
         scope.launch { stopPipeline() }

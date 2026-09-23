@@ -20,7 +20,8 @@ class TestableNetworkRepository extends NetworkRepository {
     return true;
   }
 
-  Future<bool> sendMessage(String message) async => true;
+  @override
+  Future<bool> sendProtocolMessage(ProtocolMessage message) async => true;
 
   @override
   Future<void> disconnect() async {}

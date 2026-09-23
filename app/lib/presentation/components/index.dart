@@ -1,4 +1,5 @@
 export 'audio_share_toggle.dart';
+export 'background_usage_required_modal.dart';
 export 'button.dart';
 export 'brand_logo.dart';
 export 'debug_state_controls.dart';

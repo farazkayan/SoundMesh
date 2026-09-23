@@ -512,6 +512,12 @@ class NetworkRepository {
       case ProtocolMessageType.audioStreamError:
         _handleAudioStreamError(message);
         break;
+      case ProtocolMessageType.timeSyncRequest:
+        _handleTimeSyncRequest(message);
+        break;
+      case ProtocolMessageType.timeSyncResponse:
+        _handleTimeSyncResponse(message);
+        break;
       case null:
         // Unknown message type, ignore but log
         debugPrint('Unknown message type: ${message.messageType}');
@@ -524,6 +530,18 @@ class NetworkRepository {
     if (text != null && text.isNotEmpty) {
       _messageController.add(text);
     }
+  }
+
+  void _handleTimeSyncRequest(ProtocolMessage message) {
+    // Host side: record t2/t3 and send response
+    // This will be handled by the platform layer (MainActivity.kt)
+    // Dart just forwards the message
+    _protocolMessageController.add(message);
+  }
+
+  void _handleTimeSyncResponse(ProtocolMessage message) {
+    // Participant side: record t4 and notify sync repository
+    _protocolMessageController.add(message);
   }
 
   void _handleHello(ProtocolMessage message) {
@@ -864,8 +882,8 @@ class NetworkRepository {
       if (wasConnected) {
         _resetHostParticipantState(resetIds: true);
         // If we were ready (participant was joined), transition back to discoverable
-        // so the host can accept new participants
-        if (_currentState == NetworkConnectionState.ready) {
+        // so the host can accept new participants — BUT NOT if the room was intentionally closed
+        if (_currentState == NetworkConnectionState.ready && _roomLifecycleState != RoomLifecycleState.closed) {
           _transitionToRoomLifecycleState(RoomLifecycleState.discoverable);
         }
       }

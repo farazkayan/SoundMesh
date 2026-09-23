@@ -4,6 +4,7 @@ import 'package:soundmesh/core/design_system/index.dart';
 import 'package:soundmesh/presentation/components/index.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
+import 'package:soundmesh/presentation/screens/debug_screen.dart';
 
 class RoomDevicesScreen extends ConsumerWidget {
   const RoomDevicesScreen({super.key});
@@ -16,6 +17,25 @@ class RoomDevicesScreen extends ConsumerWidget {
     final isHost = appState.isHost == true;
 
     return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Devices',
+          style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+        ),
+        backgroundColor: SMColors.background,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.bug_report, color: SMColors.primaryText),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DebugScreen()),
+              );
+            },
+            tooltip: 'Debug / Diagnostics',
+          ),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
