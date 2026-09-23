@@ -32,6 +32,7 @@ class LiveSyncRepository implements SyncRepository {
     required this._localDeviceId,
   }) {
     _stateMachine.reset(generation: _pipelineGeneration);
+    _emitStatus(); // Emit initial UNSYNCHRONIZED status immediately
     _startCalibration();
   }
 

@@ -68,7 +68,9 @@ class _SyncRepositoryLifecycle {
 
     final localDeviceId = networkRepo.participantId;
 
-    _disposeRepo();
+    // Cancel any existing protocol subscription BEFORE creating new repo
+    // to avoid missing responses during the swap
+    _protocolSub?.cancel();
 
     _currentRepo = LiveSyncRepository(
       timingRepo: timingRepo,
@@ -80,7 +82,8 @@ class _SyncRepositoryLifecycle {
 
     ref.read(syncRepositoryProvider.notifier).state = _currentRepo!;
 
-    _protocolSub?.cancel();
+    // Subscribe to TIME_SYNC_RESPONSE messages AFTER repo is created and registered
+    // This ensures no responses are missed during the initial exchange
     _protocolSub = networkRepo.protocolMessageStream.listen((message) {
       final messageType = ProtocolMessageTypeX.fromWireValue(message.messageType);
       if (messageType == ProtocolMessageType.timeSyncResponse) {
