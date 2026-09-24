@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioTimestamp
 import android.media.AudioTrack
 import android.os.Build
 import android.os.SystemClock
@@ -68,6 +69,39 @@ class AudioOutputEngine(
     private val bytesWritten = AtomicLong(0)
     private val writeErrors = AtomicLong(0)
     private val underrunsReported = AtomicLong(0)
+
+    // --- Phase 12: Output timestamp diagnostics ---
+    // Circular buffer for output timestamp samples (write + AudioTrack.getTimestamp())
+    companion object {
+        const val OUTPUT_DIAG_CAPACITY = 50
+        // Ring buffer for write timestamps keyed by frame position (for correlation)
+        const val WRITE_TIMESTAMP_RING_SIZE = 1024
+    }
+    private val outputDiagFrames = Array<OutputTimestampDiag?>(OUTPUT_DIAG_CAPACITY) { null }
+    private var outputDiagHead = 0
+    private val outputDiagCount = AtomicLong(0)
+
+    // Ring buffer: framePosition % WRITE_TIMESTAMP_RING_SIZE -> writeTimestampNs
+    private val writeTimestampRing = LongArray(WRITE_TIMESTAMP_RING_SIZE) { -1L }
+
+    // Cumulative frame tracking for AudioTrack timestamp correlation
+    private val cumulativeFramesWritten = AtomicLong(0)
+
+    data class OutputTimestampDiag(
+        val sequence: Int,
+        val writeTimestampNs: Long,
+        val frameStart: Long,
+        val framesWritten: Int,
+        val cumulativeFramesWritten: Long,
+        val audioTrackFramePosition: Long,
+        val audioTrackTimestampNs: Long,
+        val audioTrackTimestampAvailable: Boolean,
+        val audioTrackTimebase: Int,
+        val clockDomainAligned: Boolean,
+        val correlationValid: Boolean,
+        val presentationLatencyNs: Long?
+    )
+
     private var diagJob: Job? = null
 
     init {
@@ -358,6 +392,18 @@ class AudioOutputEngine(
             Log.i(TAG, "PCM write: seq=${packet.sequenceNumber} bytes=${packet.payload.size} peak=$peak nonZero=$nonZero/${packet.payload.size/2}")
         }
 
+        // Phase 12: Record write timestamp and frame position before write
+        val framesInPacket = packet.payload.size / (currentChannelCount * 2) // 2 bytes per sample
+        val writeTimestampNs = SystemClock.elapsedRealtimeNanos()
+        val frameStart = cumulativeFramesWritten.getAndAdd(framesInPacket.toLong())
+
+        // Store write timestamps in ring buffer for frame-position correlation
+        // Each frame in this packet gets the same write timestamp
+        for (f in 0 until framesInPacket) {
+            val framePos = frameStart + f
+            writeTimestampRing[framePos.toInt() % WRITE_TIMESTAMP_RING_SIZE] = writeTimestampNs
+        }
+
         var offset = 0
         val totalBytes = packet.payload.size
         while (offset < totalBytes && isOutputting.get()) {
@@ -376,6 +422,69 @@ class AudioOutputEngine(
             }
             offset += written
         }
+
+        // Phase 12: AudioTrack.getTimestamp() probe at frame boundary
+        // Called after successful packet write to correlate presentation time
+        var audioTrackFramePosition: Long = -1
+        var audioTrackTimestampNs: Long = -1
+        var audioTrackTimestampAvailable = false
+        var audioTrackTimebase = AudioTimestamp.TIMEBASE_MONOTONIC
+        var clockDomainAligned = false
+        var correlationValid = false
+        var presentationLatencyNs: Long? = null
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val audioTimestamp = AudioTimestamp()
+            var timebase = AudioTimestamp.TIMEBASE_MONOTONIC
+            // Use parameterless getTimestamp() for all API levels to avoid overload resolution issues
+            // On API 29+, this uses TIMEBASE_MONOTONIC by default; TIMEBASE_BOOTTIME requires the 2-arg overload
+            val result = track.getTimestamp(audioTimestamp)
+            // On API 29+, the parameterless version uses MONOTONIC; we note this
+            timebase = AudioTimestamp.TIMEBASE_MONOTONIC
+            if (result) {
+                audioTrackFramePosition = audioTimestamp.framePosition
+                audioTrackTimestampNs = audioTimestamp.nanoTime
+                audioTrackTimestampAvailable = true
+                // Clock domain aligned with elapsedRealtimeNanos() only when timebase is BOOTTIME
+                // Since we use parameterless getTimestamp() (always MONOTONIC), it's NOT aligned
+                clockDomainAligned = false
+
+                // Frame correlation: look up write timestamp for the PRESENTED frame
+                // AudioTrack timestamp reports frames already presented to hardware
+                // We need the write timestamp for that specific frame position
+                if (audioTrackFramePosition >= 0) {
+                    val ringIdx = audioTrackFramePosition.toInt() % WRITE_TIMESTAMP_RING_SIZE
+                    val writeTsForFrame = writeTimestampRing[ringIdx]
+                    if (writeTsForFrame > 0) {
+                        correlationValid = true
+                        // Only compute presentation latency when clock domains are aligned
+                        if (clockDomainAligned) {
+                            presentationLatencyNs = audioTrackTimestampNs - writeTsForFrame
+                        }
+                    }
+                }
+            }
+        }
+
+        // Store in circular buffer
+        val idx = outputDiagHead % OUTPUT_DIAG_CAPACITY
+        outputDiagFrames[idx] = OutputTimestampDiag(
+            sequence = packet.sequenceNumber,
+            writeTimestampNs = writeTimestampNs,
+            frameStart = frameStart,
+            framesWritten = framesInPacket,
+            cumulativeFramesWritten = cumulativeFramesWritten.get(),
+            audioTrackFramePosition = audioTrackFramePosition,
+            audioTrackTimestampNs = audioTrackTimestampNs,
+            audioTrackTimestampAvailable = audioTrackTimestampAvailable,
+            audioTrackTimebase = audioTrackTimebase,
+            clockDomainAligned = clockDomainAligned,
+            correlationValid = correlationValid,
+            presentationLatencyNs = presentationLatencyNs
+        )
+        outputDiagHead++
+        outputDiagCount.incrementAndGet()
+
         return offset
     }
 
@@ -430,22 +539,91 @@ class AudioOutputEngine(
         bytesWritten.set(0)
         writeErrors.set(0)
         underrunsReported.set(0)
+
+        // Phase 12: Reset diagnostic buffers
+        outputDiagHead = 0
+        outputDiagCount.set(0)
+        for (i in outputDiagFrames.indices) outputDiagFrames[i] = null
+        for (i in writeTimestampRing.indices) writeTimestampRing[i] = -1L
+        cumulativeFramesWritten.set(0)
     }
 
-    /** Periodic diagnostic reporter for pipeline tracing. */
+    /** Periodic diagnostic reporter for pipeline tracing (Phase 12). */
     private suspend fun diagnosticsReporter() {
         try {
             while (isOutputting.get()) {
                 delay(2000)
                 val bufferDepth = receiveEngine?.getBufferDepth() ?: -1
                 val bufferDepthMs = receiveEngine?.getBufferDepthMs() ?: -1
+
+                // Phase 12: Output timestamp diagnostics
+                var availableCount = 0L
+                var alignedCount = 0L
+                var correlationCount = 0L
+                var latencySum = 0L
+                var latencyMin = Long.MAX_VALUE
+                var latencyMax = Long.MIN_VALUE
+                var latestDiag: OutputTimestampDiag? = null
+
+                val count = outputDiagCount.get().toInt().coerceAtMost(OUTPUT_DIAG_CAPACITY)
+                for (i in 0 until count) {
+                    val idx = (outputDiagHead - count + i) % OUTPUT_DIAG_CAPACITY
+                    val diag = outputDiagFrames[idx]
+                    diag?.let {
+                        if (it.audioTrackTimestampAvailable) {
+                            availableCount++
+                            if (it.clockDomainAligned) {
+                                alignedCount++
+                            }
+                        }
+                        if (it.correlationValid) {
+                            correlationCount++
+                            // Only include latency when clock domains are aligned
+                            if (it.clockDomainAligned) {
+                                it.presentationLatencyNs?.let { lat ->
+                                    latencySum += lat
+                                    if (lat < latencyMin) latencyMin = lat
+                                    if (lat > latencyMax) latencyMax = lat
+                                }
+                            }
+                        }
+                        if (it.sequence > (latestDiag?.sequence ?: -1)) {
+                            latestDiag = it
+                        }
+                    }
+                }
+
+                val latencyAvg = if (correlationCount > 0 && alignedCount > 0) latencySum / correlationCount else 0L
+                val latencyMinStr = if (latencyMin != Long.MAX_VALUE) latencyMin else "N/A"
+                val latencyMaxStr = if (latencyMax != Long.MIN_VALUE) latencyMax else "N/A"
+                val timebaseStr = latestDiag?.audioTrackTimebase?.let {
+                    when (it) {
+                        AudioTimestamp.TIMEBASE_BOOTTIME -> "BOOTTIME"
+                        AudioTimestamp.TIMEBASE_MONOTONIC -> "MONOTONIC"
+                        else -> "UNKNOWN($it)"
+                    }
+                } ?: "N/A"
+                val alignedStr = latestDiag?.clockDomainAligned?.let { if (it) "ALIGNED" else "UNALIGNED" } ?: "N/A"
+                val latestStr = latestDiag?.let {
+                    "seq=${it.sequence} writeTs=${it.writeTimestampNs} " +
+                    "frameStart=${it.frameStart} frames=${it.framesWritten} " +
+                    "cumFrames=${it.cumulativeFramesWritten} " +
+                    "atFrame=${it.audioTrackFramePosition} atTs=${it.audioTrackTimestampNs} " +
+                    "atAvail=${it.audioTrackTimestampAvailable} tb=$timebaseStr aligned=$alignedStr " +
+                    "corr=${it.correlationValid} " +
+                    "presLat=${if (it.clockDomainAligned) it.presentationLatencyNs else "N/A"}"
+                } ?: "none"
+
                 Log.i(
                     TAG,
                     "[DIAG] AudioOutput: packetsWritten=${packetsWritten.get()} " +
                         "bytesWritten=${bytesWritten.get()} writeErrors=${writeErrors.get()} " +
                         "underruns=${underrunsReported.get()} " +
                         "bufferDepth=$bufferDepth bufferDepthMs=$bufferDepthMs " +
-                        "playState=${audioTrack?.playState ?: -1}"
+                        "playState=${audioTrack?.playState ?: -1} " +
+                        "outputDiag: count=$count atAvail=$availableCount aligned=$alignedCount corr=$correlationCount " +
+                        "presAvgNs=$latencyAvg presMin=$latencyMinStr presMax=$latencyMaxStr " +
+                        "latest=[$latestStr]"
                 )
             }
         } catch (e: Exception) {

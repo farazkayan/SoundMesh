@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
+import android.media.AudioTimestamp
 import android.media.projection.MediaProjection
 import android.os.Build
 import android.os.Handler
@@ -62,6 +63,7 @@ class AudioCaptureEngine(
     private var readJob: Job? = null
     private var audioRecord: AudioRecord? = null
     private var mediaProjection: MediaProjection? = null
+    private var captureDiagJob: Job? = null
     private val generationCounter = AtomicLong(0)
     @Volatile private var currentMetadata: CaptureMetadata? = null
 
@@ -70,7 +72,23 @@ class AudioCaptureEngine(
     private val bytesCaptured = AtomicLong(0)
     private val framesForwardedToTransport = AtomicLong(0)
     private val lastFrameTimestampNanos = AtomicLong(0)
-    private var captureDiagJob: Job? = null
+
+    // --- Phase 12: Capture timestamp diagnostics ---
+    // Circular buffer for capture timestamp samples (PCM read completion + AudioRecord.getTimestamp())
+    private val CAPTURE_DIAG_CAPACITY = 50
+    private val captureDiagFrames = Array<CaptureTimestampDiag?>(CAPTURE_DIAG_CAPACITY) { null }
+    private var captureDiagHead = 0
+    private val captureDiagCount = AtomicLong(0)
+
+    data class CaptureTimestampDiag(
+        val sequence: Long,
+        val pcmReadCompletionTimestampNs: Long,
+        val audioRecordFramePosition: Long,
+        val audioRecordTimestampNs: Long,
+        val audioRecordTimestampAvailable: Boolean,
+        val audioRecordTimebase: Int,
+        val clockDomainAligned: Boolean
+    )
 
     private val diagnostics = CaptureDiagnostics(scope) { stats ->
         scope.launch {
@@ -257,6 +275,8 @@ class AudioCaptureEngine(
      */
     private suspend fun readLoop(record: AudioRecord, bufferBytes: Int) {
         val readBuffer = ByteArray(bufferBytes.coerceAtLeast(MIN_READ_BYTES))
+        val audioTimestamp = AudioTimestamp()
+        var localSequence = 0L
         try {
             while (isRunning.get()) {
                 val readBytes = record.read(readBuffer, 0, readBuffer.size)
@@ -265,10 +285,64 @@ class AudioCaptureEngine(
                         diagnostics.recordFrame(readBuffer, readBytes)
                         framesCaptured.incrementAndGet()
                         bytesCaptured.addAndGet(readBytes.toLong())
+
+                        // Phase 12: Capture timestamp probing
+                        // T1: PCM read completion timestamp (existing behavior)
+                        val pcmReadCompletionTimestamp = SystemClock.elapsedRealtimeNanos()
+                        lastFrameTimestampNanos.set(pcmReadCompletionTimestamp)
+
+                        // AudioRecord.getTimestamp() probe
+                        var audioRecordFramePosition: Long = -1
+                        var audioRecordTimestampNs: Long = -1
+                        var audioRecordTimestampAvailable = false
+                        var audioRecordTimebase = AudioTimestamp.TIMEBASE_MONOTONIC
+                        var clockDomainAligned = false
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            var timebase = AudioTimestamp.TIMEBASE_MONOTONIC
+                            var success = false
+                            // Use reflection to call parameterless getTimestamp() to avoid overload resolution issues
+                            // AudioRecord.getTimestamp(AudioTimestamp) exists on API 24+, returns Int on 24-28, Boolean on 29+
+                            try {
+                                val method = AudioRecord::class.java.getMethod("getTimestamp", AudioTimestamp::class.java)
+                                val result = method.invoke(record, audioTimestamp)
+                                success = when (result) {
+                                    is Boolean -> result
+                                    is Int -> result == AudioRecord.SUCCESS
+                                    else -> false
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "AudioRecord.getTimestamp reflection failed", e)
+                                success = false
+                            }
+                            if (success) {
+                                audioRecordFramePosition = audioTimestamp.framePosition
+                                audioRecordTimestampNs = audioTimestamp.nanoTime
+                                audioRecordTimestampAvailable = true
+                                // Parameterless getTimestamp() uses MONOTONIC timebase on all API levels
+                                // Not aligned with elapsedRealtimeNanos() (which equals BOOTTIME)
+                                clockDomainAligned = false
+                            }
+                            audioRecordTimebase = timebase
+                        }
+
+                        // Store in circular buffer
+                        val idx = captureDiagHead % CAPTURE_DIAG_CAPACITY
+                        captureDiagFrames[idx] = CaptureTimestampDiag(
+                            sequence = localSequence,
+                            pcmReadCompletionTimestampNs = pcmReadCompletionTimestamp,
+                            audioRecordFramePosition = audioRecordFramePosition,
+                            audioRecordTimestampNs = audioRecordTimestampNs,
+                            audioRecordTimestampAvailable = audioRecordTimestampAvailable,
+                            audioRecordTimebase = audioRecordTimebase,
+                            clockDomainAligned = clockDomainAligned
+                        )
+                        captureDiagHead++
+                        captureDiagCount.incrementAndGet()
+                        localSequence++
+
                         // Forward frame to transport layer (Phase 8)
-                        val captureTimestamp = SystemClock.elapsedRealtimeNanos()
-                        lastFrameTimestampNanos.set(captureTimestamp)
-                        onFrameCaptured?.invoke(readBuffer, readBytes, captureTimestamp)
+                        onFrameCaptured?.invoke(readBuffer, readBytes, pcmReadCompletionTimestamp)
                         framesForwardedToTransport.incrementAndGet()
                         // NOTE: No SOURCE_APP_BLOCKED heuristic here.
                         // "No audio currently playing" is a normal, expected state —
@@ -373,7 +447,7 @@ class AudioCaptureEngine(
         AudioCaptureService.stop(context)
     }
 
-    /** Periodic diagnostic reporter for pipeline tracing (BUG #3). */
+    /** Periodic diagnostic reporter for pipeline tracing (BUG #3 + Phase 12). */
     private suspend fun captureDiagnosticsReporter() {
         try {
             while (isRunning.get()) {
@@ -382,10 +456,64 @@ class AudioCaptureEngine(
                 val lastFrameAgeMs = if (lastFrameTimestampNanos.get() > 0) {
                     (now - lastFrameTimestampNanos.get()) / 1_000_000
                 } else -1L
+
+                // Phase 12: Capture timestamp diagnostics
+                var availableCount = 0L
+                var alignedCount = 0L
+                var deltaSum = 0L
+                var deltaMin = Long.MAX_VALUE
+                var deltaMax = Long.MIN_VALUE
+                var latestDiag: CaptureTimestampDiag? = null
+                var latestIdx = -1
+
+                val count = captureDiagCount.get().toInt().coerceAtMost(CAPTURE_DIAG_CAPACITY)
+                for (i in 0 until count) {
+                    val idx = (captureDiagHead - count + i) % CAPTURE_DIAG_CAPACITY
+                    val diag = captureDiagFrames[idx]
+                    diag?.let {
+                        if (it.audioRecordTimestampAvailable) {
+                            availableCount++
+                            if (it.clockDomainAligned) {
+                                alignedCount++
+                                // Only compute delta when clock domains are aligned
+                                val delta = it.audioRecordTimestampNs - it.pcmReadCompletionTimestampNs
+                                deltaSum += delta
+                                if (delta < deltaMin) deltaMin = delta
+                                if (delta > deltaMax) deltaMax = delta
+                            }
+                        }
+                        if (it.sequence > (latestDiag?.sequence ?: -1L)) {
+                            latestDiag = it
+                            latestIdx = idx
+                        }
+                    }
+                }
+
+                val deltaAvg = if (alignedCount > 0) deltaSum / alignedCount else 0L
+                val deltaMinStr = if (deltaMin != Long.MAX_VALUE) deltaMin else "N/A"
+                val deltaMaxStr = if (deltaMax != Long.MIN_VALUE) deltaMax else "N/A"
+                val timebaseStr = latestDiag?.audioRecordTimebase?.let {
+                    when (it) {
+                        AudioTimestamp.TIMEBASE_BOOTTIME -> "BOOTTIME"
+                        AudioTimestamp.TIMEBASE_MONOTONIC -> "MONOTONIC"
+                        else -> "UNKNOWN($it)"
+                    }
+                } ?: "N/A"
+                val alignedStr = latestDiag?.clockDomainAligned?.let { if (it) "ALIGNED" else "UNALIGNED" } ?: "N/A"
+                val latestStr = latestDiag?.let {
+                    "seq=${it.sequence} pcmRead=${it.pcmReadCompletionTimestampNs} " +
+                    "arFrame=${it.audioRecordFramePosition} arTs=${it.audioRecordTimestampNs} " +
+                    "avail=${it.audioRecordTimestampAvailable} tb=$timebaseStr aligned=$alignedStr " +
+                    "delta=${if (it.clockDomainAligned) (it.audioRecordTimestampNs - it.pcmReadCompletionTimestampNs) else "N/A"}"
+                } ?: "none"
+
                 Log.i(
                     TAG,
                     "[DIAG] Capture: frames=${framesCaptured.get()} bytes=${bytesCaptured.get()} " +
-                        "forwarded=${framesForwardedToTransport.get()} lastFrameAgeMs=$lastFrameAgeMs"
+                        "forwarded=${framesForwardedToTransport.get()} lastFrameAgeMs=$lastFrameAgeMs " +
+                        "captureDiag: count=$count avail=$availableCount aligned=$alignedCount " +
+                        "deltaAvgNs=$deltaAvg deltaMin=$deltaMinStr deltaMax=$deltaMaxStr " +
+                        "latest=[$latestStr]"
                 )
             }
         } catch (e: Exception) {
