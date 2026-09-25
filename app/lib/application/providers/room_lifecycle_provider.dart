@@ -5,6 +5,7 @@ import 'package:soundmesh/application/repositories/network_repository.dart';
 import 'package:soundmesh/application/room/room_lifecycle.dart';
 import 'package:soundmesh/application/protocol/protocol_constants.dart';
 import 'package:soundmesh/application/providers/sync_provider.dart';
+import 'package:soundmesh/application/providers/timeline_provider.dart';
 import 'package:soundmesh/application/providers/discovery_provider.dart';
 import 'package:soundmesh/infrastructure/discovery/discovery_manager.dart';
 
@@ -65,6 +66,8 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
   RoomLifecycleNotifier(this._networkRepository, this._discoveryManager, this._ref) : super(const RoomLifecycleStateData()) {
     // Watch sync lifecycle to ensure sync repository is active when network is connected
     _ref.watch(syncLifecycleProvider);
+    // Watch timeline scheduler to enable Phase 13 scheduling
+    _ref.watch(timelineSchedulerProvider);
 
     _lifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((lifecycleState) {
       debugPrint('[UILifecycle] RoomLifecycle: roomLifecycleState change -> $lifecycleState');

@@ -18,7 +18,6 @@ import com.soundmesh.soundmesh.capture.CaptureSessionState
 import com.soundmesh.soundmesh.capture.CaptureStateMachine
 import com.soundmesh.soundmesh.capture.MediaProjectionHelper
 import com.soundmesh.soundmesh.capture.CaptureDiagnostics
-import com.soundmesh.soundmesh.FrameArrivalStats
 import com.soundmesh.soundmesh.discovery.DiscoveryService
 import com.soundmesh.soundmesh.output.AudioOutputEngine
 import com.soundmesh.soundmesh.transport.AudioPacket
@@ -27,8 +26,10 @@ import com.soundmesh.soundmesh.transport.AudioTransportEngine
 import com.soundmesh.soundmesh.ReceiveState
 import com.soundmesh.soundmesh.ReceiveStats
 import com.soundmesh.soundmesh.OutputState
+import com.soundmesh.soundmesh.ScheduleResult
 import com.soundmesh.soundmesh.StreamingMetadata
 import com.soundmesh.soundmesh.StreamingState
+import com.soundmesh.soundmesh.TimeSyncResponse
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import kotlinx.coroutines.CoroutineScope
@@ -132,6 +133,9 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private var pipelineWatchdogJob: Job? = null
     private var lastAudioActivityNanos = AtomicLong(0)
     private val PIPELINE_STALL_THRESHOLD_MS = 5000L
+    
+    // ---- Sync state tracking for preparation barrier ----
+    @Volatile private var syncState = "UNKNOWN"
 
     // ---- Discovery ----
     private lateinit var discoveryService: DiscoveryService
@@ -193,6 +197,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             context = this,
             scope = scope,
             notifyOutputState = { state, errorCode, errorMessage -> notifyOutputState(state, errorCode, errorMessage) },
+            getSyncState = { this.getSyncState() },
         )
 
         // Wire receive engine to output engine
@@ -1201,8 +1206,26 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         val t3 = payload.optLong("t3", 0)
                         if (t1 > 0 && t2 > 0 && t3 > 0) {
                             Log.i(TAG, "[Sync] Received TIME_SYNC_RESPONSE: t1=$t1 t2=$t2 t3=$t3, gen=$generation")
-                            // Notify Flutter sync repository
-                            // This will be handled by the sync repository on the Flutter side
+                            // Forward to Flutter sync repository (must run on main thread for @UiThread Pigeon API)
+                            Log.d(TAG, "[Sync] pipelineFlutterApi=${pipelineFlutterApi != null}")
+                            Log.d(TAG, "[Sync] About to forward TIME_SYNC_RESPONSE to Dart: gen=$generation session=$sessionId")
+                            scope.launch(Dispatchers.Main) {
+                                Log.d(TAG, "[Sync] TIME_SYNC_RESPONSE coroutine started on ${Thread.currentThread().name}")
+                                try {
+                                    pipelineFlutterApi?.onTimeSyncResponse(
+                                        TimeSyncResponse(
+                                            t1 = t1,
+                                            t2 = t2,
+                                            t3 = t3,
+                                            generation = generation,
+                                            sessionId = sessionId,
+                                        )
+                                    )
+                                    Log.d(TAG, "[Sync] Successfully forwarded TIME_SYNC_RESPONSE to Dart")
+                                } catch (e: Throwable) {
+                                    Log.e(TAG, "[Sync] Failed to forward TIME_SYNC_RESPONSE to Dart", e)
+                                }
+                            }
                         }
                     }
                 }
@@ -1256,12 +1279,24 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         val channelCount = payload.optInt("channelCount", 0)
                         val startedAtNanos = payload.optLong("startedAtNanos", 0)
                         Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_INFO: sr=$sampleRate ch=$channelCount gen=$generation")
+                        // Participant adopts stream generation into local pipelineGeneration
+                        if (!isHosting && generation > pipelineGeneration) {
+                            pipelineGeneration = generation
+                            scope.launch { notifyPipelineState("STREAM_INFO", generation) }
+                            Log.i(TAG, "[Pipeline] Participant adopted stream generation: $generation")
+                        }
                         receiveEngine?.onStreamInfo(sessionId, generation, sampleRate, channelCount)
                         outputEngine?.onStreamInfo(generation, sampleRate, channelCount)
                     }
                 }
                 "AUDIO_STREAM_START" -> {
                     Log.i(TAG, "[AudioTransport] Received AUDIO_STREAM_START: gen=$generation")
+                    // Participant adopts stream generation into local pipelineGeneration
+                    if (!isHosting && generation > pipelineGeneration) {
+                        pipelineGeneration = generation
+                        scope.launch { notifyPipelineState("STREAM_START", generation) }
+                        Log.i(TAG, "[Pipeline] Participant adopted stream generation: $generation")
+                    }
                     scope.launch { receiveEngine?.onStreamStart(generation) }
                     scope.launch { outputEngine?.onStreamStart(generation) }
                 }
@@ -1653,6 +1688,26 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     override fun getPipelineGeneration(): Long = pipelineGeneration
 
     override fun getPipelineState(): String = pipelineState
+
+    override fun getSyncState(): String = syncState
+
+    override fun updateSyncState(state: String, generation: Long) {
+        syncState = state
+        Log.i(TAG, "[Pipeline] Sync state updated: $state (gen=$generation)")
+    }
+
+    override fun scheduleFrame(
+        framePosition: Long,
+        targetNativeTimeNanos: Long,
+        generation: Long
+    ): ScheduleResult {
+        return outputEngine?.scheduleFrame(framePosition, targetNativeTimeNanos, generation)
+            ?: ScheduleResult(false, "OUTPUT_NOT_READY", "Output engine not initialized")
+    }
+
+    override fun getNextFrameInfo(): NextFrameInfo? {
+        return receiveEngine?.getNextFrameInfo()
+    }
 
     private suspend fun notifyPipelineState(state: String, generation: Long) {
         withContext(Dispatchers.Main) {

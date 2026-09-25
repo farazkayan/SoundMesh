@@ -518,6 +518,11 @@ class RoomDashboardScreen extends ConsumerWidget {
           ),
         ),
         SizedBox(height: SMSpacing.xl),
+        // Audio Share toggle (host only)
+        if (isHost) ...[
+          AudioShareToggle(isHost: true),
+          SizedBox(height: SMSpacing.xl),
+        ],
         // Leave/End room button - host ends room, participant leaves room
         SMButton(
           text: isHost ? 'End Room' : 'Leave Room',

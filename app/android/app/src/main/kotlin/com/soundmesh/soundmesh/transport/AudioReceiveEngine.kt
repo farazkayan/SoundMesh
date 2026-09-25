@@ -2,6 +2,7 @@ package com.soundmesh.soundmesh.transport
 
 import android.os.SystemClock
 import android.util.Log
+import com.soundmesh.soundmesh.NextFrameInfo
 import com.soundmesh.soundmesh.ReceiveState
 import com.soundmesh.soundmesh.ReceiveStats
 import kotlinx.coroutines.CoroutineScope
@@ -305,6 +306,32 @@ class AudioReceiveEngine(
         val totalBytes = depth * bytesPerPacket
         val ms = (totalBytes * 1000) / (sampleRate * channelCount * 2)
         return ms
+    }
+
+    /**
+     * Peek at the next packet in sequence without consuming it.
+     * Returns null if no packet is available at readHead.
+     */
+    fun peekNextPacket(): AudioPacket? {
+        if (!isReceiving.get()) return null
+        val index = readHead % jitterBuffer.size
+        return jitterBuffer[index]
+    }
+
+    /**
+     * Get immutable snapshot of the next frame boundary for scheduling.
+     * Returns null if no packet is available at readHead.
+     */
+    fun getNextFrameInfo(): NextFrameInfo? {
+        val packet = peekNextPacket()
+        if (packet == null) return null
+        return NextFrameInfo(
+            framePosition = packet.sequenceNumber * 882L,
+            sequenceNumber = packet.sequenceNumber.toLong(),
+            generation = packet.streamGeneration,
+            sampleRate = packet.sampleRate.toLong(),
+            channelCount = packet.channelCount.toLong(),
+        )
     }
 
     /**

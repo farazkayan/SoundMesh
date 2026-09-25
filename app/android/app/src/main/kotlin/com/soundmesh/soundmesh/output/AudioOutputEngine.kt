@@ -11,6 +11,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.soundmesh.soundmesh.AudioOutputPlatform
 import com.soundmesh.soundmesh.OutputState
+import com.soundmesh.soundmesh.ScheduleResult
 import com.soundmesh.soundmesh.transport.AudioPacket
 import com.soundmesh.soundmesh.transport.AudioReceiveEngine
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +45,8 @@ class AudioOutputEngine(
     private val scope: CoroutineScope,
     /** Notify Flutter of output state changes (STARTED/UNDERRUN/STOPPED/ROUTE_CHANGED/ERROR). */
     private val notifyOutputState: suspend (state: String, errorCode: String?, errorMessage: String?) -> Unit,
+    /** Provide current sync state for preparation barrier (SYNCHRONIZED/DEGRADED/UNSYNCHRONIZED/etc). */
+    private val getSyncState: () -> String = { "UNKNOWN" },
 ) : AudioOutputPlatform {
     private val TAG = "AudioOutputEngine"
 
@@ -63,6 +66,11 @@ class AudioOutputEngine(
     // Audio route monitoring
     private var audioManager: AudioManager? = null
     private var lastKnownDeviceId = -1
+
+    // --- Phase 13: Scheduled playback ---
+    private var pendingScheduleTargetTimeNs = 0L
+    private var pendingScheduleFrame = 0L
+    private var hasPendingSchedule = false
 
     // Diagnostic counters
     private val packetsWritten = AtomicLong(0)
@@ -272,7 +280,7 @@ class AudioOutputEngine(
         val receiveEngineRef = receiveEngine!!
         var bufferReady = false
         var waitCount2 = 0
-        while (!bufferReady && waitCount2 < 50 && isOutputting.get()) {
+        while (!bufferReady && waitCount2 < 50) {
             if (receiveEngineRef.isHealthy()) {
                 bufferReady = true
                 Log.i(TAG, "Receive buffer healthy, depth=${receiveEngineRef.getBufferDepth()} packets, ${receiveEngineRef.getBufferDepthMs()}ms")
@@ -285,7 +293,8 @@ class AudioOutputEngine(
             Log.w(TAG, "Starting playback with unhealthy buffer (depth=${receiveEngineRef.getBufferDepth()}) after ${waitCount2 * 10}ms timeout")
         }
 
-        // Start the frame drain coroutine
+        // Start the frame drain coroutine immediately after buffer readiness
+        // Synchronization runs in background; Phase 13 does not block audio on sync
         isOutputting.set(true)
         drainJob = scope.launch(Dispatchers.IO) { drainFrames() }
         diagJob = scope.launch(Dispatchers.IO) { diagnosticsReporter() }
@@ -310,6 +319,11 @@ class AudioOutputEngine(
             return
         }
 
+        // Clear any pending schedule
+        hasPendingSchedule = false
+        pendingScheduleTargetTimeNs = 0L
+        pendingScheduleFrame = 0L
+
         drainJob?.cancel()
         drainJob = null
 
@@ -330,16 +344,52 @@ class AudioOutputEngine(
     /**
      * Drain frames from receive engine's jitter buffer and write to AudioTrack.
      * Runs on IO dispatcher.
+     * Respects pending schedule target time at frame boundaries (Phase 13).
      */
     private suspend fun drainFrames() {
         try {
             while (isOutputting.get()) {
-                val packet = receiveEngine?.pollNextPacket()
+                // CHECK SCHEDULE AT EVERY FRAME BOUNDARY
+                if (hasPendingSchedule) {
+                    val nextPacket = receiveEngine?.peekNextPacket()
+                    if (nextPacket == null) {
+                        delay(frameDurationMs)
+                        continue
+                    }
+                    val nextFramePos = nextPacket.sequenceNumber * 882L
+                    val nowNs = SystemClock.elapsedRealtimeNanos()
 
+                    when {
+                        nextFramePos < pendingScheduleFrame -> {
+                            // Next frame is before target - continue normal playback
+                        }
+                        nextFramePos == pendingScheduleFrame -> {
+                            // At target frame boundary
+                            if (nowNs < pendingScheduleTargetTimeNs) {
+                                // Wait until target time
+                                val waitMs = ((pendingScheduleTargetTimeNs - nowNs) / 1_000_000).coerceAtMost(10).toLong()
+                                delay(waitMs)
+                                continue
+                            }
+                            // Target reached or slightly missed - consume frame, clear schedule
+                            hasPendingSchedule = false
+                            pendingScheduleFrame = 0L
+                            pendingScheduleTargetTimeNs = 0L
+                        }
+                        nextFramePos > pendingScheduleFrame -> {
+                            // Target frame already passed - schedule missed
+                            hasPendingSchedule = false
+                            pendingScheduleFrame = 0L
+                            pendingScheduleTargetTimeNs = 0L
+                        }
+                    }
+                }
+
+                // Normal packet consumption
+                val packet = receiveEngine?.pollNextPacket()
                 if (packet == null) {
                     // Underrun - no packet available yet
                     underrunsReported.incrementAndGet()
-                    // Wait for next frame period before polling again
                     delay(frameDurationMs)
                     continue
                 }
@@ -366,6 +416,19 @@ class AudioOutputEngine(
                 notifyOutputState("ERROR", "OUTPUT_FAILURE", "Drain loop failed: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Request a schedule target for the next frame from Dart TimelineProvider.
+     * Called when no schedule exists yet (startup or after previous schedule cleared).
+     * Note: In the current architecture, Dart TimelineProvider drives scheduling
+     * by polling getNextFrameInfo() and calling scheduleFrame(). Native does not
+     * request schedule targets from Dart.
+     */
+    private fun requestScheduleForNextFrame() {
+        // In the current architecture, Dart TimelineProvider drives scheduling
+        // by polling getNextFrameInfo() and calling scheduleFrame().
+        // Native does not request schedule targets from Dart.
     }
 
     private fun writeToAudioTrack(packet: AudioPacket): Int {
@@ -506,6 +569,47 @@ class AudioOutputEngine(
      */
     fun getState(): OutputState = getOutputState()
 
+    /**
+     * Schedule a frame for future playback (Phase 13).
+     * Gates the start of drainFrames() until targetNativeTimeNanos is reached.
+     */
+    override fun scheduleFrame(
+        framePosition: Long,
+        targetNativeTimeNanos: Long,
+        generation: Long
+    ): ScheduleResult {
+        if (generation != currentGeneration) {
+            Log.w(TAG, "scheduleFrame: stale generation $generation (current: $currentGeneration)")
+            return ScheduleResult(false, "STALE_GENERATION", "Generation mismatch")
+        }
+        if (targetNativeTimeNanos <= 0) {
+            return ScheduleResult(false, "INVALID_TARGET_TIME", "Target time must be positive")
+        }
+
+        pendingScheduleFrame = framePosition
+        pendingScheduleTargetTimeNs = targetNativeTimeNanos
+        hasPendingSchedule = true
+
+        Log.i(TAG, "scheduleFrame: frame=$framePosition targetNs=$targetNativeTimeNanos gen=$generation")
+
+        // If not already outputting, start the gated output
+        if (!isOutputting.get()) {
+            startGatedOutput()
+        }
+
+        return ScheduleResult(true, null, null)
+    }
+
+    private fun startGatedOutput() {
+        // The actual gating logic is in onStreamStart - this just ensures
+        // the output engine is ready to gate when the stream starts.
+        // For late scheduling after stream start, we need to re-gate.
+        if (isOutputting.get()) {
+            // Already outputting - the drainFrames loop will respect the new target
+            Log.i(TAG, "startGatedOutput: already outputting, drainFrames will respect new target")
+        }
+    }
+
     private fun estimateBufferedMs(): Long {
         val track = audioTrack ?: return 0
         // Rough estimate based on buffer size and sample rate
@@ -525,6 +629,12 @@ class AudioOutputEngine(
         currentSampleRate = 0
         currentChannelCount = 0
         frameSizeBytes.set(0)
+        
+        // Phase 13: Clear pending schedule
+        hasPendingSchedule = false
+        pendingScheduleTargetTimeNs = 0L
+        pendingScheduleFrame = 0L
+        
         drainJob?.cancel()
         drainJob = null
         diagJob?.cancel()

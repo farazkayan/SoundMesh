@@ -963,6 +963,126 @@ class OutputError {
   }
 }
 
+class ScheduleResult {
+  ScheduleResult({
+    required this.success,
+    this.errorCode,
+    this.errorMessage,
+  });
+
+  bool success;
+
+  String? errorCode;
+
+  String? errorMessage;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      success,
+      errorCode,
+      errorMessage,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static ScheduleResult decode(Object result) {
+    result as List<Object?>;
+    return ScheduleResult(
+      success: result[0]! as bool,
+      errorCode: result[1] as String?,
+      errorMessage: result[2] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! ScheduleResult || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(success, other.success) && _deepEquals(errorCode, other.errorCode) && _deepEquals(errorMessage, other.errorMessage);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'ScheduleResult(success: $success, errorCode: $errorCode, errorMessage: $errorMessage)';
+  }
+}
+
+class NextFrameInfo {
+  NextFrameInfo({
+    required this.framePosition,
+    required this.sequenceNumber,
+    required this.generation,
+    required this.sampleRate,
+    required this.channelCount,
+  });
+
+  int framePosition;
+
+  int sequenceNumber;
+
+  int generation;
+
+  int sampleRate;
+
+  int channelCount;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      framePosition,
+      sequenceNumber,
+      generation,
+      sampleRate,
+      channelCount,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static NextFrameInfo decode(Object result) {
+    result as List<Object?>;
+    return NextFrameInfo(
+      framePosition: result[0]! as int,
+      sequenceNumber: result[1]! as int,
+      generation: result[2]! as int,
+      sampleRate: result[3]! as int,
+      channelCount: result[4]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NextFrameInfo || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(framePosition, other.framePosition) && _deepEquals(sequenceNumber, other.sequenceNumber) && _deepEquals(generation, other.generation) && _deepEquals(sampleRate, other.sampleRate) && _deepEquals(channelCount, other.channelCount);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'NextFrameInfo(framePosition: $framePosition, sequenceNumber: $sequenceNumber, generation: $generation, sampleRate: $sampleRate, channelCount: $channelCount)';
+  }
+}
+
 class PipelineError {
   PipelineError({
     required this.code,
@@ -1015,6 +1135,71 @@ class PipelineError {
   @override
   String toString() {
     return 'PipelineError(code: $code, message: $message, generation: $generation)';
+  }
+}
+
+class TimeSyncResponse {
+  TimeSyncResponse({
+    required this.t1,
+    required this.t2,
+    required this.t3,
+    required this.generation,
+    required this.sessionId,
+  });
+
+  int t1;
+
+  int t2;
+
+  int t3;
+
+  int generation;
+
+  String sessionId;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      t1,
+      t2,
+      t3,
+      generation,
+      sessionId,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static TimeSyncResponse decode(Object result) {
+    result as List<Object?>;
+    return TimeSyncResponse(
+      t1: result[0]! as int,
+      t2: result[1]! as int,
+      t3: result[2]! as int,
+      generation: result[3]! as int,
+      sessionId: result[4]! as String,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! TimeSyncResponse || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(t1, other.t1) && _deepEquals(t2, other.t2) && _deepEquals(t3, other.t3) && _deepEquals(generation, other.generation) && _deepEquals(sessionId, other.sessionId);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'TimeSyncResponse(t1: $t1, t2: $t2, t3: $t3, generation: $generation, sessionId: $sessionId)';
   }
 }
 
@@ -1071,8 +1256,17 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is OutputError) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    }    else if (value is PipelineError) {
+    }    else if (value is ScheduleResult) {
       buffer.putUint8(144);
+      writeValue(buffer, value.encode());
+    }    else if (value is NextFrameInfo) {
+      buffer.putUint8(145);
+      writeValue(buffer, value.encode());
+    }    else if (value is PipelineError) {
+      buffer.putUint8(146);
+      writeValue(buffer, value.encode());
+    }    else if (value is TimeSyncResponse) {
+      buffer.putUint8(147);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1113,7 +1307,13 @@ class _PigeonCodec extends StandardMessageCodec {
       case 143:
         return OutputError.decode(readValue(buffer)!);
       case 144:
+        return ScheduleResult.decode(readValue(buffer)!);
+      case 145:
+        return NextFrameInfo.decode(readValue(buffer)!);
+      case 146:
         return PipelineError.decode(readValue(buffer)!);
+      case 147:
+        return TimeSyncResponse.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -1151,6 +1351,25 @@ class AudioOutputPlatform {
     ;
     return pigeonVar_replyValue! as OutputState;
   }
+
+  Future<ScheduleResult> scheduleFrame(int framePosition, int targetNativeTimeNanos, int generation) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.AudioOutputPlatform.scheduleFrame$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[framePosition, targetNativeTimeNanos, generation]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as ScheduleResult;
+  }
 }
 
 abstract class AudioOutputFlutterApi {
@@ -1159,6 +1378,8 @@ abstract class AudioOutputFlutterApi {
   void onOutputStateChanged(String state, int bufferedMs);
 
   void onOutputError(String errorCode, String errorMessage);
+
+  void requestScheduleTarget(int framePosition, int captureTimestampNs, int generation);
 
   static void setUp(AudioOutputFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
     messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
@@ -1197,6 +1418,29 @@ abstract class AudioOutputFlutterApi {
           final String arg_errorMessage = args[1]! as String;
           try {
             api.onOutputError(arg_errorCode, arg_errorMessage);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.AudioOutputFlutterApi.requestScheduleTarget$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final int arg_framePosition = args[0]! as int;
+          final int arg_captureTimestampNs = args[1]! as int;
+          final int arg_generation = args[2]! as int;
+          try {
+            api.requestScheduleTarget(arg_framePosition, arg_captureTimestampNs, arg_generation);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
@@ -1670,6 +1914,25 @@ class AudioReceivePlatform {
     ;
     return pigeonVar_replyValue! as ReceiveState;
   }
+
+  Future<NextFrameInfo?> getNextFrameInfo() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.AudioReceivePlatform.getNextFrameInfo$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+    return pigeonVar_replyValue as NextFrameInfo?;
+  }
 }
 
 abstract class NetworkFlutterApi {
@@ -1940,6 +2203,10 @@ abstract class PipelineFlutterApi {
 
   void onPipelineError(PipelineError error);
 
+  void onTimeSyncResponse(TimeSyncResponse response);
+
+  void onSyncStateChanged(String state, int generation);
+
   static void setUp(PipelineFlutterApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
     messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
     {
@@ -1976,6 +2243,49 @@ abstract class PipelineFlutterApi {
           final PipelineError arg_error = args[0]! as PipelineError;
           try {
             api.onPipelineError(arg_error);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.PipelineFlutterApi.onTimeSyncResponse$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final TimeSyncResponse arg_response = args[0]! as TimeSyncResponse;
+          try {
+            api.onTimeSyncResponse(arg_response);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          }          catch (e) {
+            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          }
+        });
+      }
+    }
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+          'dev.flutter.pigeon.soundmesh.PipelineFlutterApi.onSyncStateChanged$messageChannelSuffix', pigeonChannelCodec,
+          binaryMessenger: binaryMessenger);
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final String arg_state = args[0]! as String;
+          final int arg_generation = args[1]! as int;
+          try {
+            api.onSyncStateChanged(arg_state, arg_generation);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
@@ -2073,5 +2383,42 @@ class PipelinePlatform {
     )
     ;
     return pigeonVar_replyValue! as String;
+  }
+
+  Future<String> getSyncState() async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.PipelinePlatform.getSyncState$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: false,
+    )
+    ;
+    return pigeonVar_replyValue! as String;
+  }
+
+  Future<void> updateSyncState(String state, int generation) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.soundmesh.PipelinePlatform.updateSyncState$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[state, generation]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
   }
 }

@@ -165,6 +165,14 @@ class OutputError {
 @HostApi()
 abstract class AudioOutputPlatform {
   OutputState getOutputState();
+  ScheduleResult scheduleFrame(int framePosition, int targetNativeTimeNanos, int generation);
+}
+
+class ScheduleResult {
+  final bool success;
+  final String? errorCode;
+  final String? errorMessage;
+  ScheduleResult({required this.success, this.errorCode, this.errorMessage});
 }
 
 @FlutterApi()
@@ -220,6 +228,22 @@ abstract class AudioCapturePlatform {
 @HostApi()
 abstract class AudioReceivePlatform {
   ReceiveState getReceiveState();
+  NextFrameInfo? getNextFrameInfo();
+}
+
+class NextFrameInfo {
+  final int framePosition;
+  final int sequenceNumber;
+  final int generation;
+  final int sampleRate;
+  final int channelCount;
+  NextFrameInfo({
+    required this.framePosition,
+    required this.sequenceNumber,
+    required this.generation,
+    required this.sampleRate,
+    required this.channelCount,
+  });
 }
 
 @FlutterApi()
@@ -251,10 +275,27 @@ class PipelineError {
   PipelineError({required this.code, required this.message, required this.generation});
 }
 
+class TimeSyncResponse {
+  final int t1;
+  final int t2;
+  final int t3;
+  final int generation;
+  final String sessionId;
+  TimeSyncResponse({
+    required this.t1,
+    required this.t2,
+    required this.t3,
+    required this.generation,
+    required this.sessionId,
+  });
+}
+
 @FlutterApi()
 abstract class PipelineFlutterApi {
   void onPipelineStateChanged(String state, int generation);
   void onPipelineError(PipelineError error);
+  void onTimeSyncResponse(TimeSyncResponse response);
+  void onSyncStateChanged(String state, int generation);
 }
 
 @HostApi()
@@ -265,4 +306,6 @@ abstract class PipelinePlatform {
   void stopPipeline();
   int getPipelineGeneration();
   String getPipelineState();
+  String getSyncState();
+  void updateSyncState(String state, int generation);
 }
