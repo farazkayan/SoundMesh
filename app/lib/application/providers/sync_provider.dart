@@ -12,13 +12,25 @@ final syncRepositoryProvider = StateProvider<SyncRepository?>((ref) => null);
 
 final syncStatusProvider = StreamProvider<SyncStatus>((ref) {
   final repository = ref.watch(syncRepositoryProvider);
+  final networkRepo = ref.watch(networkRepositoryProvider);
+  
   if (repository == null) {
     // Emit initial unsynchronized status instead of empty stream (which never emits)
     // This prevents UI from staying stuck on "Loading..." when no sync session is active
     return Stream.value(SyncStatus.unsynchronized(generation: 0));
   }
+  
+  // For backward compatibility, use the first joined participant's status
+  // (for participant-side, there's only one; for host with multiple participants,
+  // this shows the first participant's status)
+  final participantIds = networkRepo.joinedParticipantIds;
+  final primaryParticipantId = participantIds.isNotEmpty ? participantIds.first : null;
+  
   // Combine initial status with subsequent updates
-  return Stream.value(repository.currentStatus).asyncExpand((_) => repository.statusStream);
+  final initialStatus = primaryParticipantId != null 
+      ? repository.getCurrentStatus(participantId: primaryParticipantId)
+      : SyncStatus.unsynchronized(generation: 0);
+  return Stream.value(initialStatus).asyncExpand((_) => repository.statusStream(participantId: primaryParticipantId));
 });
 
 class _SyncRepositoryLifecycle {
@@ -46,7 +58,7 @@ class _SyncRepositoryLifecycle {
   void _onTimeSyncResponseFromNative(TimeSyncResponse response) {
     debugPrint(
       '[SyncProvider] _onTimeSyncResponseFromNative CALLED: '
-      'gen=${response.generation}',
+      'gen=${response.generation} senderId=${response.senderId}',
     );
     if (_currentRepo == null) {
       debugPrint('[SyncProvider] DROPPED TIME_SYNC_RESPONSE: _currentRepo is NULL');
@@ -60,10 +72,15 @@ class _SyncRepositoryLifecycle {
       );
       return;
     }
+    if (response.senderId.isEmpty) {
+      debugPrint('[SyncProvider] DROPPED TIME_SYNC_RESPONSE: senderId is empty');
+      return;
+    }
     debugPrint(
-      '[SyncProvider] Forwarding TIME_SYNC_RESPONSE to LiveSyncRepository',
+      '[SyncProvider] Forwarding TIME_SYNC_RESPONSE to LiveSyncRepository for participant ${response.senderId}',
     );
     _currentRepo!.onTimeSyncResponse(
+      participantId: response.senderId,
       t1: response.t1,
       t2: response.t2,
       t3: response.t3,
@@ -105,7 +122,7 @@ class _SyncRepositoryLifecycle {
     if (generation == 0) {
       _disposeRepo();
       // Propagate UNSYNCHRONIZED for generation 0
-      pipelinePlatform.updateSyncState('UNSYNCHRONIZED', 0);
+      pipelinePlatform.updateSyncState('UNSYNCHRONIZED', 0, 0.0, null);
       debugPrint('[SyncProvider] Propagated sync state to native: UNSYNCHRONIZED (gen=0)');
       return;
     }
@@ -130,7 +147,8 @@ class _SyncRepositoryLifecycle {
 
     // Subscribe to repo's status stream DIRECTLY for reliable propagation
     // This avoids StreamProvider stream-switching issues
-    _syncStatusSub = _currentRepo!.statusStream.listen((status) {
+    // For host with multiple participants, we listen to all and propagate each
+    _syncStatusSub = _currentRepo!.statusStream().listen((status) {
       String nativeState;
       switch (status.state) {
         case SyncState.synchronized:
@@ -146,29 +164,41 @@ class _SyncRepositoryLifecycle {
           nativeState = 'UNSYNCHRONIZED';
           break;
       }
-      pipelinePlatform.updateSyncState(nativeState, status.generation);
+      pipelinePlatform.updateSyncState(
+        nativeState,
+        status.generation,
+        status.offsetMs ?? 0.0,
+        status.driftMsPerSecond,
+      );
       debugPrint('[SyncProvider] Propagated sync state to native: $nativeState (gen=${status.generation})');
     });
 
-    // Also emit initial status immediately
-    final initialStatus = _currentRepo!.currentStatus;
-    String nativeState;
-    switch (initialStatus.state) {
-      case SyncState.synchronized:
-        nativeState = 'SYNCHRONIZED';
-        break;
-      case SyncState.degraded:
-        nativeState = 'DEGRADED';
-        break;
-      case SyncState.synchronizing:
-        nativeState = 'SYNCHRONIZING';
-        break;
-      case SyncState.unsynchronized:
-        nativeState = 'UNSYNCHRONIZED';
-        break;
+    // Also emit initial status immediately for all participants
+    for (final participantId in networkRepo.joinedParticipantIds) {
+      final initialStatus = _currentRepo!.getCurrentStatus(participantId: participantId);
+      String nativeState;
+      switch (initialStatus.state) {
+        case SyncState.synchronized:
+          nativeState = 'SYNCHRONIZED';
+          break;
+        case SyncState.degraded:
+          nativeState = 'DEGRADED';
+          break;
+        case SyncState.synchronizing:
+          nativeState = 'SYNCHRONIZING';
+          break;
+        case SyncState.unsynchronized:
+          nativeState = 'UNSYNCHRONIZED';
+          break;
+      }
+      pipelinePlatform.updateSyncState(
+        nativeState,
+        initialStatus.generation,
+        initialStatus.offsetMs ?? 0.0,
+        initialStatus.driftMsPerSecond,
+      );
+      debugPrint('[SyncProvider] Propagated sync state to native: $nativeState (gen=${initialStatus.generation})');
     }
-    pipelinePlatform.updateSyncState(nativeState, initialStatus.generation);
-    debugPrint('[SyncProvider] Propagated sync state to native: $nativeState (gen=${initialStatus.generation})');
   }
 
   void _disposeRepo() {

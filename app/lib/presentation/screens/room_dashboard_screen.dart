@@ -31,6 +31,8 @@ class RoomDashboardScreen extends ConsumerWidget {
 
     // Determine if host-ended-room modal should show for participant
     final showHostEndedModal = !isHost && lifecycleState.hostEndedRoom && isInRoom;
+    // Determine if host-ended-room modal should show for host (intentional shutdown)
+    final showHostEndedModalForHost = isHost && lifecycleState.hostEndedRoom;
 
     return Scaffold(
       body: Stack(
@@ -50,6 +52,9 @@ class RoomDashboardScreen extends ConsumerWidget {
           // Host ended room modal - only for participant when host ends room
           if (showHostEndedModal)
             const _HostEndedRoomModal(),
+          // Host ended room modal - for host when they intentionally end the room
+          if (showHostEndedModalForHost)
+            const _YouEndedRoomModal(),
         ],
       ),
     );
@@ -863,14 +868,15 @@ class RoomDashboardScreen extends ConsumerWidget {
               Navigator.of(context).pop();
               if (isHost) {
                 StateProvider.of(context).closeRoom();
+                // Don't navigate immediately - let the "You ended the room" modal handle it
               } else {
                 StateProvider.of(context).leaveRoom();
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  AppRouter.home,
+                  (route) => false,
+                );
               }
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                AppRouter.home,
-                (route) => false,
-              );
             },
             child: Text(isHost ? 'End Room' : 'Leave Room'),
           ),
@@ -958,6 +964,65 @@ class _HostEndedRoomModal extends ConsumerWidget {
                     onPressed: () {
                       // Reset room state and navigate to home
                       ref.read(roomLifecycleProvider.notifier).leaveRoom();
+                      Navigator.pushNamedAndRemoveUntil(
+                        context,
+                        AppRouter.home,
+                        (route) => false,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Modal shown to host when they intentionally end the room.
+class _YouEndedRoomModal extends ConsumerWidget {
+  const _YouEndedRoomModal();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PopScope(
+      canPop: false,
+      child: Material(
+        color: Colors.black54,
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: SMSpacing.xl),
+            child: SMCard(
+              elevated: true,
+              padding: EdgeInsets.all(SMSpacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: SMDimensions.emptyIconSize * 0.6,
+                    color: SMColors.success,
+                  ),
+                  SizedBox(height: SMSpacing.lg),
+                  Text(
+                    'You Ended the Room',
+                    style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: SMSpacing.md),
+                  Text(
+                    'The synchronized session has been ended for all devices.',
+                    style: SMTypography.body.copyWith(color: SMColors.secondaryText),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: SMSpacing.xl),
+                  SMButton(
+                    text: 'Back to Home',
+                    icon: Icons.home,
+                    variant: SMButtonVariant.primary,
+                    onPressed: () {
                       Navigator.pushNamedAndRemoveUntil(
                         context,
                         AppRouter.home,

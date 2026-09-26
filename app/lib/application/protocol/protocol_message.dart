@@ -301,6 +301,52 @@ class ProtocolMessage {
     );
   }
 
+  factory ProtocolMessage.roomState({
+    required String senderId,
+    required String sessionId,
+    required String roomId,
+    required List<Map<String, dynamic>> members,
+    int generation = 0,
+    int? timestamp,
+  }) {
+    return ProtocolMessage(
+      protocolVersion: currentProtocolVersion,
+      messageId: generateUuidV4(),
+      messageType: ProtocolMessageType.roomState.wireValue,
+      sessionId: sessionId,
+      senderId: senderId,
+      generation: generation,
+      timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
+      payload: {
+        'roomId': roomId,
+        'members': members,
+      },
+    );
+  }
+
+  factory ProtocolMessage.participantLeft({
+    required String senderId,
+    required String sessionId,
+    required String roomId,
+    required String participantId,
+    int generation = 0,
+    int? timestamp,
+  }) {
+    return ProtocolMessage(
+      protocolVersion: currentProtocolVersion,
+      messageId: generateUuidV4(),
+      messageType: ProtocolMessageType.participantLeft.wireValue,
+      sessionId: sessionId,
+      senderId: senderId,
+      generation: generation,
+      timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
+      payload: {
+        'roomId': roomId,
+        'participantId': participantId,
+      },
+    );
+  }
+
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{
       'protocolVersion': protocolVersion,

@@ -115,7 +115,7 @@ class ApplicationState {
 }
 
 /// Maps backend RoomLifecycleState to legacy SMAppState.
-SMAppState _mapLifecycleState(RoomLifecycleState lifecycleState, CreateRoomFlowStatus? createStatus, JoinRoomFlowStatus? joinStatus, Object? screenState) {
+SMAppState mapLifecycleState(RoomLifecycleState lifecycleState, CreateRoomFlowStatus? createStatus, JoinRoomFlowStatus? joinStatus, Object? screenState, {RoomRole? role, bool hostEndedRoom = false}) {
   // Check for error first
   if (createStatus == CreateRoomFlowStatus.failed) return SMAppState.error;
   if (joinStatus == JoinRoomFlowStatus.failed) return SMAppState.error;
@@ -153,7 +153,13 @@ SMAppState _mapLifecycleState(RoomLifecycleState lifecycleState, CreateRoomFlowS
       result = SMAppState.ready;
       break;
     case RoomLifecycleState.closed:
-      result = SMAppState.error;
+      // Intentional host shutdown: host sees idle (clean state for new room),
+      // participant sees error (handled by _HostEndedRoomModal in UI).
+      if (hostEndedRoom && role == RoomRole.host) {
+        result = SMAppState.idle;
+      } else {
+        result = SMAppState.error;
+      }
       break;
   }
 
@@ -161,6 +167,8 @@ SMAppState _mapLifecycleState(RoomLifecycleState lifecycleState, CreateRoomFlowS
     '_mapLifecycleState: lifecycle=${lifecycleState.name} '
     'createStatus=${createStatus?.name} '
     'joinStatus=${joinStatus?.name} '
+    'role=${role?.name} '
+    'hostEndedRoom=$hostEndedRoom'
     '→ mapped=$result',
     name: 'SoundMesh.StateMapping',
   );
@@ -194,17 +202,20 @@ final applicationStateProvider = Provider<ApplicationState>((ref) {
     'ApplicationState: Rebuild | '
     'lifecycle: ${lifecycleState.lifecycleState.name} | '
     'role: ${lifecycleState.role.name} | '
+    'hostEndedRoom: ${lifecycleState.hostEndedRoom} | '
     'createStatus: ${createState.status.name} | '
     'joinCode: ${createState.joinCode ?? "null"} | '
     'roomId: ${lifecycleState.roomId ?? "null"}',
     name: 'SoundMesh.ApplicationState',
   );
 
-  final mappedState = _mapLifecycleState(
+  final mappedState = mapLifecycleState(
     lifecycleState.lifecycleState,
     createState.status,
     joinState.status,
     null, // screenState no longer used
+    role: lifecycleState.role,
+    hostEndedRoom: lifecycleState.hostEndedRoom,
   );
 
   final isHost = lifecycleState.role == RoomRole.host;

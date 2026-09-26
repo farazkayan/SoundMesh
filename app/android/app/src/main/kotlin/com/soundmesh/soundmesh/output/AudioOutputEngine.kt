@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import com.soundmesh.soundmesh.AudioOutputPlatform
+import com.soundmesh.soundmesh.DriftStatus
 import com.soundmesh.soundmesh.OutputState
 import com.soundmesh.soundmesh.ScheduleResult
 import com.soundmesh.soundmesh.transport.AudioPacket
@@ -21,6 +22,231 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
+
+// --- Drift Detection (Phase 15) ---
+// Monitors effective synchronization drift by combining:
+//   1. Frame-position regression (AudioTrack framePosition vs BOOTTIME)
+//   2. Phase 11 offset trend regression (offsetEstimate vs BOOTTIME)
+// The sum cancels the network-trend term under the derived observation model.
+// Reports driftMsPerSecond as EFFECTIVE synchronization drift rate (not pure audio hardware drift).
+// Suspend/resume detected via MONOTONIC/BOOTTIME discontinuity.
+private const val DRIFT_MIN_SAMPLES = 10
+private const val DRIFT_MIN_TIME_SPAN_NS = 30_000_000_000L // 30s
+private const val DRIFT_MAX_SAMPLE_AGE_NS = 120_000_000_000L // 120s
+private const val DRIFT_SUSPEND_THRESHOLD_NS = 500_000_000L // 500ms deltaNs jump
+
+private enum class DriftState {
+    UNKNOWN, CALIBRATING, SYNCHRONIZED, DEGRADED, FAILED
+}
+
+private data class DriftSample(
+    val timestampNs: Long,        // participant BOOTTIME (elapsedRealtimeNanos)
+    val actualFramePos: Long,     // AudioTrack framePosition
+    val expectedFramePos: Double, // from Phase 13 timeline + Phase 11 offset
+    val offsetEstimateMs: Double, // Phase 11 offset estimate
+    val generation: Long
+)
+
+private class DriftMonitor(
+    private val scope: CoroutineScope,
+    private val getCurrentGeneration: () -> Long,
+    private val getStartedAtNanos: () -> Long,
+    private val getSampleRate: () -> Int,
+    private val getOffsetEstimateMs: () -> Double?, // Phase 11 offset in ms
+    private val getSyncState: () -> String,         // Phase 11 sync state
+    private val getOutputHealth: () -> Boolean,     // output healthy (no underrun)
+    private val notifyDrift: suspend (DriftStatus) -> Unit
+) {
+    private val samples = mutableListOf<DriftSample>()
+    private var currentState = DriftState.UNKNOWN
+    private var lastMonoTimeNs: Long? = null
+    private var lastBoottimeNs: Long? = null
+    private var segmentStartIndex = 0
+
+    suspend fun onTimestampSample(
+        framePos: Long,
+        frameTsMono: Long,
+        boottimeNs: Long,
+        expectedFramePos: Double,
+        offsetEstimateMs: Double?
+    ) {
+        val generation = getCurrentGeneration()
+        if (generation == 0L) return
+
+        // Suspend detection: MONOTONIC vs BOOTTIME discontinuity
+        if (lastMonoTimeNs != null && lastBoottimeNs != null) {
+            val monoDelta = frameTsMono - lastMonoTimeNs!!
+            val bootDelta = boottimeNs - lastBoottimeNs!!
+            val deltaNs = bootDelta - monoDelta // BOOTTIME advances during suspend, MONOTONIC pauses
+            if (deltaNs > DRIFT_SUSPEND_THRESHOLD_NS) {
+                Log.w("DriftMonitor", "Suspend detected: deltaNs=$deltaNs, resetting segment")
+                resetSegment(generation)
+            }
+        }
+        lastMonoTimeNs = frameTsMono
+        lastBoottimeNs = boottimeNs
+
+        // Output health check
+        if (!getOutputHealth()) {
+            Log.w("DriftMonitor", "Output unhealthy (underrun), invalidating segment")
+            resetSegment(generation)
+            return
+        }
+
+        // Phase 11 sync state check
+        val syncState = getSyncState()
+        if (syncState != "SYNCHRONIZED" && syncState != "DEGRADED") {
+            // Not synchronized enough for drift measurement
+            return
+        }
+
+        val offsetMs = offsetEstimateMs ?: return
+        val sample = DriftSample(
+            timestampNs = boottimeNs,
+            actualFramePos = framePos,
+            expectedFramePos = expectedFramePos,
+            offsetEstimateMs = offsetMs,
+            generation = generation
+        )
+
+        // Add sample, enforce max age
+        samples.add(sample)
+        purgeOldSamples(boottimeNs)
+
+        // Only evaluate if we have enough valid samples in current segment
+        val segmentSamples = samples.subList(segmentStartIndex, samples.size)
+        if (segmentSamples.size >= DRIFT_MIN_SAMPLES) {
+            evaluateDrift(segmentSamples)
+        }
+    }
+
+    private fun purgeOldSamples(nowNs: Long) {
+        while (samples.isNotEmpty() && nowNs - samples.first().timestampNs > DRIFT_MAX_SAMPLE_AGE_NS) {
+            samples.removeAt(0)
+            if (segmentStartIndex > 0) segmentStartIndex--
+        }
+    }
+
+    private fun resetSegment(generation: Long) {
+        segmentStartIndex = samples.size
+        currentState = DriftState.UNKNOWN
+        // Emit UNKNOWN status
+        scope.launch {
+            notifyDrift(DriftStatus(
+                state = "UNKNOWN",
+                generation = generation,
+                validSampleCount = 0L,
+                timeSpanNs = 0L
+            ))
+        }
+    }
+
+    fun onGenerationChange(newGeneration: Long) {
+        if (newGeneration != getCurrentGeneration()) {
+            samples.clear()
+            segmentStartIndex = 0
+            currentState = DriftState.UNKNOWN
+            lastMonoTimeNs = null
+            lastBoottimeNs = null
+        }
+    }
+
+    fun onOutputStop() {
+        samples.clear()
+        segmentStartIndex = 0
+        currentState = DriftState.UNKNOWN
+        lastMonoTimeNs = null
+        lastBoottimeNs = null
+    }
+
+    private fun evaluateDrift(segmentSamples: List<DriftSample>) {
+        val gen = getCurrentGeneration()
+        if (segmentSamples.isEmpty()) return
+
+        // Need minimum time span
+        val first = segmentSamples.first()
+        val last = segmentSamples.last()
+        val timeSpanNs = last.timestampNs - first.timestampNs
+        if (timeSpanNs < DRIFT_MIN_TIME_SPAN_NS) {
+            emitState(gen, DriftState.CALIBRATING, null, null, segmentSamples.size, timeSpanNs)
+            return
+        }
+
+        // ---- drift_local: slope of (actualFramePos - expectedFramePos) vs timestampNs ----
+        val driftLocal = computeSlope(
+            segmentSamples.map { it.timestampNs.toDouble() },
+            segmentSamples.map { (it.actualFramePos - it.expectedFramePos).toDouble() }
+        )
+
+        // ---- drift_offset: slope of offsetEstimateMs vs timestampNs ----
+        val driftOffset = computeSlope(
+            segmentSamples.map { it.timestampNs.toDouble() },
+            segmentSamples.map { it.offsetEstimateMs }
+        )
+
+        if (driftLocal == null || driftOffset == null) {
+            emitState(gen, DriftState.CALIBRATING, null, null, segmentSamples.size, timeSpanNs)
+            return
+        }
+
+        // drift_effective = drift_local + drift_offset (network trend cancels)
+        // Convert from frames/ns to ms/s
+        val sampleRate = getSampleRate().toDouble()
+        val driftEffectiveFramesPerNs = driftLocal + driftOffset / 1000.0 * (sampleRate / 1_000_000_000.0)
+        val driftMsPerSecond = driftEffectiveFramesPerNs * 1_000_000_000.0 / sampleRate * 1000.0
+
+        // State machine (thresholds UNDECIDED - no evidence-backed values in repo)
+        val newState = when (currentState) {
+            DriftState.UNKNOWN, DriftState.CALIBRATING -> {
+                if (abs(driftMsPerSecond!!) <= 1.0) DriftState.SYNCHRONIZED else DriftState.DEGRADED
+            }
+            DriftState.SYNCHRONIZED -> {
+                if (abs(driftMsPerSecond!!) > 5.0) DriftState.DEGRADED else DriftState.SYNCHRONIZED
+            }
+            DriftState.DEGRADED -> {
+                if (abs(driftMsPerSecond!!) <= 1.0) DriftState.SYNCHRONIZED else DriftState.DEGRADED
+            }
+            DriftState.FAILED -> DriftState.FAILED
+        }
+
+        currentState = newState
+        emitState(gen, newState, driftMsPerSecond, null, segmentSamples.size, timeSpanNs)
+    }
+
+    private fun computeSlope(x: List<Double>, y: List<Double>): Double? {
+        val n = x.size
+        if (n < 2) return null
+        val sumX = x.sum()
+        val sumY = y.sum()
+        val sumXY = x.zip(y).sumOf { (a, b) -> a * b }
+        val sumX2 = x.sumOf { it * it }
+        val denom = n * sumX2 - sumX * sumX
+        if (denom == 0.0) return null
+        return (n * sumXY - sumX * sumY) / denom
+    }
+
+    private fun emitState(
+        gen: Long,
+        state: DriftState,
+        driftMsPerSecond: Double?,
+        confidence: Double?,
+        sampleCount: Int,
+        timeSpanNs: Long
+    ) {
+        val driftStatus = DriftStatus(
+            state = state.name,
+            driftMsPerSecond = driftMsPerSecond,
+            confidence = null, // Per contract: no defensible confidence model
+            generation = gen,
+            validSampleCount = sampleCount.toLong(),
+            timeSpanNs = timeSpanNs
+        )
+        scope.launch {
+            notifyDrift(driftStatus)
+        }
+    }
+}
 
 /**
  * Phase 9 — Audio Output Engine using Android AudioTrack.
@@ -47,6 +273,10 @@ class AudioOutputEngine(
     private val notifyOutputState: suspend (state: String, errorCode: String?, errorMessage: String?) -> Unit,
     /** Provide current sync state for preparation barrier (SYNCHRONIZED/DEGRADED/UNSYNCHRONIZED/etc). */
     private val getSyncState: () -> String = { "UNKNOWN" },
+    /** Provide current Phase 11 clock offset estimate in ms. */
+    private val getOffsetEstimateMs: () -> Double = { 0.0 },
+    /** Binary messenger for Flutter communication (DriftFlutterApi). */
+    private val binaryMessenger: io.flutter.plugin.common.BinaryMessenger,
 ) : AudioOutputPlatform {
     private val TAG = "AudioOutputEngine"
 
@@ -55,6 +285,7 @@ class AudioOutputEngine(
     private var currentSampleRate = 0
     private var currentChannelCount = 0
     private var currentGeneration = 0L
+    private var streamStartedAtNanos = 0L
     private var drainJob: Job? = null
     private var audioTrack: AudioTrack? = null
     private var receiveEngine: AudioReceiveEngine? = null
@@ -111,6 +342,7 @@ class AudioOutputEngine(
     )
 
     private var diagJob: Job? = null
+    private var driftMonitor: DriftMonitor? = null
 
     init {
         audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager?
@@ -128,14 +360,16 @@ class AudioOutputEngine(
      * Initialize output engine with format from stream info.
      * Called when AUDIO_STREAM_INFO is received with a new generation.
      */
-    fun onStreamInfo(generation: Long, sampleRate: Int, channelCount: Int) {
-        Log.i(TAG, "onStreamInfo called: generation=$generation, currentGeneration=$currentGeneration, sampleRate=$sampleRate, channelCount=$channelCount")
+    fun onStreamInfo(generation: Long, sampleRate: Int, channelCount: Int, startedAtNanos: Long = 0L) {
+        Log.i(TAG, "onStreamInfo called: generation=$generation, currentGeneration=$currentGeneration, sampleRate=$sampleRate, channelCount=$channelCount, startedAtNanos=$startedAtNanos")
         if (generation > currentGeneration) {
             Log.i(TAG, "New stream generation for output: $generation (was $currentGeneration), format=${sampleRate}Hz/${channelCount}ch")
+            driftMonitor?.onGenerationChange(generation)
             reset()
             currentGeneration = generation
             currentSampleRate = sampleRate
             currentChannelCount = channelCount
+            streamStartedAtNanos = startedAtNanos
 
             // Calculate frame size in bytes (20ms at sampleRate, channelCount, 16-bit)
             val frameSize = (sampleRate.toLong() * channelCount * 2 * frameDurationMs / 1000)
@@ -296,6 +530,27 @@ class AudioOutputEngine(
         // Start the frame drain coroutine immediately after buffer readiness
         // Synchronization runs in background; Phase 13 does not block audio on sync
         isOutputting.set(true)
+        
+        // Initialize DriftMonitor (Phase 15)
+        driftMonitor = DriftMonitor(
+            scope = scope,
+            getCurrentGeneration = { currentGeneration },
+            getStartedAtNanos = { streamStartedAtNanos },
+            getSampleRate = { currentSampleRate },
+            getOffsetEstimateMs = { getOffsetEstimateMs() },
+            getSyncState = { getSyncState() },
+            getOutputHealth = { isOutputting.get() && audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING },
+            notifyDrift = { status -> 
+                // Notify Flutter via DriftFlutterApi
+                try {
+                    val api = com.soundmesh.soundmesh.DriftFlutterApi(binaryMessenger)
+                    api.onDriftStatusChanged(status)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to notify drift status", e)
+                }
+            }
+        )
+        
         drainJob = scope.launch(Dispatchers.IO) { drainFrames() }
         diagJob = scope.launch(Dispatchers.IO) { diagnosticsReporter() }
 
@@ -324,6 +579,8 @@ class AudioOutputEngine(
         pendingScheduleTargetTimeNs = 0L
         pendingScheduleFrame = 0L
 
+        driftMonitor?.onOutputStop()
+        
         drainJob?.cancel()
         drainJob = null
 
@@ -623,6 +880,7 @@ class AudioOutputEngine(
      */
     fun reset() {
         Log.w(TAG, "reset() called - currentGeneration=$currentGeneration, isOutputting=${isOutputting.get()}")
+        driftMonitor?.onOutputStop()
         isOutputting.set(false)
         isInitialized.set(false)
         currentGeneration = 0
@@ -735,6 +993,72 @@ class AudioOutputEngine(
                         "presAvgNs=$latencyAvg presMin=$latencyMinStr presMax=$latencyMaxStr " +
                         "latest=[$latestStr]"
                 )
+
+                // Drift Detection (Phase 15): feed latest valid sample to DriftMonitor
+                latestDiag?.let { diag ->
+                    if (diag.audioTrackTimestampAvailable && diag.correlationValid) {
+                        val boottimeNow = SystemClock.elapsedRealtimeNanos()
+                        val expectedFramePos = (diag.cumulativeFramesWritten.toDouble() + 
+                            (boottimeNow - diag.writeTimestampNs) * currentSampleRate / 1_000_000_000.0)
+                        driftMonitor?.onTimestampSample(
+                            framePos = diag.audioTrackFramePosition,
+                            frameTsMono = diag.audioTrackTimestampNs,
+                            boottimeNs = boottimeNow,
+                            expectedFramePos = expectedFramePos,
+                            offsetEstimateMs = getOffsetEstimateMs()
+                        )
+                    }
+                }
+
+                // TEMPORARY: Timebase constancy check (Step 1 of Drift Detection)
+                // Log AudioTrack timestamp timebase vs SystemClock.elapsedRealtimeNanos() side-by-side
+                // to verify constant bias assumption for drift estimation.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    val track = audioTrack
+                    if (track != null && track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        // Test 1: MONOTONIC (parameterless getTimestamp, default on API 24+)
+                        val audioTimestampMonotonic = AudioTimestamp()
+                        val resultMonotonic = track.getTimestamp(audioTimestampMonotonic)
+                        if (resultMonotonic) {
+                            val audioTrackTs = audioTimestampMonotonic.nanoTime
+                            val systemClockTs = SystemClock.elapsedRealtimeNanos()
+                            val offsetNs = audioTrackTs - systemClockTs
+                            val timebaseName = "MONOTONIC (default)"
+                            Log.i(TAG, "[TIMEBASE_CHECK] timebase=$timebaseName audioTrackTs=$audioTrackTs systemClockTs=$systemClockTs offsetNs=$offsetNs framePos=${audioTimestampMonotonic.framePosition}")
+                        } else {
+                            Log.w(TAG, "[TIMEBASE_CHECK] MONOTONIC getTimestamp returned false")
+                        }
+
+                        // Test 2: BOOTTIME (2-arg overload, API 29+) - should align with elapsedRealtimeNanos()
+                        // Use reflection to avoid compile-time API level issues
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            val audioTimestampBoottime = AudioTimestamp()
+                            val timebaseBoottime = AudioTimestamp.TIMEBASE_BOOTTIME
+                            var resultBoottime = false
+                            try {
+                                val method = AudioTrack::class.java.getMethod("getTimestamp", AudioTimestamp::class.java, Int::class.javaPrimitiveType)
+                                val result = method.invoke(track, audioTimestampBoottime, timebaseBoottime)
+                                resultBoottime = when (result) {
+                                    is Boolean -> result
+                                    is Int -> result == AudioTrack.SUCCESS
+                                    else -> false
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "AudioTrack.getTimestamp BOOTTIME reflection failed", e)
+                                resultBoottime = false
+                            }
+                            if (resultBoottime) {
+                                val audioTrackTs = audioTimestampBoottime.nanoTime
+                                val systemClockTs = SystemClock.elapsedRealtimeNanos()
+                                val offsetNs = audioTrackTs - systemClockTs
+                                val timebaseName = "BOOTTIME"
+                                Log.i(TAG, "[TIMEBASE_CHECK] timebase=$timebaseName audioTrackTs=$audioTrackTs systemClockTs=$systemClockTs offsetNs=$offsetNs framePos=${audioTimestampBoottime.framePosition}")
+                            } else {
+                                Log.w(TAG, "[TIMEBASE_CHECK] BOOTTIME getTimestamp returned false")
+                            }
+                        }
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Diagnostics reporter failed", e)

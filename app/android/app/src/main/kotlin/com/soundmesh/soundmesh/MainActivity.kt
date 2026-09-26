@@ -101,8 +101,27 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     private var networkDiagJob: Job? = null
 
     // --- Single-writer serialization for TCP frames (BUG #3 fix) ---
+    // Per-participant writer channels for independent backpressure (HOST side)
+    // Keyed by connectionId (unique per TCP connection) to prevent stale connection cleanup races
+    private val participantConnections = mutableMapOf<String, ParticipantConnection>()
+    // Maps participantId -> connectionId for the currently active connection
+    private val participantIdToConnectionId = mutableMapOf<String, String>()
+    private val participantConnectionsLock = Any()
+
+    // Single-writer for participant-side connection (when this device is a PARTICIPANT)
     @Volatile private var writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 100)
     private var writerJob: Job? = null
+
+    data class ParticipantConnection(
+        val connectionId: String,
+        val socket: Socket,
+        val writerChannel: kotlinx.coroutines.channels.Channel<ByteArray>,
+        val writerJob: Job?,
+        val readerJob: Job?,
+        val participantId: String,
+        val heartbeatJob: Job? = null,
+        val lastHeartbeatReceivedMs: AtomicLong = AtomicLong(0)
+    )
 
     private var flutterApi: NetworkFlutterApi? = null
 
@@ -136,6 +155,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     
     // ---- Sync state tracking for preparation barrier ----
     @Volatile private var syncState = "UNKNOWN"
+    @Volatile private var syncOffsetMs = 0.0
+    @Volatile private var syncDriftMsPerSecond: Double? = null
 
     // ---- Discovery ----
     private lateinit var discoveryService: DiscoveryService
@@ -184,7 +205,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         transportEngine = AudioTransportEngine(
             context = this,
             scope = scope,
-            sendProtocolMessage = { json -> sendProtocolMessage(json) },
+            sendProtocolMessage = getParticipantSenders(),
             notifyStreamState = { state, metadata -> notifyStreamState(state, metadata) },
             notifyStreamError = { code, message -> notifyStreamError(code, message) },
         )
@@ -198,6 +219,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
             scope = scope,
             notifyOutputState = { state, errorCode, errorMessage -> notifyOutputState(state, errorCode, errorMessage) },
             getSyncState = { this.getSyncState() },
+            getOffsetEstimateMs = { this.syncOffsetMs },
+            binaryMessenger = flutterEngine.dartExecutor.binaryMessenger,
         )
 
         // Wire receive engine to output engine
@@ -665,9 +688,9 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                     Log.d(TAG, "[Connection] TCP server listening on port $port")
                     Log.d(TAG, "[HostLifecycle] About to notifyState(connected) for listening state, gen=$generation")
                     notifyState("connected")
-                    Log.d(TAG, "[HostLifecycle] Starting acceptConnection for generation=$generation")
-                    acceptConnection(generation)
-                    Log.d(TAG, "[HostLifecycle] acceptConnection returned normally for generation=$generation")
+                    Log.d(TAG, "[HostLifecycle] Starting acceptConnectionLoop for generation=$generation")
+                    acceptConnectionLoop(generation)
+                    Log.d(TAG, "[HostLifecycle] acceptConnectionLoop returned normally for generation=$generation")
                 } catch (e: CancellationException) {
                     Log.w(TAG, "[HostLifecycle] Hosting coroutine cancelled for generation=$generation")
                     throw e
@@ -739,71 +762,270 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         notifyState("failed")
     }
 
-    private suspend fun acceptConnection(generation: Long) {
+    private suspend fun acceptConnectionLoop(generation: Long) {
         val listeningSocket = synchronized(hostingLock) {
             serverSocket
         }
-        Log.d(TAG, "[HostLifecycle] acceptConnection: waiting for connection on gen=$generation, socket=$listeningSocket")
-        val socket = try {
-            withContext(Dispatchers.IO) {
-                listeningSocket?.accept()
+        Log.d(TAG, "[HostLifecycle] acceptConnectionLoop: starting for generation=$generation")
+        
+        while (true) {
+            val socket = try {
+                withContext(Dispatchers.IO) {
+                    listeningSocket?.accept()
+                }
+            } catch (e: CancellationException) {
+                Log.w(TAG, "[HostLifecycle] acceptConnectionLoop cancelled for generation=$generation")
+                throw e
+            } catch (e: SocketException) {
+                Log.w(TAG, "[HostLifecycle] SocketException in acceptConnectionLoop for generation=$generation", e)
+                if (isCurrentHosting(generation)) {
+                    handleHostingFailure(generation, "Error accepting connection", e)
+                } else {
+                    Log.d(TAG, "Hosting listener closed during shutdown")
+                }
+                return
+            } catch (e: Exception) {
+                Log.e(TAG, "[HostLifecycle] Exception in acceptConnectionLoop for generation=$generation", e)
+                if (isCurrentHosting(generation)) {
+                    handleHostingFailure(generation, "Error accepting connection", e)
+                } else {
+                    Log.d(TAG, "Ignoring accept failure from a superseded request")
+                }
+                return
             }
-        } catch (e: CancellationException) {
-            Log.w(TAG, "[HostLifecycle] acceptConnection cancelled for generation=$generation")
-            throw e
-        } catch (e: SocketException) {
-            Log.w(TAG, "[HostLifecycle] SocketException in acceptConnection for generation=$generation", e)
-            if (isCurrentHosting(generation)) {
-                handleHostingFailure(generation, "Error accepting connection", e)
-            } else {
-                Log.d(TAG, "Hosting listener closed during shutdown")
-            }
-            return
-        } catch (e: Exception) {
-            Log.e(TAG, "[HostLifecycle] Exception in acceptConnection for generation=$generation", e)
-            if (isCurrentHosting(generation)) {
-                handleHostingFailure(generation, "Error accepting connection", e)
-            } else {
-                Log.d(TAG, "Ignoring accept failure from a superseded request")
-            }
-            return
-        }
 
-        Log.d(TAG, "[HostLifecycle] acceptConnection: accepted socket=$socket for generation=$generation")
-        if (socket == null) {
-            Log.w(TAG, "[HostLifecycle] acceptConnection: socket is null for generation=$generation")
-            if (isCurrentHosting(generation)) {
-                handleHostingFailure(
-                    generation,
-                    "Hosting socket is unavailable",
-                    IllegalStateException("Hosting socket was closed before accept"),
-                )
-            } else {
-                Log.d(TAG, "Hosting socket was closed during shutdown")
+            if (socket == null) {
+                Log.w(TAG, "[HostLifecycle] acceptConnectionLoop: socket is null for generation=$generation")
+                if (isCurrentHosting(generation)) {
+                    handleHostingFailure(
+                        generation,
+                        "Hosting socket is unavailable",
+                        IllegalStateException("Hosting socket was closed before accept"),
+                    )
+                } else {
+                    Log.d(TAG, "Hosting socket was closed during shutdown")
+                }
+                return
             }
-            return
-        }
 
-        val shouldStartReading = synchronized(hostingLock) {
-            if (!isHosting || hostingGeneration != generation) {
-                Log.w(TAG, "[HostLifecycle] acceptConnection: hosting superseded after accept, gen=$generation, currentGen=$hostingGeneration, isHosting=$isHosting")
-                false
-            } else {
-                connectionSocket = socket
-                socket.setTcpNoDelay(true)
-                true
+            val shouldStartReading = synchronized(hostingLock) {
+                if (!isHosting || hostingGeneration != generation) {
+                    Log.w(TAG, "[HostLifecycle] acceptConnectionLoop: hosting superseded after accept, gen=$generation, currentGen=$hostingGeneration, isHosting=$isHosting")
+                    false
+                } else {
+                    socket.setTcpNoDelay(true)
+                    true
+                }
+            }
+            if (!shouldStartReading) {
+                Log.d(TAG, "[HostLifecycle] acceptConnectionLoop: closing accepted socket due to superseded hosting")
+                socket.close()
+                continue
+            }
+
+            Log.d(TAG, "[HostLifecycle] acceptConnectionLoop: accepted socket=$socket for generation=$generation")
+            // Start reading for this participant - participantId will be set after HELLO
+            startReadingForParticipant(socket, generation)
+            notifyState("connected")
+            // Heartbeat is now per-participant, started after HELLO
+        }
+    }
+
+    private fun startReadingForParticipant(socket: Socket, generation: Long) {
+        // Participant ID will be set after HELLO is received
+        // For now, create a temporary connection entry with a placeholder ID
+        val tempParticipantId = "pending-${System.currentTimeMillis()}"
+        val writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 200)
+        
+        val readerJob = scope.launch {
+            val inputStream = socket.getInputStream()
+            Log.d(TAG, "[ReaderDebug] startReadingForParticipant: got inputStream=$inputStream for $tempParticipantId")
+            val buffer = ByteArray(4096)
+            val decoder = FrameDecoder(
+                onFrameStarted = {
+                    Log.d(TAG, "Starting new frame read: headerBytesRead=0, payloadBytesRead=0")
+                },
+                onFrameCompleted = { payloadLength ->
+                    Log.d(TAG, "Frame read complete: payloadLength=$payloadLength, payloadBytesRead=0")
+                },
+                onInvalidLength = { frameLength ->
+                    Log.w(TAG, "Invalid frame length: $frameLength, resetting frame state")
+                },
+            )
+
+            try {
+                while (socket.isConnected && !socket.isClosed) {
+                    Log.d(TAG, "[ReaderDebug] BEFORE read: socket.isConnected=${socket.isConnected}, socket.isClosed=${socket.isClosed}")
+                    val bytesRead = withContext(Dispatchers.IO) {
+                        inputStream.read(buffer)
+                    }
+                    Log.d(TAG, "[ReaderDebug] AFTER read: bytesRead=$bytesRead")
+                    if (bytesRead == -1) {
+                        Log.d(TAG, "[ReaderDebug] read returned -1 (EOF), breaking")
+                        break
+                    }
+                    if (bytesRead == 0) {
+                        Log.d(TAG, "[ReaderDebug] read returned 0, continuing")
+                        continue
+                    }
+
+                    networkBytesReceived.addAndGet(bytesRead.toLong())
+                    lastNetworkReceiveTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
+
+                    val messages = decoder.accept(buffer, 0, bytesRead)
+                    for (message in messages) {
+                        networkFramesDecoded.incrementAndGet()
+                        Log.d(TAG, "[ReaderDebug] Decoded message: ${message.take(minOf(200, message.length))}...")
+                        // Handle HELLO messages locally to extract participantId
+                        if (isHelloMessage(message)) {
+                            handleHelloMessage(message, tempParticipantId)
+                        } else if (isHeartbeatMessage(message)) {
+                            handleHeartbeatMessage(message)
+                        } else if (isSyncMessage(message)) {
+                            handleSyncMessage(message)
+                        } else if (isAudioMessage(message)) {
+                            handleAudioMessage(message)
+                        } else {
+                            notifyMessage(message)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "[ReaderDebug] Exception during read: ${e.javaClass.simpleName}: ${e.message}", e)
+            }
+            // Cleanup on disconnect - use the current connectionId from the connection
+            synchronized(participantConnectionsLock) {
+                val conn = participantConnections[tempParticipantId] 
+                    ?: participantConnections.values.firstOrNull { it.socket == socket }
+                val currentConnectionId = conn?.connectionId ?: tempParticipantId
+                cleanupParticipantConnectionById(currentConnectionId, "disconnected")
             }
         }
-        if (!shouldStartReading) {
-            Log.d(TAG, "[HostLifecycle] acceptConnection: closing accepted socket due to superseded hosting")
-            socket.close()
-            return
+        
+        val writerJob = scope.launch(Dispatchers.IO) { writerLoop(socket, writerChannel) }
+        
+        // Store the connection with a unique connectionId (not participantId)
+        val connectionId = java.util.UUID.randomUUID().toString()
+        synchronized(participantConnectionsLock) {
+            participantConnections[connectionId] = ParticipantConnection(
+                connectionId = connectionId,
+                socket = socket,
+                writerChannel = writerChannel,
+                writerJob = writerJob,
+                readerJob = readerJob,
+                participantId = tempParticipantId
+            )
         }
+    }
 
-        Log.d(TAG, "[HostLifecycle] acceptConnection: about to notifyState(connected) for accepted connection, gen=$generation")
-        startReading(socket)
-        notifyState("connected")
-        startHeartbeat()
+    // Update existing connection with heartbeat job when participantId is assigned
+    private fun startParticipantHeartbeat(participantId: String) {
+        synchronized(participantConnectionsLock) {
+            // Find the connectionId for this participant
+            val connectionId = participantIdToConnectionId[participantId]
+            connectionId?.let { connId ->
+                participantConnections[connId]?.let { conn ->
+                    if (conn.heartbeatJob == null) {
+                        val heartbeatJob = startPerParticipantHeartbeat(participantId, conn.socket)
+                        participantConnections[connId] = conn.copy(heartbeatJob = heartbeatJob)
+                        Log.d(TAG, "[Heartbeat] Started per-participant heartbeat for $participantId")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateParticipantId(oldId: String, newId: String) {
+        synchronized(participantConnectionsLock) {
+            // Find connection by oldId (which could be a temp ID or previous participantId)
+            val connEntry = participantConnections.entries.firstOrNull { it.value.participantId == oldId }
+            connEntry?.let { entry ->
+                val conn = entry.value
+                val connectionId = conn.connectionId
+                
+                // If there's already an active connection for newId, it will be replaced
+                // The old connection will self-cleanup via EOF/timeout
+                val oldConnectionId = participantIdToConnectionId[newId]
+                if (oldConnectionId != null && oldConnectionId != connectionId) {
+                    Log.d(TAG, "[HostLifecycle] Replacing existing connection for participant $newId: $oldConnectionId -> $connectionId")
+                    // Don't cancel the old connection here - it will self-cleanup
+                }
+                
+                // Update the connection's participantId
+                participantConnections[connectionId] = conn.copy(participantId = newId)
+                
+                // Update the participantId -> connectionId mapping
+                participantIdToConnectionId[newId] = connectionId
+                participantIdToConnectionId.remove(oldId)
+                
+                Log.d(TAG, "[HostLifecycle] Updated participant ID: $oldId -> $newId (connectionId=$connectionId)")
+            }
+        }
+    }
+
+    private fun cleanupParticipantConnectionById(connectionId: String, reason: String) {
+        var shouldNotifyParticipantLeft = false
+        var disconnectedParticipantId: String? = null
+        
+        synchronized(participantConnectionsLock) {
+            val conn = participantConnections[connectionId]
+            if (conn == null) {
+                Log.d(TAG, "[HostLifecycle] Cleanup: connection $connectionId not found (already cleaned up)")
+                return
+            }
+            
+            // CRITICAL: Verify this connection is still the active one for its participantId
+            val activeConnectionId = participantIdToConnectionId[conn.participantId]
+            if (activeConnectionId != connectionId) {
+                Log.d(TAG, "[HostLifecycle] Cleanup: connection $connectionId (participant ${conn.participantId}) is stale, active is $activeConnectionId. Skipping removal of active connection.")
+                // This is a stale connection - just close its resources but don't remove the active mapping
+                conn.readerJob?.cancel()
+                conn.writerJob?.cancel()
+                conn.heartbeatJob?.cancel()
+                try { conn.writerChannel.close() } catch (e: Exception) {}
+                try { conn.socket.close() } catch (e: Exception) {}
+                // Remove the stale connection from the map
+                participantConnections.remove(connectionId)
+                return
+            }
+            
+            // This IS the active connection - proceed with full cleanup
+            Log.d(TAG, "[HostLifecycle] Cleaning up active connection $connectionId (participant ${conn.participantId}): $reason")
+            conn.readerJob?.cancel()
+            conn.writerJob?.cancel()
+            conn.heartbeatJob?.cancel()
+            try { conn.writerChannel.close() } catch (e: Exception) {}
+            try { conn.socket.close() } catch (e: Exception) {}
+            
+            // Remove from both maps
+            participantConnections.remove(connectionId)
+            participantIdToConnectionId.remove(conn.participantId)
+            
+            // Update transport engine with remaining participants
+            transportEngine?.updateParticipantSenders(getParticipantSenders())
+            
+            // Mark for participant-left notification
+            shouldNotifyParticipantLeft = true
+            disconnectedParticipantId = conn.participantId
+        }
+        
+        // Notify Dart layer if this was a joined participant (not a pending connection)
+        if (shouldNotifyParticipantLeft && disconnectedParticipantId != null && !disconnectedParticipantId.startsWith("pending-")) {
+            if (isHosting) {
+                val internalMsg = StringBuilder()
+                internalMsg.append("{")
+                internalMsg.append("\"protocolVersion\":1,")
+                internalMsg.append("\"messageId\":\"${java.util.UUID.randomUUID()}\",")
+                internalMsg.append("\"messageType\":\"INTERNAL_PARTICIPANT_LEFT\",")
+                internalMsg.append("\"senderId\":\"${getFallbackDeviceId()}\",")
+                internalMsg.append("\"generation\":0,")
+                internalMsg.append("\"timestamp\":${System.currentTimeMillis()},")
+                internalMsg.append("\"payload\":{")
+                internalMsg.append("\"participantId\":\"$disconnectedParticipantId\"")
+                internalMsg.append("}}")
+                scope.launch { notifyMessage(internalMsg.toString()) }
+            }
+        }
     }
 
     override fun connectToHost(ipAddress: String, port: Long): Boolean {
@@ -892,18 +1114,104 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     }
 
     override fun sendMessage(message: String): Boolean {
-        return buildAndEnqueueJson(message)
+        return fanOutToParticipants(message)
     }
 
     override fun sendChatMessage(text: String): Boolean {
         // Dart constructs the full ProtocolMessage.chat JSON and passes it to sendChatMessage
         Log.d(TAG, "[WriterDebug] sendChatMessage: text length=${text.length}")
-        return buildAndEnqueueJson(text)
+        return fanOutToParticipants(text)
     }
 
     override fun sendProtocolMessage(message: String): Boolean {
         Log.d(TAG, "[WriterDebug] sendProtocolMessage: messageType preview = ${message.take(minOf(200, message.length))}")
-        return buildAndEnqueueJson(message)
+        return fanOutToParticipants(message)
+    }
+
+    private fun fanOutToParticipants(jsonString: String): Boolean {
+        val payload = jsonString.toByteArray(StandardCharsets.UTF_8)
+        return fanOutFrame(payload)
+    }
+
+    private fun fanOutFrame(payload: ByteArray): Boolean {
+        val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
+        frame[0] = (payload.size shr 24).toByte()
+        frame[1] = (payload.size shr 16).toByte()
+        frame[2] = (payload.size shr 8).toByte()
+        frame[3] = payload.size.toByte()
+        System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
+        return fanOutFramed(frame)
+    }
+
+    private fun fanOutFramed(frame: ByteArray): Boolean {
+        var allSucceeded = true
+        synchronized(participantConnectionsLock) {
+            for ((participantId, connectionId) in participantIdToConnectionId) {
+                val conn = participantConnections[connectionId] ?: continue
+                val success = try {
+                    val result = conn.writerChannel.trySend(frame)
+                    if (result.isSuccess) {
+                        socketWritesSucceeded.incrementAndGet()
+                        socketBytesWritten.addAndGet(frame.size.toLong())
+                        lastSocketWriteTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
+                        true
+                    } else {
+                        // Channel full - this is the primary packet loss source under load
+                        socketWritesFailed.incrementAndGet()
+                        Log.w(TAG, "Writer queue full for participant $participantId, dropping frame (capacity=200)")
+                        false
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to enqueue frame for participant $participantId", e)
+                    socketWritesFailed.incrementAndGet()
+                    false
+                }
+                if (!success) allSucceeded = false
+                socketWritesAttempted.incrementAndGet()
+            }
+        }
+        return allSucceeded
+    }
+
+    /** Get current per-participant send functions for audio transport fan-out. */
+    private fun getParticipantSenders(): Map<String, (String) -> Boolean> {
+        val senders = mutableMapOf<String, (String) -> Boolean>()
+        synchronized(participantConnectionsLock) {
+            for ((participantId, connectionId) in participantIdToConnectionId) {
+                val conn = participantConnections[connectionId] ?: continue
+                // Only include participants with valid participant IDs (not pending)
+                if (!participantId.startsWith("pending-")) {
+                    senders[participantId] = { json ->
+                        try {
+                            val payload = json.toByteArray(StandardCharsets.UTF_8)
+                            val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
+                            frame[0] = (payload.size shr 24).toByte()
+                            frame[1] = (payload.size shr 16).toByte()
+                            frame[2] = (payload.size shr 8).toByte()
+                            frame[3] = payload.size.toByte()
+                            System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
+                            
+                            val result = conn.writerChannel.trySend(frame)
+                            if (result.isSuccess) {
+                                socketWritesSucceeded.incrementAndGet()
+                                socketBytesWritten.addAndGet(payload.size.toLong() + FRAME_LENGTH_BYTES)
+                                lastSocketWriteTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
+                                true
+                            } else {
+                                socketWritesFailed.incrementAndGet()
+                                Log.w(TAG, "Writer queue full for participant $participantId, dropping frame (capacity=200)")
+                                false
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to enqueue frame for participant $participantId", e)
+                            socketWritesFailed.incrementAndGet()
+                            false
+                        }
+                    }
+                }
+            }
+        }
+        return senders
     }
 
     override fun disconnect() {
@@ -1085,16 +1393,100 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         buildAndEnqueueJson(pingJson)
     }
 
+    private fun startHeartbeatForParticipant(participantId: String) {
+        // Legacy single-participant heartbeat - kept for backward compatibility
+        // when this device is a participant (not hosting)
+        if (!isHosting && heartbeatJob == null) {
+            startHeartbeat()
+        }
+    }
+
+    /** Start per-participant heartbeat monitoring for host connections. */
+    private fun startPerParticipantHeartbeat(participantId: String, socket: Socket): Job {
+        return scope.launch {
+            Log.d(TAG, "[Heartbeat] Starting per-participant heartbeat for $participantId with interval=${heartbeatIntervalMs}ms, timeout=${heartbeatTimeoutMs}ms")
+            var lastPingSent = 0L
+            while (socket.isConnected && !socket.isClosed) {
+                val now = System.currentTimeMillis()
+                // Look up connection by current mapping (handles reconnects)
+                val connectionId = participantIdToConnectionId[participantId]
+                val conn = connectionId?.let { participantConnections[it] }
+                if (conn == null) {
+                    Log.d(TAG, "[Heartbeat] Participant $participantId no longer in connections, stopping heartbeat")
+                    return@launch
+                }
+                
+                // Check timeout
+                val timeSinceLastHeartbeat = now - conn.lastHeartbeatReceivedMs.get()
+                if (conn.lastHeartbeatReceivedMs.get() > 0 && timeSinceLastHeartbeat > heartbeatTimeoutMs) {
+                    Log.w(TAG, "[Heartbeat] Timeout for $participantId: no heartbeat for ${timeSinceLastHeartbeat}ms (threshold=${heartbeatTimeoutMs}ms)")
+                    handleParticipantTimeout(participantId)
+                    return@launch
+                }
+
+                // Send PING at intervals
+                if (now - lastPingSent >= heartbeatIntervalMs) {
+                    sendPingToParticipant(participantId)
+                    lastPingSent = now
+                }
+
+                // Wait for next check interval
+                try {
+                    delay(heartbeatIntervalMs / 2) // Check twice per interval
+                } catch (e: CancellationException) {
+                    return@launch
+                } catch (e: Exception) {
+                    Log.e(TAG, "[Heartbeat] Delay interrupted for $participantId", e)
+                    return@launch
+                }
+            }
+            Log.d(TAG, "[Heartbeat] Per-participant heartbeat loop ended for $participantId (socket closed or disconnected)")
+        }
+    }
+
+    /** Send PING to a specific participant. */
+    private fun sendPingToParticipant(participantId: String) {
+        val connectionId = participantIdToConnectionId[participantId] ?: return
+        val conn = participantConnections[connectionId] ?: return
+        val pingJson = JSONObject().apply {
+            put("protocolVersion", 1)
+            put("messageId", java.util.UUID.randomUUID().toString())
+            put("messageType", "PING")
+            put("senderId", getFallbackDeviceId())
+            put("generation", 0)
+            put("timestamp", System.currentTimeMillis())
+        }.toString()
+        Log.d(TAG, "[Heartbeat] Sent PING to $participantId")
+        // Use the participant's writer channel directly
+        val payload = pingJson.toByteArray(StandardCharsets.UTF_8)
+        val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
+        frame[0] = (payload.size shr 24).toByte()
+        frame[1] = (payload.size shr 16).toByte()
+        frame[2] = (payload.size shr 8).toByte()
+        frame[3] = payload.size.toByte()
+        System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
+        conn.writerChannel.trySend(frame)
+    }
+
+/** Handle heartbeat timeout for a specific participant. */
+    private fun handleParticipantTimeout(participantId: String) {
+        Log.w(TAG, "[Heartbeat] Handling participant timeout for $participantId")
+        // Find the current connectionId for this participant
+        val connectionId = participantIdToConnectionId[participantId]
+        if (connectionId != null) {
+            cleanupParticipantConnectionById(connectionId, "heartbeat_timeout")
+        } else {
+            Log.d(TAG, "[Heartbeat] No active connection found for participant $participantId (already cleaned up)")
+        }
+    }
+
     private suspend fun handleHeartbeatTimeout() {
-        Log.w(TAG, "[Heartbeat] Handling heartbeat timeout")
+        Log.w(TAG, "[Heartbeat] Handling heartbeat timeout (legacy participant-side)")
         heartbeatJob?.cancel()
         readerJob?.cancel()
         readerJob = null
-        if (isHosting) {
-            // Host: notify about participant timeout
-            notifyConnectionError("HEARTBEAT_TIMEOUT", "Participant heartbeat timeout")
-            notifyState("disconnected")
-        } else {
+        // This is for participant-side only (when this device is a participant)
+        if (!isHosting) {
             // Participant: pause pipeline watchdog during reconnection
             stopPipelineWatchdog()
             if (!isReconnecting) {
@@ -1134,6 +1526,35 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
     }
 
+    private fun isHelloMessage(message: String): Boolean {
+        try {
+            val json = JSONObject(message)
+            val messageType = json.optString("messageType", "")
+            return messageType == "HELLO"
+        } catch (e: Exception) {
+            return false
+        }
+    }
+
+    private fun handleHelloMessage(message: String, tempParticipantId: String) {
+        try {
+            val json = JSONObject(message)
+            val participantId = json.optString("senderId", "")
+            if (participantId.isNotEmpty()) {
+                Log.d(TAG, "[HostLifecycle] Received HELLO from participantId=$participantId, updating connection mapping from $tempParticipantId")
+                updateParticipantId(tempParticipantId, participantId)
+                // Start per-participant heartbeat for this connection
+                startParticipantHeartbeat(participantId)
+                // Update transport engine with new participant
+                transportEngine?.updateParticipantSenders(getParticipantSenders())
+            } else {
+                Log.w(TAG, "[HostLifecycle] HELLO message missing senderId")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "[HostLifecycle] Failed to parse HELLO message", e)
+        }
+    }
+
     private fun handleHeartbeatMessage(message: String) {
         try {
             val json = JSONObject(message)
@@ -1143,7 +1564,17 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                 sendPong(json)
             } else if (messageType == "PONG") {
                 Log.d(TAG, "[Heartbeat] Received PONG")
-                onHeartbeatReceived()
+                // Update per-participant heartbeat timestamp for host
+                if (isHosting) {
+                    val senderId = json.optString("senderId", "")
+                    if (senderId.isNotEmpty()) {
+                        val connectionId = participantIdToConnectionId[senderId]
+                        connectionId?.let { participantConnections[it]?.lastHeartbeatReceivedMs?.set(System.currentTimeMillis()) }
+                    }
+                } else {
+                    // Participant side: legacy single heartbeat
+                    onHeartbeatReceived()
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "[Heartbeat] Failed to parse heartbeat message", e)
@@ -1209,6 +1640,8 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                             // Forward to Flutter sync repository (must run on main thread for @UiThread Pigeon API)
                             Log.d(TAG, "[Sync] pipelineFlutterApi=${pipelineFlutterApi != null}")
                             Log.d(TAG, "[Sync] About to forward TIME_SYNC_RESPONSE to Dart: gen=$generation session=$sessionId")
+                            // Get senderId from the JSON payload (the participant who sent the response)
+                            val senderId = json.optString("senderId", "")
                             scope.launch(Dispatchers.Main) {
                                 Log.d(TAG, "[Sync] TIME_SYNC_RESPONSE coroutine started on ${Thread.currentThread().name}")
                                 try {
@@ -1219,9 +1652,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                                             t3 = t3,
                                             generation = generation,
                                             sessionId = sessionId,
+                                            senderId = senderId,
                                         )
                                     )
-                                    Log.d(TAG, "[Sync] Successfully forwarded TIME_SYNC_RESPONSE to Dart")
+                                    Log.d(TAG, "[Sync] Successfully forwarded TIME_SYNC_RESPONSE to Dart from $senderId")
                                 } catch (e: Throwable) {
                                     Log.e(TAG, "[Sync] Failed to forward TIME_SYNC_RESPONSE to Dart", e)
                                 }
@@ -1286,7 +1720,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                             Log.i(TAG, "[Pipeline] Participant adopted stream generation: $generation")
                         }
                         receiveEngine?.onStreamInfo(sessionId, generation, sampleRate, channelCount)
-                        outputEngine?.onStreamInfo(generation, sampleRate, channelCount)
+                        outputEngine?.onStreamInfo(generation, sampleRate, channelCount, startedAtNanos)
                     }
                 }
                 "AUDIO_STREAM_START" -> {
@@ -1335,20 +1769,29 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     }
 
     private fun sendPong(pingJson: JSONObject) {
-        val socket = connectionSocket ?: return
-        val participantId = currentParticipantId ?: getFallbackDeviceId()
         val originalMessageId = pingJson.optString("messageId", "")
         val pongJson = JSONObject().apply {
             put("protocolVersion", 1)
             put("messageId", java.util.UUID.randomUUID().toString())
             put("messageType", "PONG")
-            put("senderId", participantId)
+            put("senderId", getFallbackDeviceId())
             put("generation", 0)
             put("timestamp", System.currentTimeMillis())
             put("payload", JSONObject().put("originalMessageId", originalMessageId))
         }.toString()
         Log.d(TAG, "[Heartbeat] Sent PONG")
-        buildAndEnqueueJson(pongJson)
+        
+        if (isHosting) {
+            // Host: send PONG back to the specific participant who sent the PING
+            val senderId = pingJson.optString("senderId", "")
+            if (senderId.isNotEmpty()) {
+                enqueueFrameToParticipant(senderId, pongJson.toByteArray(StandardCharsets.UTF_8))
+            }
+        } else {
+            // Participant: use legacy single connection
+            val socket = connectionSocket ?: return
+            buildAndEnqueueJson(pongJson)
+        }
     }
 
     private fun startReading(socket: Socket) {
@@ -1377,7 +1820,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         writerJob?.cancel()
         try { writerChannel.close() } catch (e: Exception) {}
         writerChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 200)
-        writerJob = scope.launch(Dispatchers.IO) { writerLoop(socket) }
+        writerJob = scope.launch(Dispatchers.IO) { writerLoop(socket, writerChannel) }
 
         readerJob = scope.launch {
             val inputStream = socket.getInputStream()
@@ -1484,6 +1927,18 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         heartbeatJob = null
         isReconnecting = false
         reconnectAttempts = 0
+
+        // Clean up all participant connections
+        synchronized(participantConnectionsLock) {
+            for ((participantId, conn) in participantConnections) {
+                Log.d(TAG, "[HostLifecycle] stopAll: cleaning up participant $participantId")
+                conn.readerJob?.cancel()
+                conn.writerJob?.cancel()
+                try { conn.writerChannel.close() } catch (e: Exception) {}
+                try { conn.socket.close() } catch (e: Exception) {}
+            }
+            participantConnections.clear()
+        }
 
         readerJob?.cancel()
         readerJob = null
@@ -1691,9 +2146,11 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
 
     override fun getSyncState(): String = syncState
 
-    override fun updateSyncState(state: String, generation: Long) {
+    override fun updateSyncState(state: String, generation: Long, offsetMs: Double, driftMsPerSecond: Double?) {
         syncState = state
-        Log.i(TAG, "[Pipeline] Sync state updated: $state (gen=$generation)")
+        syncOffsetMs = offsetMs
+        syncDriftMsPerSecond = driftMsPerSecond
+        Log.i(TAG, "[Pipeline] Sync state updated: $state (gen=$generation) offsetMs=$offsetMs driftMsPerSecond=$driftMsPerSecond")
     }
 
     override fun scheduleFrame(
@@ -1782,9 +2239,26 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     /** Periodic network diagnostics reporter for pipeline tracing (BUG #3). */
     private suspend fun networkDiagnosticsReporter() {
         try {
-            while (connectionSocket != null && connectionSocket!!.isConnected && !connectionSocket!!.isClosed) {
+            while (true) {
                 kotlinx.coroutines.delay(2000)
                 val now = SystemClock.elapsedRealtimeNanos()
+                
+                // Check if any participant connections are still active
+                var hasActiveConnections = false
+                synchronized(participantConnectionsLock) {
+                    for ((_, conn) in participantConnections) {
+                        if (conn.socket.isConnected && !conn.socket.isClosed) {
+                            hasActiveConnections = true
+                            break
+                        }
+                    }
+                }
+                
+                if (!hasActiveConnections) {
+                    Log.d(TAG, "[DIAG] No active participant connections, stopping diagnostics reporter")
+                    return
+                }
+                
                 val lastWriteAgeMs = if (lastSocketWriteTimestampNanos.get() > 0) {
                     (now - lastSocketWriteTimestampNanos.get()) / 1_000_000
                 } else -1L
@@ -1812,17 +2286,26 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         "audioPacketsDispatched=${audioPacketsDispatched.get()} " +
                         "lastParseAgeMs=$lastParseAgeMs"
                 )
+                
+                // Per-participant diagnostics
+                synchronized(participantConnectionsLock) {
+                    for ((participantId, conn) in participantConnections) {
+                        if (conn.socket.isConnected && !conn.socket.isClosed) {
+                            Log.d(TAG, "[DIAG] Participant $participantId: socket connected")
+                        }
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Network diagnostics reporter failed", e)
         }
     }
 
-    /** Single-writer loop: serializes all TCP frame writes to prevent interleaving (BUG #3 fix). */
-    private suspend fun writerLoop(socket: Socket) {
+    /** Per-participant writer loop: serializes all TCP frame writes for one participant. */
+    private suspend fun writerLoop(socket: Socket, channel: kotlinx.coroutines.channels.Channel<ByteArray>) {
         val outputStream = socket.getOutputStream()
         try {
-            for (frame in writerChannel) {
+            for (frame in channel) {
                 try {
                     outputStream.write(frame)
                     outputStream.flush()
@@ -1839,7 +2322,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                         Log.e(TAG, "Failed to close socket after writer failure", e2)
                     }
 
-                    writerChannel.close()
+                    channel.close()
                     break
                 }
             }
@@ -1850,30 +2333,32 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
     }
 
-    /** Enqueue a complete frame for serialized writing. Returns true if enqueued. */
-    private fun enqueueFrame(frame: ByteArray): Boolean {
-        val socket = connectionSocket ?: return false
-        val channel = writerChannel
-        socketWritesAttempted.incrementAndGet()
+    /** Enqueue a frame to a specific participant's writer channel. Returns true if enqueued. */
+    private fun enqueueFrameToParticipant(participantId: String, frame: ByteArray): Boolean {
+        synchronized(participantConnectionsLock) {
+            val conn = participantConnections[participantId] ?: return false
+            val channel = conn.writerChannel
+            socketWritesAttempted.incrementAndGet()
 
-        return try {
-            val result = channel.trySend(frame)
-            if (result.isSuccess) {
-                true
-            } else {
-                // Channel full - this is the primary packet loss source under load
+            return try {
+                val result = channel.trySend(frame)
+                if (result.isSuccess) {
+                    true
+                } else {
+                    // Channel full - this is the primary packet loss source under load
+                    socketWritesFailed.incrementAndGet()
+                    Log.w(TAG, "Writer queue full for participant $participantId, dropping frame (capacity=200)")
+                    false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to enqueue frame for participant $participantId", e)
                 socketWritesFailed.incrementAndGet()
-                Log.w(TAG, "Writer queue full, dropping frame (capacity=200)")
                 false
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to enqueue frame", e)
-            socketWritesFailed.incrementAndGet()
-            false
         }
     }
 
-    /** Helper to construct a framed payload and enqueue it. */
+    /** Helper to construct a framed payload and enqueue it to all participants. */
     private fun buildAndEnqueueFrame(payload: ByteArray): Boolean {
         val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
         frame[0] = (payload.size shr 24).toByte()
@@ -1881,10 +2366,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         frame[2] = (payload.size shr 8).toByte()
         frame[3] = payload.size.toByte()
         System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
-        return enqueueFrame(frame)
+        return fanOutFramed(frame)
     }
 
-    /** Helper to construct a framed JSON string and enqueue it. */
+    /** Helper to construct a framed JSON string and enqueue it to all participants. */
     private fun buildAndEnqueueJson(jsonString: String): Boolean {
         val payload = jsonString.toByteArray(StandardCharsets.UTF_8)
         return buildAndEnqueueFrame(payload)

@@ -30,8 +30,8 @@ import java.util.concurrent.atomic.AtomicLong
 class AudioTransportEngine(
     private val context: Context,
     private val scope: CoroutineScope,
-    /** Send a protocol message over the existing TCP connection. */
-    private val sendProtocolMessage: (String) -> Boolean,
+    /** Send a protocol message over the existing TCP connection(s). Map of participantId -> send function. */
+    private var sendProtocolMessage: Map<String, (String) -> Boolean>,
     /** Notify Flutter of stream state changes (STREAMING/STOPPED/FAILED). */
     private val notifyStreamState: suspend (state: String, metadata: StreamingMetadata?) -> Unit,
     /** Notify Flutter of stream errors. */
@@ -248,18 +248,26 @@ class AudioTransportEngine(
                 json.append("\"captureTimestamp\":${packet.captureTimestampNanos}")
                 json.append("}}")
 
-                val sent = sendProtocolMessage(json.toString())
-                if (sent) {
+                // Fan out to all participants
+                val jsonString = json.toString()
+                var allSucceeded = true
+                for ((participantId, sendFn) in sendProtocolMessage) {
+                    val sent = sendFn(jsonString)
+                    if (!sent) {
+                        allSucceeded = false
+                        Log.w(TAG, "Failed to send audio packet to participant $participantId seq=${packet.sequenceNumber}")
+                    }
+                }
+                
+                if (allSucceeded) {
                     packetsSent.incrementAndGet()
-                    bytesSent.addAndGet(wireBytes.size.toLong())
+                    bytesSent.addAndGet(wireBytes.size.toLong() * sendProtocolMessage.size.toLong())
                     lastActivityTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
                 } else {
                     packetsSendFailed.incrementAndGet()
                 }
-                if (!sent) {
-                    Log.w(TAG, "Failed to send audio packet seq=${packet.sequenceNumber}")
-                } else if (packet.sequenceNumber % 50 == 0) {
-                    Log.i(TAG, "Sent packet: seq=${packet.sequenceNumber} generation=${packet.streamGeneration} bytes=${wireBytes.size}")
+                if (packet.sequenceNumber % 50 == 0) {
+                    Log.i(TAG, "Sent packet: seq=${packet.sequenceNumber} generation=${packet.streamGeneration} bytes=${wireBytes.size} participants=${sendProtocolMessage.size}")
                 }
             }
         } catch (e: Exception) {
@@ -286,7 +294,8 @@ class AudioTransportEngine(
         json.append("\"channelCount\":${metadata.channelCount},")
         json.append("\"startedAtNanos\":${metadata.startedAtNanos}")
         json.append("}}")
-        sendProtocolMessage(json.toString())
+        // Fan out to all participants
+        fanOut(json.toString())
     }
 
     private fun sendStreamStart(metadata: StreamingMetadata) {
@@ -301,7 +310,8 @@ class AudioTransportEngine(
         json.append("\"timestamp\":${System.currentTimeMillis()},")
         json.append("\"payload\":{}")
         json.append("}")
-        sendProtocolMessage(json.toString())
+        // Fan out to all participants
+        fanOut(json.toString())
     }
 
     private fun sendStreamStop(sessionId: String, generation: Long) {
@@ -316,7 +326,17 @@ class AudioTransportEngine(
         json.append("\"timestamp\":${System.currentTimeMillis()},")
         json.append("\"payload\":{}")
         json.append("}")
-        sendProtocolMessage(json.toString())
+        // Fan out to all participants
+        fanOut(json.toString())
+    }
+
+    private fun fanOut(jsonString: String) {
+        for ((participantId, sendFn) in sendProtocolMessage) {
+            val sent = sendFn(jsonString)
+            if (!sent) {
+                Log.w(TAG, "Failed to send control message to participant $participantId")
+            }
+        }
     }
 
     /** Current streaming state for getStreamingState(). */
@@ -335,6 +355,12 @@ class AudioTransportEngine(
         } else {
             StreamingState(state = "IDLE", metadata = null)
         }
+    }
+
+    /** Update the participant send functions (e.g., when a participant joins/leaves). */
+    fun updateParticipantSenders(newSenders: Map<String, (String) -> Boolean>) {
+        sendProtocolMessage = newSenders
+        Log.i(TAG, "Updated participant senders: ${sendProtocolMessage.keys.joinToString()}")
     }
 
     /** Periodic diagnostic reporter for pipeline tracing (BUG #3). */

@@ -281,13 +281,37 @@ class TimeSyncResponse {
   final int t3;
   final int generation;
   final String sessionId;
+  final String senderId;
   TimeSyncResponse({
     required this.t1,
     required this.t2,
     required this.t3,
     required this.generation,
     required this.sessionId,
+    required this.senderId,
   });
+}
+
+class DriftStatus {
+  final String state;
+  final double? driftMsPerSecond;
+  final double? confidence;
+  final int generation;
+  final int validSampleCount;
+  final int timeSpanNs;
+  DriftStatus({
+    required this.state,
+    this.driftMsPerSecond,
+    this.confidence,
+    required this.generation,
+    required this.validSampleCount,
+    required this.timeSpanNs,
+  });
+}
+
+@FlutterApi()
+abstract class DriftFlutterApi {
+  void onDriftStatusChanged(DriftStatus status);
 }
 
 @FlutterApi()
@@ -307,5 +331,5 @@ abstract class PipelinePlatform {
   int getPipelineGeneration();
   String getPipelineState();
   String getSyncState();
-  void updateSyncState(String state, int generation);
+  void updateSyncState(String state, int generation, double offsetMs, double? driftMsPerSecond);
 }

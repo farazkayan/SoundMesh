@@ -322,6 +322,10 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: startHosting completed',
         name: 'SoundMesh.CreateRoomFlow',
       );
+      // Reset host-ended flag from previous room so new room starts clean
+      if (hostingSuccess && ref != null) {
+        ref.read(roomLifecycleProvider.notifier).resetForNewRoom();
+      }
     } finally {
       _createRoomInProgress = false;
     }

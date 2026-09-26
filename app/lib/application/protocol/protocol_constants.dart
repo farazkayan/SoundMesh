@@ -22,6 +22,9 @@ enum ProtocolMessageType {
   audioStreamError,
   timeSyncRequest,
   timeSyncResponse,
+  roomState,
+  participantLeft,
+  internalParticipantLeft,
 }
 
 extension ProtocolMessageTypeX on ProtocolMessageType {
@@ -65,6 +68,12 @@ extension ProtocolMessageTypeX on ProtocolMessageType {
         return 'TIME_SYNC_REQUEST';
       case ProtocolMessageType.timeSyncResponse:
         return 'TIME_SYNC_RESPONSE';
+      case ProtocolMessageType.roomState:
+        return 'ROOM_STATE';
+      case ProtocolMessageType.participantLeft:
+        return 'PARTICIPANT_LEFT';
+      case ProtocolMessageType.internalParticipantLeft:
+        return 'INTERNAL_PARTICIPANT_LEFT';
     }
   }
 
@@ -108,6 +117,12 @@ extension ProtocolMessageTypeX on ProtocolMessageType {
         return ProtocolMessageType.timeSyncRequest;
       case 'TIME_SYNC_RESPONSE':
         return ProtocolMessageType.timeSyncResponse;
+      case 'ROOM_STATE':
+        return ProtocolMessageType.roomState;
+      case 'PARTICIPANT_LEFT':
+        return ProtocolMessageType.participantLeft;
+      case 'INTERNAL_PARTICIPANT_LEFT':
+        return ProtocolMessageType.internalParticipantLeft;
       default:
         return null;
     }

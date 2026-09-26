@@ -42,6 +42,8 @@ class SyncStatus {
   final double? offsetMs;
   final double? rttMs;
   final double? uncertaintyMs;
+  final double? driftMsPerSecond;
+  final double? confidence;
   final int lastMeasurementNs;
   final int generation;
   final int validSampleCount;
@@ -51,6 +53,8 @@ class SyncStatus {
     this.offsetMs,
     this.rttMs,
     this.uncertaintyMs,
+    this.driftMsPerSecond,
+    this.confidence,
     required this.lastMeasurementNs,
     required this.generation,
     required this.validSampleCount,
@@ -88,6 +92,8 @@ class SyncStatus {
       'offsetMs': offsetMs,
       'rttMs': rttMs,
       'uncertaintyMs': uncertaintyMs,
+      'driftMsPerSecond': driftMsPerSecond,
+      'confidence': confidence,
       'lastMeasurementNs': lastMeasurementNs,
       'generation': generation,
       'validSampleCount': validSampleCount,
@@ -96,7 +102,7 @@ class SyncStatus {
 
   @override
   String toString() =>
-      'SyncStatus(state: ${state.wireValue}, offsetMs: $offsetMs, rttMs: $rttMs, uncertaintyMs: $uncertaintyMs, gen: $generation, samples: $validSampleCount)';
+      'SyncStatus(state: ${state.wireValue}, offsetMs: $offsetMs, rttMs: $rttMs, uncertaintyMs: $uncertaintyMs, driftMsPerSecond: $driftMsPerSecond, confidence: $confidence, gen: $generation, samples: $validSampleCount)';
 
   @override
   bool operator ==(Object other) =>
@@ -107,6 +113,8 @@ class SyncStatus {
           offsetMs == other.offsetMs &&
           rttMs == other.rttMs &&
           uncertaintyMs == other.uncertaintyMs &&
+          driftMsPerSecond == other.driftMsPerSecond &&
+          confidence == other.confidence &&
           lastMeasurementNs == other.lastMeasurementNs &&
           generation == other.generation &&
           validSampleCount == other.validSampleCount;
@@ -117,6 +125,8 @@ class SyncStatus {
     offsetMs,
     rttMs,
     uncertaintyMs,
+    driftMsPerSecond,
+    confidence,
     lastMeasurementNs,
     generation,
     validSampleCount,

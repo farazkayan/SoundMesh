@@ -119,7 +119,6 @@ class _OutputFlutterApiImpl implements AudioOutputFlutterApi {
     _notifier.handleError(errorCode, errorMessage);
   }
 
-  @override
   void requestScheduleTarget(int framePosition, int captureTimestampNs, int generation) {
     // Not used in current architecture - Dart drives scheduling via scheduleFrame()
   }

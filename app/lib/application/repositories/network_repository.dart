@@ -85,7 +85,7 @@ class NetworkRepository {
 
   RoomRole _roomRole = RoomRole.host;
   String? _participantDisplayName;
-  bool _participantJoined = false;
+  final Set<String> _joinedParticipantIds = <String>{};
   String? _roomClosedReason;
 
   NetworkRepository() : _platform = NetworkHostPlatform() {
@@ -173,7 +173,13 @@ class NetworkRepository {
   bool get isHost => _isHost;
   RoomRole get roomRole => _roomRole;
   RoomLifecycleState get roomLifecycleState => _roomLifecycleState;
-  bool get participantJoined => _participantJoined;
+  
+  /// Whether any participant has joined the room (host side) or this participant has joined (participant side)
+  bool get participantJoined => _isHost ? _joinedParticipantIds.isNotEmpty : _joinedParticipantIds.isNotEmpty;
+  
+  /// The set of participant IDs that have successfully joined the room (host side)
+  Set<String> get joinedParticipantIds => Set.unmodifiable(_joinedParticipantIds);
+  
   String? get roomClosedReason => _roomClosedReason;
 
   Stream<NetworkConnectionState> get connectionStateStream =>
@@ -365,7 +371,7 @@ class NetworkRepository {
     _roomId = null;
     _generation = 0;
     _handshakeInitiated = false;
-    _participantJoined = false;
+    _joinedParticipantIds.clear();
     // _roomClosedReason is intentionally kept: consumers (UI state providers)
     // read it after the closed transition, and _resetHandshakeState runs before
     // those reads complete. It is cleared when a new session begins instead.
@@ -518,10 +524,65 @@ class NetworkRepository {
       case ProtocolMessageType.timeSyncResponse:
         _handleTimeSyncResponse(message);
         break;
+      case ProtocolMessageType.roomState:
+        _handleRoomState(message);
+        break;
+      case ProtocolMessageType.participantLeft:
+        _handleParticipantLeft(message);
+        break;
+      case ProtocolMessageType.internalParticipantLeft:
+        _handleInternalParticipantLeft(message);
+        break;
       case null:
         // Unknown message type, ignore but log
         debugPrint('Unknown message type: ${message.messageType}');
         break;
+    }
+  }
+
+  void _handleRoomState(ProtocolMessage message) {
+    final members = message.payload?['members'] as List<dynamic>?;
+    if (members == null) {
+      debugPrint('[RoomLifecycle] ROOM_STATE missing members, ignoring');
+      return;
+    }
+    debugPrint('[RoomLifecycle] Received ROOM_STATE with ${members.length} members');
+    _joinedParticipantIds.clear();
+    for (final member in members) {
+      final pid = member['participantId'] as String?;
+      if (pid != null) {
+        _joinedParticipantIds.add(pid);
+      }
+    }
+  }
+
+  void _handleParticipantLeft(ProtocolMessage message) {
+    final participantId = message.payload?['participantId'] as String?;
+    if (participantId == null) {
+      debugPrint('[RoomLifecycle] PARTICIPANT_LEFT missing participantId, ignoring');
+      return;
+    }
+    debugPrint('[RoomLifecycle] Received PARTICIPANT_LEFT for $participantId');
+    _joinedParticipantIds.remove(participantId);
+    
+    if (_isHost) {
+      // Host: broadcast updated ROOM_STATE to remaining participants
+      _broadcastRoomState();
+    }
+  }
+
+  void _handleInternalParticipantLeft(ProtocolMessage message) {
+    final participantId = message.payload?['participantId'] as String?;
+    if (participantId == null) {
+      debugPrint('[RoomLifecycle] INTERNAL_PARTICIPANT_LEFT missing participantId, ignoring');
+      return;
+    }
+    debugPrint('[RoomLifecycle] Received INTERNAL_PARTICIPANT_LEFT for $participantId (from native)');
+    _joinedParticipantIds.remove(participantId);
+    
+    if (_isHost) {
+      // Host: broadcast updated ROOM_STATE to remaining participants
+      _broadcastRoomState();
     }
   }
 
@@ -540,7 +601,20 @@ class NetworkRepository {
   }
 
   void _handleTimeSyncResponse(ProtocolMessage message) {
-    // Participant side: record t4 and notify sync repository
+    // Host side: route response to the correct participant's sync state
+    // The senderId in the response is the participantId
+    final participantId = message.senderId;
+    final t1 = message.payload?['t1'] as int?;
+    final t2 = message.payload?['t2'] as int?;
+    final t3 = message.payload?['t3'] as int?;
+    final generation = message.generation;
+
+    if (t1 == null || t2 == null || t3 == null) {
+      debugPrint('[Sync] TIME_SYNC_RESPONSE missing required fields, ignoring');
+      return;
+    }
+
+    debugPrint('[Sync] Host: Routing TIME_SYNC_RESPONSE from $participantId (gen=$generation)');
     _protocolMessageController.add(message);
   }
 
@@ -550,10 +624,16 @@ class NetworkRepository {
       return;
     }
 
-    // If we're in listening state, this is the first participant connecting
+    final participantId = message.payload?['participantId'] as String?;
+    if (participantId == null) {
+      debugPrint('[Handshake] Host: HELLO missing participantId, ignoring');
+      return;
+    }
+
+    // If we're in listening state, this is a participant connecting
     // Transition to handshaking and start the timeout timer
     if (_currentState == NetworkConnectionState.listening) {
-      debugPrint('[Handshake] Host: Participant connected (HELLO received), entering handshaking state');
+      debugPrint('[Handshake] Host: Participant $participantId connected (HELLO received), entering handshaking state');
       _transitionTo(NetworkConnectionState.handshaking);
       _startHandshakeTimer();
       setHeartbeatConfig(); // Configure heartbeat for the new connection
@@ -574,14 +654,6 @@ class NetworkRepository {
       return;
     }
 
-    // A HELLO after a participant has joined is a duplicate from the same
-    // connection; re-sending WELCOME would trigger a room-full rejection that
-    // kicks the joined participant.
-    if (_participantJoined) {
-      debugPrint('[RoomLifecycle] Host: Duplicate HELLO after participant joined, ignoring');
-      return;
-    }
-
     // Session/room IDs are created once per hosting session. A duplicate HELLO
     // (e.g. a retried connection) must not rotate IDs that a participant may
     // already have received in a WELCOME. The room ID is pre-assigned by the
@@ -597,7 +669,7 @@ class NetworkRepository {
       hostParticipantId: _participantId,
       generation: _generation,
     );
-    debugPrint('[Handshake] Host: Sending WELCOME: ${welcome.toJsonString()}');
+    debugPrint('[Handshake] Host: Sending WELCOME to $participantId: ${welcome.toJsonString()}');
     sendProtocolMessage(welcome);
     // Don't cancel handshake timer or transition to ready yet - wait for JOIN_REQUEST
   }
@@ -685,22 +757,29 @@ class NetworkRepository {
       return;
     }
 
-    if (_participantJoined) {
-      // Reject second participant - room full
-      debugPrint('[RoomLifecycle] Host: Second JOIN_REQUEST from $participantId, rejecting (room full)');
-      final reject = ProtocolMessage.joinRejected(
+    // Check if this participant has already joined (duplicate)
+    if (_joinedParticipantIds.contains(participantId)) {
+      debugPrint('[RoomLifecycle] Host: Duplicate JOIN_REQUEST from $participantId, re-sending JOIN_ACCEPTED');
+      // Re-send JOIN_ACCEPTED
+      final accept = ProtocolMessage.joinAccepted(
         sessionId: _sessionId!,
-        reason: JoinRejectReason.roomFull,
+        roomId: _roomId!,
+        hostParticipantId: _participantId,
+        participantId: participantId,
         generation: _generation,
       );
-      sendProtocolMessage(reject);
+      debugPrint('[RoomLifecycle] Host: Sending JOIN_ACCEPTED (duplicate): ${accept.toJsonString()}');
+      sendProtocolMessage(accept);
+      
+      // Also broadcast ROOM_STATE to all participants with updated membership
+      _broadcastRoomState();
       return;
     }
 
     // Accept the participant
-    _participantJoined = true;
+    _joinedParticipantIds.add(participantId);
     _cancelHandshakeTimer();
-    _transitionTo(NetworkConnectionState.ready, reason: 'Participant joined');
+    _transitionTo(NetworkConnectionState.ready, reason: 'Participant $participantId joined');
     _transitionToRoomLifecycleState(RoomLifecycleState.ready);
 
     final accept = ProtocolMessage.joinAccepted(
@@ -710,8 +789,44 @@ class NetworkRepository {
       participantId: participantId,
       generation: _generation,
     );
-    debugPrint('[RoomLifecycle] Host: Sending JOIN_ACCEPTED: ${accept.toJsonString()}');
+    debugPrint('[RoomLifecycle] Host: Sending JOIN_ACCEPTED to $participantId: ${accept.toJsonString()}');
     sendProtocolMessage(accept);
+
+    // Broadcast ROOM_STATE to all participants with updated membership
+    _broadcastRoomState();
+  }
+
+  List<Map<String, dynamic>> _buildMembersList(String newParticipantId) {
+    final members = <Map<String, dynamic>>[];
+    // Add host
+    members.add({
+      'participantId': _participantId,
+      'role': 'HOST',
+      'displayName': _participantDisplayName,
+    });
+    // Add all joined participants
+    for (final pid in _joinedParticipantIds) {
+      members.add({
+        'participantId': pid,
+        'role': 'PARTICIPANT',
+        'displayName': null, // We don't store display names per participant yet
+      });
+    }
+    return members;
+  }
+
+  void _broadcastRoomState() {
+    if (!_isHost || _sessionId == null || _roomId == null) return;
+    final members = _buildMembersList('');
+    final roomState = ProtocolMessage.roomState(
+      senderId: _participantId,
+      sessionId: _sessionId!,
+      roomId: _roomId!,
+      members: members,
+      generation: _generation,
+    );
+    debugPrint('[RoomLifecycle] Host: Broadcasting ROOM_STATE: ${roomState.toJsonString()}');
+    sendProtocolMessage(roomState);
   }
 
   void _handleJoinAccepted(ProtocolMessage message) {
@@ -723,9 +838,22 @@ class NetworkRepository {
     _transitionTo(NetworkConnectionState.ready, reason: 'Join accepted');
     _transitionToRoomLifecycleState(RoomLifecycleState.ready);
     // Participant side: we have formally joined the room
-    _participantJoined = true;
+    _joinedParticipantIds.add(_participantId);
     debugPrint('[RoomLifecycle] Participant: JOIN_ACCEPTED received, participantJoined=true');
     // Handshake complete - heartbeat already configured in _handleWelcome
+
+    // If JOIN_ACCEPTED contains members list, process it
+    final members = message.payload?['members'] as List<dynamic>?;
+    if (members != null) {
+      debugPrint('[RoomLifecycle] Participant: Received membership list with ${members.length} members');
+      _joinedParticipantIds.clear();
+      for (final member in members) {
+        final pid = member['participantId'] as String?;
+        if (pid != null) {
+          _joinedParticipantIds.add(pid);
+        }
+      }
+    }
   }
 
   void _handleJoinRejected(ProtocolMessage message) {
@@ -859,7 +987,7 @@ class NetworkRepository {
   void _resetHostParticipantState({bool resetIds = true}) {
     if (!_isHost) return;
     debugPrint('[DartLifecycle] _resetHostParticipantState called, resetIds=$resetIds');
-    _participantJoined = false;
+    _joinedParticipantIds.clear();
     if (resetIds) {
       _sessionId = null;
       _roomId = null;

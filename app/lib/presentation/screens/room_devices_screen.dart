@@ -4,6 +4,7 @@ import 'package:soundmesh/core/design_system/index.dart';
 import 'package:soundmesh/presentation/components/index.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
+import 'package:soundmesh/application/room/room_lifecycle.dart';
 import 'package:soundmesh/presentation/screens/debug_screen.dart';
 
 class RoomDevicesScreen extends ConsumerWidget {
@@ -13,7 +14,6 @@ class RoomDevicesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(applicationStateProvider);
     final lifecycleState = ref.watch(roomLifecycleProvider);
-    final participantJoined = lifecycleState.participantJoined;
     final isHost = appState.isHost == true;
 
     return Scaffold(
@@ -46,7 +46,6 @@ class RoomDevicesScreen extends ConsumerWidget {
             context,
             appState,
             lifecycleState,
-            participantJoined,
             isHost,
           ),
         ),
@@ -58,7 +57,6 @@ class RoomDevicesScreen extends ConsumerWidget {
     BuildContext context,
     ApplicationState appState,
     RoomLifecycleStateData lifecycleState,
-    bool participantJoined,
     bool isHost,
   ) {
     final state = appState.state;
@@ -87,7 +85,6 @@ class RoomDevicesScreen extends ConsumerWidget {
           context,
           appState,
           lifecycleState,
-          participantJoined,
           isHost,
         );
 
@@ -102,7 +99,6 @@ class RoomDevicesScreen extends ConsumerWidget {
           context,
           appState,
           lifecycleState,
-          participantJoined,
           isHost,
         );
     }
@@ -112,9 +108,10 @@ class RoomDevicesScreen extends ConsumerWidget {
     BuildContext context,
     ApplicationState appState,
     RoomLifecycleStateData lifecycleState,
-    bool participantJoined,
     bool isHost,
   ) {
+    final members = lifecycleState.members;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -130,14 +127,14 @@ class RoomDevicesScreen extends ConsumerWidget {
         ),
         SizedBox(height: SMSpacing.xl),
 
-        // Device list (names + role only — no per-device state available)
-        _buildDeviceListCard(participantJoined, isHost),
+        // Device list
+        _buildDeviceListCard(members, isHost),
         SizedBox(height: SMSpacing.xxl),
       ],
     );
   }
 
-  Widget _buildDeviceListCard(bool participantJoined, bool isHost) {
+  Widget _buildDeviceListCard(List<RoomMember> members, bool isHost) {
     return SMCard(
       elevated: true,
       child: Column(
@@ -148,31 +145,12 @@ class RoomDevicesScreen extends ConsumerWidget {
             style: SMTypography.label.copyWith(color: SMColors.secondaryText),
           ),
           SizedBox(height: SMSpacing.md),
-          DeviceRow(
-            name: isHost ? 'This Device (Host)' : 'This Device (Participant)',
-            role: isHost ? 'HOST' : 'PARTICIPANT',
-            roleColor: isHost ? SMColors.soundmeshBlue : SMColors.secondaryText,
-            isCurrent: true,
-          ),
-          if (participantJoined) ...[
-            Divider(color: SMColors.divider, height: SMSpacing.lg),
-            DeviceRow(
-              name: 'Participant',
-              role: 'PARTICIPANT',
-              roleColor: SMColors.secondaryText,
-              isCurrent: false,
-            ),
-          ] else if (isHost) ...[
-            Divider(color: SMColors.divider, height: SMSpacing.lg),
-            Row(
-              children: [
-                Icon(Icons.hourglass_empty, size: 16, color: SMColors.warning),
-                SizedBox(width: SMSpacing.sm),
-                Text(
-                  'Waiting for participant to join…',
-                  style: SMTypography.body.copyWith(color: SMColors.warning),
-                ),
-              ],
+          ..._buildDeviceRows(members, isHost),
+          SizedBox(height: SMSpacing.sm),
+          if (members.where((m) => m.role == RoomRole.participant).isEmpty && isHost) ...[
+            Text(
+              'Waiting for participants to join…',
+              style: SMTypography.body.copyWith(color: SMColors.warning),
             ),
           ],
           SizedBox(height: SMSpacing.sm),
@@ -183,6 +161,54 @@ class RoomDevicesScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  List<Widget> _buildDeviceRows(List<RoomMember> members, bool isHost) {
+    final rows = <Widget>[];
+    final participantMembers = members.where((m) => m.role == RoomRole.participant).toList();
+
+    // Host row
+    if (isHost) {
+      rows.add(DeviceRow(
+        name: 'This Device (Host)',
+        role: 'HOST',
+        roleColor: SMColors.soundmeshBlue,
+        isCurrent: true,
+      ));
+    }
+
+    // Participant rows
+    for (int i = 0; i < participantMembers.length; i++) {
+      final member = participantMembers[i];
+      if (i > 0) {
+        rows.add(Divider(color: SMColors.divider, height: SMSpacing.lg));
+      }
+      rows.add(DeviceRow(
+        name: member.displayName ?? 'Participant ${i + 1}',
+        role: 'PARTICIPANT',
+        roleColor: SMColors.secondaryText,
+        isCurrent: false,
+      ));
+    }
+
+    // If no participants yet and host
+    if (participantMembers.isEmpty && isHost) {
+      if (rows.isNotEmpty) {
+        rows.add(Divider(color: SMColors.divider, height: SMSpacing.lg));
+      }
+      rows.add(Row(
+        children: [
+          Icon(Icons.hourglass_empty, size: 16, color: SMColors.warning),
+          SizedBox(width: SMSpacing.sm),
+          Text(
+            'Waiting for participants to join…',
+            style: SMTypography.body.copyWith(color: SMColors.warning),
+          ),
+        ],
+      ));
+    }
+
+    return rows;
   }
 
   Widget _preparingContent(BuildContext context, ApplicationState appState) {
