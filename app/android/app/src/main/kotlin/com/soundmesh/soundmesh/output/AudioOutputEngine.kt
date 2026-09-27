@@ -440,7 +440,8 @@ class AudioOutputEngine(
     suspend fun onStreamStart(generation: Long) {
         Log.i(TAG, "onStreamStart called: generation=$generation, currentGeneration=$currentGeneration, isOutputting=${isOutputting.get()}, isInitialized=${isInitialized.get()}")
         // Be lenient: accept if generation matches OR if we haven't received stream info yet (currentGeneration == 0)
-        // This handles the case where AUDIO_STREAM_START arrives before AUDIO_STREAM_INFO is processed
+        // This handles the case where AUDIO_STREAM_START arrives before AUDIO_STREAM_INFO due to network reordering.
+        // Both messages carry the same generation from the host, so this is safe for reordering.
         if (currentGeneration != 0L && generation != currentGeneration) {
             Log.w(TAG, "Stream start for wrong generation: $generation (current: $currentGeneration)")
             return
@@ -450,10 +451,10 @@ class AudioOutputEngine(
             return
         }
 
-        // If we received stream start before stream info, adopt the generation
+        // If we received stream start before stream info, adopt the generation (reordering fallback)
         if (currentGeneration == 0L) {
             currentGeneration = generation
-            Log.i(TAG, "Adopting generation from AUDIO_STREAM_START: $generation")
+            Log.i(TAG, "Adopting generation from AUDIO_STREAM_START (reordering fallback): $generation")
         }
 
         if (!isInitialized.get()) {

@@ -50,6 +50,14 @@ dependencies:
   # Local storage for user preferences
   shared_preferences: ^2.2.2
 
+  # Google Fonts for Plus Jakarta Sans (TSX design)
+  google_fonts: ^6.2.1
+
+  
+
+  # Confetti animation for TipModal
+  confetti: ^0.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

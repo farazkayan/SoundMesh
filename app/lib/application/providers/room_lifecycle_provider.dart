@@ -76,7 +76,9 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
     _ref.watch(timelineSchedulerProvider);
 
     _lifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((lifecycleState) {
-      debugPrint('[UILifecycle] RoomLifecycle: roomLifecycleState change -> $lifecycleState');
+      if (kDebugMode) {
+        debugPrint('[UILifecycle] RoomLifecycle: roomLifecycleState change -> $lifecycleState');
+      }
       state = state.copyWith(lifecycleState: lifecycleState);
     });
 
@@ -114,7 +116,9 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
     });
 
     _connectionStateSubscription = _networkRepository.connectionStateStream.listen((connState) {
-      debugPrint('[UILifecycle] RoomLifecycle: connectionState change -> $connState');
+      if (kDebugMode) {
+        debugPrint('[UILifecycle] RoomLifecycle: connectionState change -> $connState');
+      }
       if (connState == NetworkConnectionState.ready) {
         state = state.copyWith(
           sessionId: _networkRepository.sessionId,

@@ -86,7 +86,10 @@ class _ParticipantSyncState {
       t4: t4,
       generation: generation,
       currentGeneration: pipelineGeneration,
-      recentSamples: sampleHistory.getValidSamples(currentGeneration: pipelineGeneration),
+      recentSamples: sampleHistory.getValidSamples(
+        currentGeneration: pipelineGeneration,
+        nowNs: t4,
+      ),
     );
 
     if (validation.valid) {
@@ -115,9 +118,15 @@ class _ParticipantSyncState {
     }
 
     stateMachine.evaluate(
-      validSampleCount: sampleHistory.getValidSampleCount(currentGeneration: pipelineGeneration),
+      validSampleCount: sampleHistory.getValidSampleCount(
+        currentGeneration: pipelineGeneration,
+        nowNs: t4,
+      ),
       currentUncertaintyNs: sampleHistory.getCurrentEstimate(currentGeneration: pipelineGeneration)?.uncertaintyNs,
-      hasUsableEstimate: sampleHistory.getValidSampleCount(currentGeneration: pipelineGeneration) > 0,
+      hasUsableEstimate: sampleHistory.getValidSampleCount(
+        currentGeneration: pipelineGeneration,
+        nowNs: t4,
+      ) > 0,
     );
 
     _emitStatus();
@@ -322,7 +331,10 @@ class LiveSyncRepository implements SyncRepository {
       t4: t4,
       generation: generation,
       currentGeneration: state.pipelineGeneration,
-      recentSamples: state.sampleHistory.getValidSamples(currentGeneration: state.pipelineGeneration),
+      recentSamples: state.sampleHistory.getValidSamples(
+        currentGeneration: state.pipelineGeneration,
+        nowNs: t4,
+      ),
     );
 
     if (validation.valid) {
@@ -351,9 +363,15 @@ class LiveSyncRepository implements SyncRepository {
     }
 
     state.stateMachine.evaluate(
-      validSampleCount: state.sampleHistory.getValidSampleCount(currentGeneration: state.pipelineGeneration),
+      validSampleCount: state.sampleHistory.getValidSampleCount(
+        currentGeneration: state.pipelineGeneration,
+        nowNs: t4,
+      ),
       currentUncertaintyNs: state.sampleHistory.getCurrentEstimate(currentGeneration: state.pipelineGeneration)?.uncertaintyNs,
-      hasUsableEstimate: state.sampleHistory.getValidSampleCount(currentGeneration: state.pipelineGeneration) > 0,
+      hasUsableEstimate: state.sampleHistory.getValidSampleCount(
+        currentGeneration: state.pipelineGeneration,
+        nowNs: t4,
+      ) > 0,
     );
 
     state._emitStatus();

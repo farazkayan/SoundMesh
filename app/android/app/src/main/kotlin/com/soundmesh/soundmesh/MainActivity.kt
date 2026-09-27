@@ -205,7 +205,7 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         transportEngine = AudioTransportEngine(
             context = this,
             scope = scope,
-            sendProtocolMessage = getParticipantSenders(),
+            initialSenders = getParticipantSenders(),
             notifyStreamState = { state, metadata -> notifyStreamState(state, metadata) },
             notifyStreamError = { code, message -> notifyStreamError(code, message) },
         )
@@ -876,9 +876,10 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
                     for (message in messages) {
                         networkFramesDecoded.incrementAndGet()
                         Log.d(TAG, "[ReaderDebug] Decoded message: ${message.take(minOf(200, message.length))}...")
-                        // Handle HELLO messages locally to extract participantId
+                        // Handle HELLO messages locally to extract participantId AND forward to Flutter
                         if (isHelloMessage(message)) {
                             handleHelloMessage(message, tempParticipantId)
+                            notifyMessage(message)
                         } else if (isHeartbeatMessage(message)) {
                             handleHeartbeatMessage(message)
                         } else if (isSyncMessage(message)) {
@@ -1114,33 +1115,67 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     }
 
     override fun sendMessage(message: String): Boolean {
-        return fanOutToParticipants(message)
+        return sendJsonToConnection(message)
     }
 
     override fun sendChatMessage(text: String): Boolean {
         // Dart constructs the full ProtocolMessage.chat JSON and passes it to sendChatMessage
         Log.d(TAG, "[WriterDebug] sendChatMessage: text length=${text.length}")
-        return fanOutToParticipants(text)
+        return sendJsonToConnection(text)
     }
 
     override fun sendProtocolMessage(message: String): Boolean {
         Log.d(TAG, "[WriterDebug] sendProtocolMessage: messageType preview = ${message.take(minOf(200, message.length))}")
-        return fanOutToParticipants(message)
+        return sendJsonToConnection(message)
     }
 
-    private fun fanOutToParticipants(jsonString: String): Boolean {
+    /** Send JSON string to the appropriate connection path (host fan-out or participant single connection). */
+    private fun sendJsonToConnection(jsonString: String): Boolean {
         val payload = jsonString.toByteArray(StandardCharsets.UTF_8)
-        return fanOutFrame(payload)
+        return sendFrameToConnection(payload)
     }
 
-    private fun fanOutFrame(payload: ByteArray): Boolean {
+    /** Send raw payload bytes to the appropriate connection path. */
+    private fun sendFrameToConnection(payload: ByteArray): Boolean {
+        val frame = buildFrame(payload)
+        if (isHosting) {
+            return fanOutFramed(frame)
+        } else {
+            return sendFrameToParticipant(frame)
+        }
+    }
+
+    /** Build a framed payload (length prefix + payload). */
+    private fun buildFrame(payload: ByteArray): ByteArray {
         val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
         frame[0] = (payload.size shr 24).toByte()
         frame[1] = (payload.size shr 16).toByte()
         frame[2] = (payload.size shr 8).toByte()
         frame[3] = payload.size.toByte()
         System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
-        return fanOutFramed(frame)
+        return frame
+    }
+
+    /** Send a pre-built frame to the participant's single writer channel. */
+    private fun sendFrameToParticipant(frame: ByteArray): Boolean {
+        return try {
+            val result = writerChannel.trySend(frame)
+            if (result.isSuccess) {
+                socketWritesSucceeded.incrementAndGet()
+                socketBytesWritten.addAndGet(frame.size.toLong())
+                lastSocketWriteTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
+                true
+            } else {
+                // Channel full - this is the primary packet loss source under load
+                socketWritesFailed.incrementAndGet()
+                Log.w(TAG, "Participant writer queue full, dropping frame (capacity=200)")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enqueue frame on participant side", e)
+            socketWritesFailed.incrementAndGet()
+            false
+        }
     }
 
     private fun fanOutFramed(frame: ByteArray): Boolean {
@@ -2358,20 +2393,14 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
         }
     }
 
-    /** Helper to construct a framed payload and enqueue it to all participants. */
+    /** Helper to construct a framed payload and enqueue it to the appropriate connection. */
     private fun buildAndEnqueueFrame(payload: ByteArray): Boolean {
-        val frame = ByteArray(FRAME_LENGTH_BYTES + payload.size)
-        frame[0] = (payload.size shr 24).toByte()
-        frame[1] = (payload.size shr 16).toByte()
-        frame[2] = (payload.size shr 8).toByte()
-        frame[3] = payload.size.toByte()
-        System.arraycopy(payload, 0, frame, FRAME_LENGTH_BYTES, payload.size)
-        return fanOutFramed(frame)
+        return sendFrameToConnection(payload)
     }
 
-    /** Helper to construct a framed JSON string and enqueue it to all participants. */
+    /** Helper to construct a framed JSON string and enqueue it to the appropriate connection. */
     private fun buildAndEnqueueJson(jsonString: String): Boolean {
         val payload = jsonString.toByteArray(StandardCharsets.UTF_8)
-        return buildAndEnqueueFrame(payload)
+        return sendFrameToConnection(payload)
     }
 }

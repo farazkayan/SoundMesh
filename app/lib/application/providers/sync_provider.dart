@@ -42,13 +42,12 @@ class _SyncRepositoryLifecycle {
   final PipelinePlatform pipelinePlatform;
 
   LiveSyncRepository? _currentRepo;
-  StreamSubscription<void>? _generationSub;
   StreamSubscription<SyncStatus>? _syncStatusSub;
   int _currentGeneration = -1;
 
   void start() {
-    _generationSub = _watchGeneration();
     // Register PipelineFlutterApi handler for TIME_SYNC_RESPONSE and pipeline state changes from native
+    // Native callback (onPipelineStateChanged) drives generation changes; no polling needed.
     PipelineFlutterApi.setUp(_PipelineFlutterApi(
       _onTimeSyncResponseFromNative,
       _onPipelineStateChangedFromNative,
@@ -56,29 +55,9 @@ class _SyncRepositoryLifecycle {
   }
 
   void _onTimeSyncResponseFromNative(TimeSyncResponse response) {
-    debugPrint(
-      '[SyncProvider] _onTimeSyncResponseFromNative CALLED: '
-      'gen=${response.generation} senderId=${response.senderId}',
-    );
-    if (_currentRepo == null) {
-      debugPrint('[SyncProvider] DROPPED TIME_SYNC_RESPONSE: _currentRepo is NULL');
-      return;
-    }
-    if (response.generation != _currentGeneration) {
-      debugPrint(
-        '[SyncProvider] DROPPED TIME_SYNC_RESPONSE: '
-        'generation mismatch response=${response.generation} '
-        'current=$_currentGeneration',
-      );
-      return;
-    }
-    if (response.senderId.isEmpty) {
-      debugPrint('[SyncProvider] DROPPED TIME_SYNC_RESPONSE: senderId is empty');
-      return;
-    }
-    debugPrint(
-      '[SyncProvider] Forwarding TIME_SYNC_RESPONSE to LiveSyncRepository for participant ${response.senderId}',
-    );
+    if (_currentRepo == null) return;
+    if (response.generation != _currentGeneration) return;
+    if (response.senderId.isEmpty) return;
     _currentRepo!.onTimeSyncResponse(
       participantId: response.senderId,
       t1: response.t1,
@@ -92,26 +71,11 @@ class _SyncRepositoryLifecycle {
     // Native signals stream generation adoption via onPipelineStateChanged
     // This allows immediate LiveSyncRepository creation instead of waiting for 500ms poll
     if ((state == 'STREAM_INFO' || state == 'STREAM_START') && generation > 0) {
-      debugPrint('[SyncProvider] Native signaled pipeline state: $state gen=$generation');
       if (generation != _currentGeneration) {
         _currentGeneration = generation;
         _onGenerationChanged(generation);
       }
     }
-  }
-
-  StreamSubscription<void> _watchGeneration() {
-    return Stream.periodic(const Duration(milliseconds: 500), (_) async {
-      try {
-        final generation = await pipelinePlatform.getPipelineGeneration();
-        if (generation != _currentGeneration) {
-          _currentGeneration = generation;
-          _onGenerationChanged(generation);
-        }
-      } catch (e) {
-        debugPrint('[SyncProvider] Failed to get pipeline generation: $e');
-      }
-    }).asyncMap((_) => _currentGeneration).listen((_) {});
   }
 
   void _onGenerationChanged(int generation) {
@@ -123,7 +87,9 @@ class _SyncRepositoryLifecycle {
       _disposeRepo();
       // Propagate UNSYNCHRONIZED for generation 0
       pipelinePlatform.updateSyncState('UNSYNCHRONIZED', 0, 0.0, null);
-      debugPrint('[SyncProvider] Propagated sync state to native: UNSYNCHRONIZED (gen=0)');
+      if (kDebugMode) {
+        debugPrint('[SyncProvider] Propagated sync state to native: UNSYNCHRONIZED (gen=0)');
+      }
       return;
     }
 
@@ -170,7 +136,9 @@ class _SyncRepositoryLifecycle {
         status.offsetMs ?? 0.0,
         status.driftMsPerSecond,
       );
-      debugPrint('[SyncProvider] Propagated sync state to native: $nativeState (gen=${status.generation})');
+      if (kDebugMode) {
+        debugPrint('[SyncProvider] Propagated sync state to native: $nativeState (gen=${status.generation})');
+      }
     });
 
     // Also emit initial status immediately for all participants
@@ -197,7 +165,9 @@ class _SyncRepositoryLifecycle {
         initialStatus.offsetMs ?? 0.0,
         initialStatus.driftMsPerSecond,
       );
-      debugPrint('[SyncProvider] Propagated sync state to native: $nativeState (gen=${initialStatus.generation})');
+      if (kDebugMode) {
+        debugPrint('[SyncProvider] Propagated sync state to native: $nativeState (gen=${initialStatus.generation})');
+      }
     }
   }
 
@@ -211,7 +181,6 @@ class _SyncRepositoryLifecycle {
   }
 
   void dispose() {
-    _generationSub?.cancel();
     _disposeRepo();
     PipelineFlutterApi.setUp(null);
   }
@@ -262,10 +231,12 @@ class _PipelineFlutterApi implements PipelineFlutterApi {
 
   @override
   void onTimeSyncResponse(TimeSyncResponse response) {
-    debugPrint(
-      '[PipelineFlutterApi] onTimeSyncResponse RECEIVED: '
-      'gen=${response.generation} session=${response.sessionId}',
-    );
+    if (kDebugMode) {
+      debugPrint(
+        '[PipelineFlutterApi] onTimeSyncResponse RECEIVED: '
+        'gen=${response.generation} session=${response.sessionId}',
+      );
+    }
     _onTimeSyncResponse(response);
   }
 

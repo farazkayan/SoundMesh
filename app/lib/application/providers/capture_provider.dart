@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../src/soundmesh_messages.g.dart';
 import '../repositories/capture_repository.dart';
@@ -91,10 +92,12 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> with Widget
       final result = await _repository.getCaptureState();
       _mapState(result);
     } catch (e) {
-      debugPrint('[Capture] Failed to get initial state: $e');
+      if (kDebugMode) {
+        debugPrint('[Capture] Failed to get initial state: $e');
+      }
     }
-    // Check battery optimization status once on startup
-    _checkBatteryOptimization();
+    // Battery optimization check is deferred until capture is actually started (host only)
+    // to avoid unnecessary platform channel call on app startup.
   }
 
   Future<void> _checkBatteryOptimization() async {
@@ -215,6 +218,9 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> with Widget
   }
 
   Future<void> start() async {
+    // Check battery optimization when capture is actually started (host only)
+    await _checkBatteryOptimization();
+    
     try {
       final result = await _repository.startCapture();
       if (!result.success) {
@@ -245,6 +251,9 @@ class CaptureStateNotifier extends StateNotifier<CaptureUiStateData> with Widget
   }
 
   Future<void> startCaptureAndStream() async {
+    // Check battery optimization when capture is actually started (host only)
+    await _checkBatteryOptimization();
+    
     try {
       final result = await _repository.startCapture();
       if (!result.success) {

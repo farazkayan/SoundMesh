@@ -161,13 +161,12 @@ class AudioReceiveEngine(
     fun onAudioPacket(packet: AudioPacket) {
         if (!isReceiving.get()) return
 
-        // If we haven't adopted a generation yet (e.g., packets arrive before STREAM_START),
-        // adopt the packet's generation
+        // If we haven't established a generation yet (stream info/start not received),
+        // discard the packet with a warning. Only STREAM_INFO/STREAM_START can establish
+        // the generation to prevent stale packets from poisoning a new stream.
         if (currentGeneration == 0L) {
-            currentGeneration = packet.streamGeneration
-            readHead = 0
-            writeHead = 0
-            Log.i(TAG, "Adopting generation from first AUDIO_PACKET: $currentGeneration")
+            Log.w(TAG, "Discarding AUDIO_PACKET before generation established: packetGen=${packet.streamGeneration}")
+            return
         }
 
         // Discard stale generations

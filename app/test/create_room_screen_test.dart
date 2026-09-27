@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soundmesh/application/providers/create_room_flow_provider.dart';
+import 'package:soundmesh/application/providers/discovery_provider.dart';
 import 'package:soundmesh/application/repositories/network_repository.dart';
 import 'package:soundmesh/core/router/app_router.dart';
 import 'package:soundmesh/presentation/components/button.dart';
@@ -192,6 +193,35 @@ void main() {
       expect(find.text('You are the host.'), findsOneWidget);
       // Verify Enter Room button
       expect(find.widgetWithText(SMButton, 'Enter Room'), findsOneWidget);
+    });
+
+    testWidgets('tapping Create Room button invokes createRoom flow', (
+      WidgetTester tester,
+    ) async {
+      final mockNetworkRepo = MockNetworkRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            networkRepositoryProvider.overrideWithValue(mockNetworkRepo),
+            createRoomFlowProvider.overrideWith(
+              (_) => CreateRoomFlowNotifier(mockNetworkRepo, MockDiscoveryManager()),
+            ),
+            discoveryManagerProvider.overrideWithValue(MockDiscoveryManager()),
+          ],
+          child: const MaterialApp(home: CreateRoomScreen()),
+        ),
+      );
+
+      // Enter a room name
+      await tester.enterText(find.byType(TextFormField), 'Test Room');
+      await tester.pump();
+
+      // Tap the Create Room button
+      await tester.tap(find.widgetWithText(SMButton, 'Create Room'));
+      await tester.pump();
+
+      // Verify createRoom was invoked (startHosting is called as part of createRoom flow)
+      expect(mockNetworkRepo.startHostingCalls, greaterThanOrEqualTo(1));
     });
   });
 }

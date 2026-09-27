@@ -3,15 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'core/theme/soundmesh_theme.dart';
 import 'core/router/app_router.dart';
-import 'presentation/state_compat.dart';
-import 'application/providers/discovery_provider.dart';
+
+/// Global navigator key for accessing context from anywhere.
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Purchases.configure(
-    PurchasesConfiguration('test_EZNJoVDMTpwEdwfMiMuMzEICOHt'),
-  );
+  // Defer Purchases SDK initialization until after first frame to avoid blocking startup.
+  // RevenueCat is not required for the core SoundMesh experience.
+  Future<void>.delayed(Duration.zero, () async {
+    await Purchases.configure(
+      PurchasesConfiguration('test_EZNJoVDMTpwEdwfMiMuMzEICOHt'),
+    );
+  });
 
   runApp(
     const ProviderScope(
@@ -25,21 +30,14 @@ class SoundMeshApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final controller = CoreStateController(ref);
-    return ProviderScope(
-      overrides: [
-        coreStateControllerProvider.overrideWithValue(controller),
-      ],
-      child: StateProvider(
-        controller: controller,
-        child: MaterialApp(
-          title: 'SoundMesh',
-          debugShowCheckedModeBanner: false,
-          theme: SoundMeshTheme.darkTheme,
-          initialRoute: AppRouter.home,
-          onGenerateRoute: AppRouter.onGenerateRoute,
-        ),
-      ),
+    return MaterialApp(
+      title: 'SoundMesh',
+      debugShowCheckedModeBanner: false,
+      theme: SoundMeshTheme.darkTheme,
+      navigatorKey: navigatorKey,
+      initialRoute: AppRouter.home,
+      onGenerateRoute: AppRouter.onGenerateRoute,
     );
   }
 }
+

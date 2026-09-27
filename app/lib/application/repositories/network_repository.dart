@@ -104,34 +104,46 @@ class NetworkRepository {
         _handleRawMessage(message);
       },
       onStateCallback: (state) {
-        debugPrint('[DartLifecycle] onStateCallback received: state=$state, _isHost=$_isHost, _currentState=$_currentState');
+        if (kDebugMode) {
+          debugPrint('[DartLifecycle] onStateCallback received: state=$state, _isHost=$_isHost, _currentState=$_currentState');
+        }
         // For host, "connected" from native means ServerSocket is listening
         // For participant, "connected" means TCP connection established
         if (_isHost && state == 'connected') {
           _currentState = NetworkConnectionState.listening;
           _stateController.add(_currentState);
-          debugPrint('[DartLifecycle] Host: Transitioned to listening state');
+          if (kDebugMode) {
+            debugPrint('[DartLifecycle] Host: Transitioned to listening state');
+          }
           _onTcpConnected(); // This will handle host listening logic
         } else {
           _currentState = _parseState(state);
           _stateController.add(_currentState);
-          debugPrint('[DartLifecycle] Transitioned to $_currentState from native state=$state');
+          if (kDebugMode) {
+            debugPrint('[DartLifecycle] Transitioned to $_currentState from native state=$state');
+          }
 
           if (_currentState == NetworkConnectionState.connected) {
             _onTcpConnected();
           } else if (_currentState == NetworkConnectionState.reconnecting) {
-            debugPrint('[DartLifecycle] Entered reconnecting state');
+            if (kDebugMode) {
+              debugPrint('[DartLifecycle] Entered reconnecting state');
+            }
           }
         }
       },
       onErrorCallback: (errorCode, errorMessage) {
-        debugPrint('[Connection] Error from native: code=$errorCode, message=$errorMessage');
+        if (kDebugMode) {
+          debugPrint('[Connection] Error from native: code=$errorCode, message=$errorMessage');
+        }
         _connectionErrorController.add(ConnectionError(errorCode, errorMessage));
         
         // Handle specific error codes
         switch (errorCode) {
           case 'HEARTBEAT_TIMEOUT':
-            debugPrint('[Connection] Heartbeat timeout - will trigger reconnection on participant side');
+            if (kDebugMode) {
+              debugPrint('[Connection] Heartbeat timeout - will trigger reconnection on participant side');
+            }
             // The native side handles reconnection for participants
             // For host, the participant is considered lost
             if (_isHost) {
@@ -140,12 +152,16 @@ class NetworkRepository {
             }
             break;
           case 'RECONNECTION_FAILED':
-            debugPrint('[Connection] Reconnection failed after max attempts');
+            if (kDebugMode) {
+              debugPrint('[Connection] Reconnection failed after max attempts');
+            }
             _transitionTo(NetworkConnectionState.failed, reason: 'Reconnection failed: $errorMessage');
             break;
           case 'PROTOCOL_VERSION_MISMATCH':
           case 'HANDSHAKE_FAILED':
-            debugPrint('[Connection] Protocol version mismatch or handshake failed');
+            if (kDebugMode) {
+              debugPrint('[Connection] Protocol version mismatch or handshake failed');
+            }
             _transitionTo(NetworkConnectionState.failed, reason: 'Protocol error: $errorCode - $errorMessage');
             break;
           case 'NETWORK_UNREACHABLE':
@@ -998,7 +1014,9 @@ class NetworkRepository {
 
   void _transitionTo(NetworkConnectionState newState, {String? reason}) {
     if (_currentState == newState) return;
-    debugPrint('[DartLifecycle] ConnectionState transition: ${_currentState.name} -> $newState${reason != null ? ' (reason: $reason)' : ''} (caller: ${StackTrace.current.toString().split('\n')[1].trim()})');
+    if (kDebugMode) {
+      debugPrint('[DartLifecycle] ConnectionState transition: ${_currentState.name} -> $newState${reason != null ? ' (reason: $reason)' : ''} (caller: ${StackTrace.current.toString().split('\n')[1].trim()})');
+    }
     
     // If host loses participant connection, reset participant state so a new participant can join
     if (_isHost && newState == NetworkConnectionState.disconnected && _currentState != NetworkConnectionState.disconnected) {
@@ -1019,7 +1037,7 @@ class NetworkRepository {
     
     _currentState = newState;
     _stateController.add(_currentState);
-    if (newState == NetworkConnectionState.ready || newState == NetworkConnectionState.failed) {
+    if ((newState == NetworkConnectionState.ready || newState == NetworkConnectionState.failed) && kDebugMode) {
       debugPrint('[Handshake] State transition: ${_currentState.name} -> $newState${reason != null ? ' (reason: $reason)' : ''}');
     }
   }

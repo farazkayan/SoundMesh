@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:soundmesh/core/design_system/index.dart';
+import 'tsx_visual_tokens.dart';
 
 class SMCard extends StatelessWidget {
   const SMCard({
+    super.key,
+    required this.child,
+    this.elevated = false,
+    this.padding,
+    this.borderRadius,
+  });
+
+  const SMCard.tsx({
     super.key,
     required this.child,
     this.elevated = false,
@@ -17,10 +26,24 @@ class SMCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Cards use the surface ladder's Low step (designv3.md §4), matching the
-    // Stitch v1 export's card fills. The elevated flag adds the export's
-    // card shadow (shadow-sm). The subtle outline-variant border mirrors the
-    // export's border-outline-variant/20 card treatment.
+    final isTSX = runtimeType.toString().contains('tsx');
+
+    if (isTSX) {
+      return Container(
+        decoration: BoxDecoration(
+          color: TSXColors.surface,
+          borderRadius: BorderRadius.circular(borderRadius ?? TSXRadius.card),
+          border: Border.all(color: TSXColors.surfaceBorder),
+          boxShadow: elevated ? TSXShadows.md : TSXShadows.sm,
+        ),
+        child: Padding(
+          padding: padding ?? EdgeInsets.all(TSXSpacing.xl),
+          child: child,
+        ),
+      );
+    }
+
+    // Original v3 design
     return Container(
       decoration: BoxDecoration(
         color: SMColors.surfaceLow,

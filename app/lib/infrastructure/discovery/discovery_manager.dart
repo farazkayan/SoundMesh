@@ -1,9 +1,7 @@
 // Discovery service that orchestrates room code broadcast and scanning.
-// Integrates with the main project's CoreStateController (via state_compat.dart).
 
 import 'dart:async';
 
-import 'package:soundmesh/presentation/state_compat.dart';
 import 'discovery_platform.dart';
 import 'discovery_types.dart';
 import 'join_payload.dart';
@@ -295,19 +293,10 @@ class DiscoveryManager {
   Future<RoomAnnouncement?> joinRoomByCode({
     required String code,
     required int controlPort,
-    required CoreStateController controller,
   }) async {
     // Scan for the room announcement
     final announcement = await _participantService.scanForRoom(code);
     
-    if (announcement == null) {
-      // Discovery failed - return null to indicate not found
-      await controller.transitionTo(SMAppState.error);
-      return null;
-    }
-
-    // The actual join is done by joinRoomFlowProvider using the discovered IP/port
-    // This method just returns the announcement for the provider to use
     return announcement;
   }
 

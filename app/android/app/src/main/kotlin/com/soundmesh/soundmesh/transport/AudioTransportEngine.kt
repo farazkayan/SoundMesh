@@ -31,7 +31,7 @@ class AudioTransportEngine(
     private val context: Context,
     private val scope: CoroutineScope,
     /** Send a protocol message over the existing TCP connection(s). Map of participantId -> send function. */
-    private var sendProtocolMessage: Map<String, (String) -> Boolean>,
+    initialSenders: Map<String, (String) -> Boolean>,
     /** Notify Flutter of stream state changes (STREAMING/STOPPED/FAILED). */
     private val notifyStreamState: suspend (state: String, metadata: StreamingMetadata?) -> Unit,
     /** Notify Flutter of stream errors. */
@@ -73,6 +73,12 @@ class AudioTransportEngine(
     // Channel for sending packets from capture thread to network thread
     // Capacity 5 = 100ms buffer (5 × 20ms frames), matches jitter buffer target (60ms) with safety margin
     private val packetChannel = Channel<AudioPacket>(capacity = 5)
+
+    // sendProtocolMessage is accessed from multiple coroutines:
+    // - packetSender() iterates it for fan-out
+    // - updateParticipantSenders() replaces it
+    // Use AtomicReference for safe publication and snapshot reads
+    private val sendProtocolMessage = java.util.concurrent.atomic.AtomicReference<Map<String, (String) -> Boolean>>(initialSenders)
 
     /**
      * Start streaming for a new capture session.
@@ -248,10 +254,11 @@ class AudioTransportEngine(
                 json.append("\"captureTimestamp\":${packet.captureTimestampNanos}")
                 json.append("}}")
 
-                // Fan out to all participants
+                // Fan out to all participants - take snapshot to avoid concurrent modification
+                val senders = sendProtocolMessage.get()
                 val jsonString = json.toString()
                 var allSucceeded = true
-                for ((participantId, sendFn) in sendProtocolMessage) {
+                for ((participantId, sendFn) in senders) {
                     val sent = sendFn(jsonString)
                     if (!sent) {
                         allSucceeded = false
@@ -261,13 +268,13 @@ class AudioTransportEngine(
                 
                 if (allSucceeded) {
                     packetsSent.incrementAndGet()
-                    bytesSent.addAndGet(wireBytes.size.toLong() * sendProtocolMessage.size.toLong())
+                    bytesSent.addAndGet(wireBytes.size.toLong() * senders.size.toLong())
                     lastActivityTimestampNanos.set(SystemClock.elapsedRealtimeNanos())
                 } else {
                     packetsSendFailed.incrementAndGet()
                 }
                 if (packet.sequenceNumber % 50 == 0) {
-                    Log.i(TAG, "Sent packet: seq=${packet.sequenceNumber} generation=${packet.streamGeneration} bytes=${wireBytes.size} participants=${sendProtocolMessage.size}")
+                    Log.i(TAG, "Sent packet: seq=${packet.sequenceNumber} generation=${packet.streamGeneration} bytes=${wireBytes.size} participants=${senders.size}")
                 }
             }
         } catch (e: Exception) {
@@ -331,7 +338,9 @@ class AudioTransportEngine(
     }
 
     private fun fanOut(jsonString: String) {
-        for ((participantId, sendFn) in sendProtocolMessage) {
+        // Take snapshot to avoid concurrent modification
+        val senders = sendProtocolMessage.get()
+        for ((participantId, sendFn) in senders) {
             val sent = sendFn(jsonString)
             if (!sent) {
                 Log.w(TAG, "Failed to send control message to participant $participantId")
@@ -359,8 +368,8 @@ class AudioTransportEngine(
 
     /** Update the participant send functions (e.g., when a participant joins/leaves). */
     fun updateParticipantSenders(newSenders: Map<String, (String) -> Boolean>) {
-        sendProtocolMessage = newSenders
-        Log.i(TAG, "Updated participant senders: ${sendProtocolMessage.keys.joinToString()}")
+        sendProtocolMessage.set(newSenders)
+        Log.i(TAG, "Updated participant senders: ${newSenders.keys.joinToString()}")
     }
 
     /** Periodic diagnostic reporter for pipeline tracing (BUG #3). */
