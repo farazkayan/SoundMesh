@@ -19,13 +19,13 @@ class RoomDevicesScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: TSXColors.background,
       body: SafeArea(
-        child: Stack(
-          children: [
-            const RadialGradientBackdrop(),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isTablet = constraints.maxWidth >= 600;
-                return SingleChildScrollView(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isTablet = constraints.maxWidth >= 600;
+            return Stack(
+              children: [
+                const RadialGradientBackdrop(),
+                SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
@@ -52,14 +52,36 @@ class RoomDevicesScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                );
-              },
-            ),
-          ],
+                ),
+                // Floating navigation dock anchored at bottom
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 16),
+                      child: FloatingGlassDock(
+                        currentIndex: 1, // Devices tab active
+                        onTap: (index) {
+                          if (index == 0) {
+                            Navigator.pushReplacementNamed(context, AppRouter.roomDashboard);
+                          }
+                        },
+                        isTablet: isTablet,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
+}
 
   Widget _buildDevicesContent(
     BuildContext context,
@@ -73,12 +95,8 @@ class RoomDevicesScreen extends ConsumerWidget {
     return Column(
       children: [
         _buildDevicesContentInner(context, ref, appState, lifecycleState, isHost),
-        const SizedBox(height: 10),
-        // Floating dock with safe area bottom padding
-        Padding(
-          padding: EdgeInsets.only(bottom: safeBottom > 0 ? safeBottom : TSXSpacing.xl),
-          child: _buildFloatingDock(context),
-        ),
+        // Space for the floating dock at bottom
+        SizedBox(height: safeBottom > 0 ? safeBottom + 72 : 80),
       ],
     );
   }
@@ -396,4 +414,3 @@ class RoomDevicesScreen extends ConsumerWidget {
       ),
     );
   }
-}

@@ -25,8 +25,6 @@ class RoomDashboardScreen extends ConsumerStatefulWidget {
 
 class _RoomDashboardScreenState
     extends ConsumerState<RoomDashboardScreen> {
-  final String _activeTab = 'room';
-
   @override
   Widget build(BuildContext context) {
     final appState = ref.watch(applicationStateProvider);
@@ -52,13 +50,15 @@ class _RoomDashboardScreenState
     return Scaffold(
       backgroundColor: TSXColors.background,
       body: SafeArea(
-        child: Stack(
-          children: [
-            const RadialGradientBackdrop(),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isTablet = constraints.maxWidth >= 600;
-                return SingleChildScrollView(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isTablet = constraints.maxWidth >= 600;
+
+            return Stack(
+              children: [
+                const RadialGradientBackdrop(),
+
+                SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
@@ -66,10 +66,13 @@ class _RoomDashboardScreenState
                     ),
                     child: Center(
                       child: Container(
-                        // On tablet: use 80% width up to 720px; on phone: full width
+                        // On tablet: use 80% width up to 720px;
+                        // on phone: use the available width.
                         constraints: BoxConstraints(
                           maxWidth: isTablet
-                              ? (constraints.maxWidth * 0.8).clamp(520.0, 720.0)
+                              ? (constraints.maxWidth * 0.8)
+                                  .clamp(520.0, 720.0)
+                                  .toDouble()
                               : double.infinity,
                         ),
                         padding: EdgeInsets.symmetric(
@@ -83,23 +86,49 @@ class _RoomDashboardScreenState
                           createState,
                           lifecycleState,
                           captureState,
-                          showBackgroundUsageModal,
-                          showHostEndedModal,
-                          showHostEndedModalForHost,
                         ),
                       ),
                     ),
                   ),
-                );
-              },
-            ),
-            if (showBackgroundUsageModal)
-              const BackgroundUsageRequiredModal(),
-            if (showHostEndedModal)
-              const _HostEndedRoomModal(),
-            if (showHostEndedModalForHost)
-              const _YouEndedRoomModal(),
-          ],
+                ),
+
+                // Floating navigation dock anchored at bottom.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: FloatingGlassDock(
+                        currentIndex: 0,
+                        // Room tab active.
+                        onTap: (index) {
+                          if (index == 1) {
+                            Navigator.pushReplacementNamed(
+                              context,
+                              AppRouter.roomDevices,
+                            );
+                          }
+                        },
+                        isTablet: isTablet,
+                      ),
+                    ),
+                  ),
+                ),
+
+                if (showBackgroundUsageModal)
+                  const BackgroundUsageRequiredModal(),
+
+                if (showHostEndedModal)
+                  const _HostEndedRoomModal(),
+
+                if (showHostEndedModalForHost)
+                  const _YouEndedRoomModal(),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -119,12 +148,12 @@ class _RoomDashboardScreenState
     CreateRoomFlowState createState,
     RoomLifecycleStateData lifecycleState,
     CaptureUiStateData captureState,
-    bool showBackgroundUsageModal,
-    bool showHostEndedModal,
-    bool showHostEndedModalForHost,
   ) {
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
+    // IMPORTANT:
+    // This Column is already inside the screen's SingleChildScrollView.
+    // Do NOT put another scroll view or Expanded here.
     return Column(
       children: [
         _buildRoomHeader(
@@ -136,24 +165,18 @@ class _RoomDashboardScreenState
           captureState,
         ),
         const SizedBox(height: 16),
-        Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: _buildMainContent(
-              context,
-              ref,
-              appState,
-              createState,
-              lifecycleState,
-              captureState,
-            ),
-          ),
+        _buildMainContent(
+          context,
+          ref,
+          appState,
+          createState,
+          lifecycleState,
+          captureState,
         ),
-        const SizedBox(height: 10),
-        // Floating dock with safe area bottom padding
-        Padding(
-          padding: EdgeInsets.only(bottom: safeBottom > 0 ? safeBottom : TSXSpacing.xl),
-          child: _buildFloatingDock(),
+
+        // Space for the floating dock at bottom.
+        SizedBox(
+          height: safeBottom > 0 ? safeBottom + 72 : 80,
         ),
       ],
     );
@@ -168,6 +191,7 @@ class _RoomDashboardScreenState
     CaptureUiStateData captureState,
   ) {
     final isHost = appState.isHost == true;
+
     final isCapturing =
         captureState.state == CaptureUiState.capturing;
 
@@ -224,8 +248,7 @@ class _RoomDashboardScreenState
           const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
@@ -234,8 +257,7 @@ class _RoomDashboardScreenState
                         'Room',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style:
-                            TSXTypography.labelLarge.copyWith(
+                        style: TSXTypography.labelLarge.copyWith(
                           color: TSXColors.primaryText,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.2,
@@ -245,25 +267,20 @@ class _RoomDashboardScreenState
                     if (isHost) ...[
                       const SizedBox(width: 8),
                       Container(
-                        padding:
-                            const EdgeInsets.symmetric(
+                        padding: const EdgeInsets.symmetric(
                           horizontal: 8,
                           vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: TSXColors.accent
-                              .withValues(alpha: 0.10),
-                          borderRadius:
-                              BorderRadius.circular(999),
+                          color: TSXColors.accent.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(999),
                           border: Border.all(
-                            color: TSXColors.accent
-                                .withValues(alpha: 0.30),
+                            color: TSXColors.accent.withValues(alpha: 0.30),
                           ),
                         ),
                         child: Text(
                           'HOST',
-                          style:
-                              TSXTypography.metadata.copyWith(
+                          style: TSXTypography.metadata.copyWith(
                             color: TSXColors.accent,
                             fontWeight: FontWeight.w700,
                             fontSize: 9,
@@ -307,8 +324,10 @@ class _RoomDashboardScreenState
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () =>
-            _showInviteModal(context, createState),
+        onTap: () => _showInviteModal(
+          context,
+          createState,
+        ),
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: 14,
@@ -387,7 +406,6 @@ class _RoomDashboardScreenState
           context,
           ref,
           appState,
-          createState,
           lifecycleState,
           captureState,
         );
@@ -398,21 +416,11 @@ class _RoomDashboardScreenState
     BuildContext context,
     WidgetRef ref,
     ApplicationState appState,
-    CreateRoomFlowState createState,
     RoomLifecycleStateData lifecycleState,
     CaptureUiStateData captureState,
   ) {
     final isHost = appState.isHost == true;
     final screenError = lifecycleState.errorMessage;
-
-    if (_activeTab == 'devices') {
-      return _buildDevicesTab(
-        context,
-        appState,
-        createState,
-        lifecycleState,
-      );
-    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -446,215 +454,6 @@ class _RoomDashboardScreenState
     );
   }
 
-  Widget _buildDevicesTab(
-    BuildContext context,
-    ApplicationState appState,
-    CreateRoomFlowState createState,
-    RoomLifecycleStateData lifecycleState,
-  ) {
-    final roomCode =
-        appState.joinCode ??
-            createState.joinCode ??
-            '';
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: TSXColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: TSXColors.surfaceBorder,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'MESH TOPOLOGY',
-                  style:
-                      TSXTypography.metadata.copyWith(
-                    color: TSXColors.secondaryText,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 10,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-              ),
-              Text(
-                'LATENCY CALIBRATED',
-                style:
-                    TSXTypography.metadata.copyWith(
-                  color: TSXColors.accent,
-                  fontSize: 10,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: TSXColors.background,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: TSXColors.accent
-                    .withValues(alpha: 0.40),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: TSXColors.accent
-                        .withValues(alpha: 0.10),
-                    borderRadius:
-                        BorderRadius.circular(9),
-                  ),
-                  child: Icon(
-                    Icons.smartphone,
-                    size: 16,
-                    color: TSXColors.accent,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              'Host Transmitter',
-                              style: TSXTypography
-                                  .labelMedium
-                                  .copyWith(
-                                color:
-                                    TSXColors.primaryText,
-                                fontWeight:
-                                    FontWeight.w700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Icon(
-                            Icons.auto_awesome,
-                            size: 12,
-                            color: TSXColors.accent,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Primary Streamer (0ms)',
-                        style:
-                            TSXTypography.caption.copyWith(
-                          color:
-                              TSXColors.secondaryText,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: TSXColors.accent
-                        .withValues(alpha: 0.10),
-                    borderRadius:
-                        BorderRadius.circular(4),
-                    border: Border.all(
-                      color: TSXColors.accent
-                          .withValues(alpha: 0.30),
-                    ),
-                  ),
-                  child: Text(
-                    'MASTER',
-                    style:
-                        TSXTypography.metadata.copyWith(
-                      color: TSXColors.accent,
-                      fontSize: 10,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 24,
-            ),
-            decoration: BoxDecoration(
-              borderRadius:
-                  BorderRadius.circular(16),
-              border: Border.all(
-                color: TSXColors.surfaceBorder,
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.radio,
-                  size: 24,
-                  color: TSXColors.secondaryText
-                      .withValues(alpha: 0.50),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Listening for Peer Nodes',
-                  style:
-                      TSXTypography.labelMedium.copyWith(
-                    color: TSXColors.primaryText,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  roomCode.isNotEmpty
-                      ? 'Additional devices joining with code ${formatRoomCode(roomCode)} will sync here.'
-                      : 'Additional devices joining with the room code will sync here.',
-                  textAlign: TextAlign.center,
-                  style:
-                      TSXTypography.caption.copyWith(
-                    color: TSXColors.secondaryText,
-                    fontSize: 11,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildEndRoomButton(
     BuildContext context,
     WidgetRef ref,
@@ -665,33 +464,28 @@ class _RoomDashboardScreenState
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius:
-              BorderRadius.circular(16),
-          onTap: () =>
-              _showEndRoomModal(context, ref),
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showEndRoomModal(
+            context,
+            ref,
+          ),
           child: Container(
             decoration: BoxDecoration(
-              color: TSXColors.rose
-                  .withValues(alpha: 0.10),
-              borderRadius:
-                  BorderRadius.circular(16),
+              color: TSXColors.rose.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: TSXColors.rose
-                    .withValues(alpha: 0.30),
+                color: TSXColors.rose.withValues(alpha: 0.30),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black
-                      .withValues(alpha: 0.18),
+                  color: Colors.black.withValues(alpha: 0.18),
                   blurRadius: 10,
-                  offset:
-                      const Offset(0, 4),
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   Icons.logout,
@@ -701,11 +495,9 @@ class _RoomDashboardScreenState
                 const SizedBox(width: 8),
                 Text(
                   'End Room Session',
-                  style:
-                      TSXTypography.labelMedium.copyWith(
+                  style: TSXTypography.labelMedium.copyWith(
                     color: TSXColors.rose,
-                    fontWeight:
-                        FontWeight.w600,
+                    fontWeight: FontWeight.w600,
                     fontSize: 12,
                   ),
                 ),
@@ -747,8 +539,7 @@ class _RoomDashboardScreenState
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: TSXColors.accent
-                  .withValues(alpha: 0.10),
+              color: TSXColors.accent.withValues(alpha: 0.10),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -760,8 +551,7 @@ class _RoomDashboardScreenState
           const SizedBox(height: 12),
           Text(
             'Connected to Host',
-            style:
-                TSXTypography.headlineMedium.copyWith(
+            style: TSXTypography.headlineMedium.copyWith(
               color: TSXColors.primaryText,
             ),
           ),
@@ -771,8 +561,7 @@ class _RoomDashboardScreenState
                 ? 'Listening for synchronized audio from room ${formatRoomCode(code)}.'
                 : 'Listening for synchronized audio from the host.',
             textAlign: TextAlign.center,
-            style:
-                TSXTypography.caption.copyWith(
+            style: TSXTypography.caption.copyWith(
               color: TSXColors.secondaryText,
               height: 1.4,
             ),
@@ -796,9 +585,7 @@ class _RoomDashboardScreenState
           borderRadius: BorderRadius.circular(16),
           onTap: () async {
             await ref
-                .read(
-                  roomLifecycleProvider.notifier,
-                )
+                .read(roomLifecycleProvider.notifier)
                 .leaveRoom();
 
             if (!context.mounted) return;
@@ -812,143 +599,12 @@ class _RoomDashboardScreenState
           child: Center(
             child: Text(
               'Leave Room',
-              style:
-                  TSXTypography.labelMedium.copyWith(
+              style: TSXTypography.labelMedium.copyWith(
                 color: TSXColors.primaryText,
                 fontWeight: FontWeight.w600,
                 fontSize: 12,
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFloatingDock() {
-    return Center(
-      child: Container(
-        width: 220,
-        height: 48,
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: TSXColors.surface.withValues(alpha: 0.90),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: TSXColors.surfaceBorder,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.32),
-              blurRadius: 24,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Tab 1: Room - internal tab (always active on this screen)
-            Expanded(
-              child: _buildDockButton(
-                label: 'Room',
-                icon: Icons.group,
-                active: true,
-                onTap: () {
-                  // Already on Room screen, no-op
-                },
-              ),
-            ),
-            // Tab 2: Devices - navigate to separate RoomDevicesScreen
-            Expanded(
-              child: _buildDockButton(
-                label: 'Devices',
-                icon: Icons.tune,
-                active: false,
-                onTap: () {
-                  Navigator.pushReplacementNamed(context, AppRouter.roomDevices);
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDockButton({
-    required String label,
-    required IconData icon,
-    required bool active,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius:
-            BorderRadius.circular(999),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration:
-              const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          padding:
-              const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 7,
-          ),
-          decoration: BoxDecoration(
-            color: active
-                ? TSXColors.surfaceBorder
-                : Colors.transparent,
-            borderRadius:
-                BorderRadius.circular(999),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment:
-                MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: active
-                    ? TSXColors.accent
-                    : TSXColors.secondaryText,
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style:
-                      TSXTypography.labelMedium.copyWith(
-                    color: active
-                        ? TSXColors.accent
-                        : TSXColors.secondaryText,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-              if (active) ...[
-                const SizedBox(width: 5),
-                Container(
-                  width: 4,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: TSXColors.accent,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: TSXColors.accent
-                            .withValues(alpha: 0.8),
-                        blurRadius: 6,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
           ),
         ),
       ),
@@ -965,8 +621,7 @@ class _RoomDashboardScreenState
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: TSXColors.surface,
-          borderRadius:
-              BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color: TSXColors.surfaceBorder,
           ),
@@ -982,27 +637,21 @@ class _RoomDashboardScreenState
             const SizedBox(height: 14),
             Text(
               'Room Error',
-              style:
-                  TSXTypography.headlineMedium,
+              style: TSXTypography.headlineMedium,
             ),
             const SizedBox(height: 8),
             Text(
               appState.message ??
                   'Something went wrong with the room.',
               textAlign: TextAlign.center,
-              style:
-                  TSXTypography.bodyMedium,
+              style: TSXTypography.bodyMedium,
             ),
             const SizedBox(height: 20),
             SMButton(
               text: 'Leave Room',
-              variant:
-                  SMButtonVariant.tsxPrimary,
+              variant: SMButtonVariant.tsxPrimary,
               onPressed: () => ref
-                  .read(
-                    roomLifecycleProvider
-                        .notifier,
-                  )
+                  .read(roomLifecycleProvider.notifier)
                   .leaveRoom(),
             ),
           ],
@@ -1019,34 +668,27 @@ class _RoomDashboardScreenState
     return SizedBox(
       width: double.infinity,
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(
+        padding: const EdgeInsets.symmetric(
           vertical: 80,
           horizontal: 20,
         ),
         child: Column(
-          mainAxisSize:
-              MainAxisSize.min,
+          mainAxisSize: MainAxisSize.min,
           children: [
             SMLoadingIndicator.tsx(
               size: 48,
             ),
             const SizedBox(height: 18),
             Text(
-              appState.message ??
-                  fallbackTitle,
-              textAlign:
-                  TextAlign.center,
-              style:
-                  TSXTypography.headlineMedium,
+              appState.message ?? fallbackTitle,
+              textAlign: TextAlign.center,
+              style: TSXTypography.headlineMedium,
             ),
             const SizedBox(height: 8),
             Text(
               description,
-              textAlign:
-                  TextAlign.center,
-              style:
-                  TSXTypography.bodyMedium,
+              textAlign: TextAlign.center,
+              style: TSXTypography.bodyMedium,
             ),
           ],
         ),
@@ -1058,14 +700,12 @@ class _RoomDashboardScreenState
     BuildContext context,
   ) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         vertical: 70,
         horizontal: 20,
       ),
       child: Column(
-        mainAxisSize:
-            MainAxisSize.min,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             Icons.warning_amber_rounded,
@@ -1075,25 +715,20 @@ class _RoomDashboardScreenState
           const SizedBox(height: 14),
           Text(
             'Not in a Room',
-            style:
-                TSXTypography.headlineMedium,
+            style: TSXTypography.headlineMedium,
           ),
           const SizedBox(height: 8),
           Text(
             'You are viewing the room dashboard, but no room session is active.',
-            textAlign:
-                TextAlign.center,
-            style:
-                TSXTypography.bodyMedium,
+            textAlign: TextAlign.center,
+            style: TSXTypography.bodyMedium,
           ),
           const SizedBox(height: 20),
           SMButton(
             text: 'Go to Home',
             icon: Icons.home,
-            variant:
-                SMButtonVariant.tsxPrimary,
-            onPressed: () =>
-                Navigator.pushNamedAndRemoveUntil(
+            variant: SMButtonVariant.tsxPrimary,
+            onPressed: () => Navigator.pushNamedAndRemoveUntil(
               context,
               AppRouter.home,
               (route) => false,
@@ -1106,19 +741,15 @@ class _RoomDashboardScreenState
 
   Widget _buildErrorBanner(String error) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         horizontal: 14,
         vertical: 11,
       ),
       decoration: BoxDecoration(
-        color: TSXColors.error
-            .withValues(alpha: 0.15),
-        borderRadius:
-            BorderRadius.circular(12),
+        color: TSXColors.error.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: TSXColors.error
-              .withValues(alpha: 0.30),
+          color: TSXColors.error.withValues(alpha: 0.30),
         ),
       ),
       child: Row(
@@ -1158,13 +789,11 @@ class _RoomDashboardScreenState
         return 'Joining room…';
 
       case RoomLifecycleState.ready:
-        if (appState.state ==
-            SMAppState.playing) {
+        if (appState.state == SMAppState.playing) {
           return 'Audio sync active';
         }
 
-        if (appState.state ==
-            SMAppState.paused) {
+        if (appState.state == SMAppState.paused) {
           return 'Audio sync paused';
         }
 
@@ -1188,14 +817,12 @@ class _RoomDashboardScreenState
         hostIp == null ||
         joinCode == null ||
         joinCode.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Room information not ready yet',
           ),
-          duration:
-              Duration(seconds: 2),
+          duration: Duration(seconds: 2),
         ),
       );
       return;
@@ -1205,8 +832,7 @@ class _RoomDashboardScreenState
       roomId: roomId,
       hostAddress: hostIp,
       hostPort: port,
-      protocolVersion:
-          currentProtocolVersion,
+      protocolVersion: currentProtocolVersion,
       code: joinCode,
     );
 
@@ -1215,8 +841,7 @@ class _RoomDashboardScreenState
 
     showDialog<void>(
       context: context,
-      barrierColor: Colors.black
-          .withValues(alpha: 0.80),
+      barrierColor: Colors.black.withValues(alpha: 0.80),
       builder: (dialogContext) {
         return BackdropFilter(
           filter: ImageFilter.blur(
@@ -1224,113 +849,73 @@ class _RoomDashboardScreenState
             sigmaY: 10,
           ),
           child: StatefulBuilder(
-            builder:
-                (context, setModalState) {
+            builder: (context, setModalState) {
               return Dialog(
-                backgroundColor:
-                    TSXColors.surface,
-                insetPadding:
-                    const EdgeInsets.symmetric(
+                backgroundColor: TSXColors.surface,
+                insetPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                 ),
-                shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(24),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
                   side: BorderSide(
-                    color:
-                        TSXColors.surfaceBorder,
+                    color: TSXColors.surfaceBorder,
                   ),
                 ),
                 child: Padding(
-                  padding:
-                      const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(24),
                   child: Column(
-                    mainAxisSize:
-                        MainAxisSize.min,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Row(
                         children: [
                           Expanded(
                             child: Text(
                               'Scan to Join',
-                              style: TSXTypography
-                                  .headlineMedium
-                                  .copyWith(
-                                color: TSXColors
-                                    .primaryText,
-                                fontWeight:
-                                    FontWeight.w700,
+                              style: TSXTypography.headlineMedium.copyWith(
+                                color: TSXColors.primaryText,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
                           _buildModalCloseButton(
                             onPressed: () =>
-                                Navigator.of(
-                              dialogContext,
-                            ).pop(),
+                                Navigator.of(dialogContext).pop(),
                           ),
                         ],
                       ),
-                      const SizedBox(
-                        height: 16,
-                      ),
+                      const SizedBox(height: 16),
                       Container(
                         width: 160,
                         height: 160,
-                        padding:
-                            const EdgeInsets.all(10),
-                        decoration:
-                            BoxDecoration(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius:
-                              BorderRadius.circular(
-                            16,
-                          ),
+                          borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black
-                                  .withValues(
-                                alpha: 0.14,
-                              ),
+                              color: Colors.black.withValues(alpha: 0.14),
                               blurRadius: 8,
-                              offset:
-                                  const Offset(
-                                0,
-                                3,
-                              ),
+                              offset: const Offset(0, 3),
                             ),
                           ],
                         ),
                         child: QrImageView(
                           data: uriString,
-                          version:
-                              QrVersions.auto,
-                          backgroundColor:
-                              Colors.white,
-                          eyeStyle:
-                              const QrEyeStyle(
-                            eyeShape:
-                                QrEyeShape.square,
+                          version: QrVersions.auto,
+                          backgroundColor: Colors.white,
+                          eyeStyle: const QrEyeStyle(
+                            eyeShape: QrEyeShape.square,
                             color: Colors.black,
                           ),
-                          dataModuleStyle:
-                              const QrDataModuleStyle(
-                            dataModuleShape:
-                                QrDataModuleShape
-                                    .square,
+                          dataModuleStyle: const QrDataModuleStyle(
+                            dataModuleShape: QrDataModuleShape.square,
                             color: Colors.black,
                           ),
                         ),
                       ),
-                      const SizedBox(
-                        height: 14,
-                      ),
+                      const SizedBox(height: 14),
                       InkWell(
-                        borderRadius:
-                            BorderRadius.circular(
-                          12,
-                        ),
+                        borderRadius: BorderRadius.circular(12),
                         onTap: () async {
                           await Clipboard.setData(
                             ClipboardData(
@@ -1338,17 +923,16 @@ class _RoomDashboardScreenState
                             ),
                           );
 
+                          if (!context.mounted) return;
+
                           setModalState(() {
                             copied = true;
                           });
 
                           Future<void>.delayed(
-                            const Duration(
-                              seconds: 2,
-                            ),
+                            const Duration(seconds: 2),
                             () {
-                              if (context
-                                  .mounted) {
+                              if (context.mounted) {
                                 setModalState(() {
                                   copied = false;
                                 });
@@ -1358,29 +942,19 @@ class _RoomDashboardScreenState
                         },
                         child: Container(
                           width: double.infinity,
-                          padding:
-                              const EdgeInsets
-                                  .symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 13,
                           ),
-                          decoration:
-                              BoxDecoration(
-                            color: TSXColors
-                                .background,
-                            borderRadius:
-                                BorderRadius.circular(
-                              12,
-                            ),
+                          decoration: BoxDecoration(
+                            color: TSXColors.background,
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: TSXColors
-                                  .accent,
+                              color: TSXColors.accent,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: TSXColors
-                                    .accent
-                                    .withValues(
+                                color: TSXColors.accent.withValues(
                                   alpha: 0.10,
                                 ),
                                 blurRadius: 12,
@@ -1388,100 +962,68 @@ class _RoomDashboardScreenState
                             ],
                           ),
                           child: Text(
-                            formatRoomCode(
-                              joinCode,
-                            ),
-                            textAlign:
-                                TextAlign.center,
-                            style: TSXTypography
-                                .headlineMedium
-                                .copyWith(
-                              color: TSXColors
-                                  .primaryText,
-                              fontFamily:
-                                  'monospace',
+                            formatRoomCode(joinCode),
+                            textAlign: TextAlign.center,
+                            style: TSXTypography.headlineMedium.copyWith(
+                              color: TSXColors.primaryText,
+                              fontFamily: 'monospace',
                               letterSpacing: 4,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(
-                        height: 10,
-                      ),
+                      const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
                         height: 44,
                         child: Material(
-                          color:
-                              TSXColors.accent,
-                          borderRadius:
-                              BorderRadius.circular(
-                            12,
-                          ),
+                          color: TSXColors.accent,
+                          borderRadius: BorderRadius.circular(12),
                           child: InkWell(
-                            borderRadius:
-                                BorderRadius.circular(
-                              12,
-                            ),
+                            borderRadius: BorderRadius.circular(12),
                             onTap: () async {
-                              await Clipboard
-                                  .setData(
+                              await Clipboard.setData(
                                 ClipboardData(
                                   text: joinCode,
                                 ),
                               );
+
+                              if (!context.mounted) return;
 
                               setModalState(() {
                                 copied = true;
                               });
 
                               Future<void>.delayed(
-                                const Duration(
-                                  seconds: 2,
-                                ),
+                                const Duration(seconds: 2),
                                 () {
-                                  if (context
-                                      .mounted) {
-                                    setModalState(
-                                      () {
-                                        copied = false;
-                                      },
-                                    );
+                                  if (context.mounted) {
+                                    setModalState(() {
+                                      copied = false;
+                                    });
                                   }
                                 },
                               );
                             },
                             child: Row(
                               mainAxisAlignment:
-                                  MainAxisAlignment
-                                      .center,
+                                  MainAxisAlignment.center,
                               children: [
                                 Icon(
                                   copied
                                       ? Icons.check
                                       : Icons.copy,
                                   size: 16,
-                                  color:
-                                      TSXColors
-                                          .accentOn,
+                                  color: TSXColors.accentOn,
                                 ),
-                                const SizedBox(
-                                  width: 8,
-                                ),
+                                const SizedBox(width: 8),
                                 Text(
                                   copied
                                       ? 'Code Copied!'
                                       : 'Copy Room Code',
-                                  style:
-                                      TSXTypography
-                                          .labelMedium
-                                          .copyWith(
-                                    color:
-                                        TSXColors
-                                            .accentOn,
-                                    fontWeight:
-                                        FontWeight
-                                            .w700,
+                                  style: TSXTypography.labelMedium.copyWith(
+                                    color: TSXColors.accentOn,
+                                    fontWeight: FontWeight.w700,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -1507,8 +1049,7 @@ class _RoomDashboardScreenState
   ) {
     showDialog<void>(
       context: context,
-      barrierColor: Colors.black
-          .withValues(alpha: 0.80),
+      barrierColor: Colors.black.withValues(alpha: 0.80),
       builder: (dialogContext) {
         return BackdropFilter(
           filter: ImageFilter.blur(
@@ -1516,121 +1057,74 @@ class _RoomDashboardScreenState
             sigmaY: 10,
           ),
           child: Dialog(
-            backgroundColor:
-                TSXColors.surface,
-            insetPadding:
-                const EdgeInsets.symmetric(
+            backgroundColor: TSXColors.surface,
+            insetPadding: const EdgeInsets.symmetric(
               horizontal: 16,
             ),
-            shape:
-                RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.circular(24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
               side: BorderSide(
-                color:
-                    TSXColors.surfaceBorder,
+                color: TSXColors.surfaceBorder,
               ),
             ),
             child: Padding(
-              padding:
-                  const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(24),
               child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
                     width: 48,
                     height: 48,
-                    decoration:
-                        BoxDecoration(
-                      color: TSXColors.rose
-                          .withValues(
-                        alpha: 0.10,
-                      ),
+                    decoration: BoxDecoration(
+                      color: TSXColors.rose.withValues(alpha: 0.10),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: TSXColors.rose
-                            .withValues(
-                          alpha: 0.20,
-                        ),
+                        color: TSXColors.rose.withValues(alpha: 0.20),
                       ),
                     ),
                     child: Icon(
-                      Icons
-                          .warning_amber_rounded,
+                      Icons.warning_amber_rounded,
                       size: 24,
-                      color:
-                          TSXColors.rose,
+                      color: TSXColors.rose,
                     ),
                   ),
-                  const SizedBox(
-                    height: 14,
-                  ),
+                  const SizedBox(height: 14),
                   Text(
                     'End Session?',
-                    style: TSXTypography
-                        .titleLarge
-                        .copyWith(
-                      color: TSXColors
-                          .primaryText,
-                      fontWeight:
-                          FontWeight.w700,
+                    style: TSXTypography.titleLarge.copyWith(
+                      color: TSXColors.primaryText,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(
-                    height: 6,
-                  ),
+                  const SizedBox(height: 6),
                   Text(
                     'This will immediately disconnect all active listeners and close the audio stream.',
-                    textAlign:
-                        TextAlign.center,
-                    style: TSXTypography
-                        .caption
-                        .copyWith(
-                      color: TSXColors
-                          .secondaryText,
+                    textAlign: TextAlign.center,
+                    style: TSXTypography.caption.copyWith(
+                      color: TSXColors.secondaryText,
                       height: 1.45,
                     ),
                   ),
-                  const SizedBox(
-                    height: 16,
-                  ),
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
                         child: SizedBox(
                           height: 42,
                           child: Material(
-                            color: TSXColors
-                                .surfaceBorder,
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              12,
-                            ),
+                            color: TSXColors.surfaceBorder,
+                            borderRadius: BorderRadius.circular(12),
                             child: InkWell(
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                12,
-                              ),
+                              borderRadius: BorderRadius.circular(12),
                               onTap: () =>
-                                  Navigator.of(
-                                dialogContext,
-                              ).pop(),
+                                  Navigator.of(dialogContext).pop(),
                               child: Center(
                                 child: Text(
                                   'Cancel',
                                   style:
-                                      TSXTypography
-                                          .labelMedium
-                                          .copyWith(
-                                    color:
-                                        TSXColors
-                                            .primaryText,
-                                    fontWeight:
-                                        FontWeight
-                                            .w600,
+                                      TSXTypography.labelMedium.copyWith(
+                                    color: TSXColors.primaryText,
+                                    fontWeight: FontWeight.w600,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -1639,35 +1133,22 @@ class _RoomDashboardScreenState
                           ),
                         ),
                       ),
-                      const SizedBox(
-                        width: 8,
-                      ),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: SizedBox(
                           height: 42,
                           child: Material(
-                            color:
-                                TSXColors.rose,
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              12,
-                            ),
+                            color: TSXColors.rose,
+                            borderRadius: BorderRadius.circular(12),
                             child: InkWell(
                               borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                12,
-                              ),
+                                  BorderRadius.circular(12),
                               onTap: () {
-                                Navigator.of(
-                                  dialogContext,
-                                ).pop();
+                                Navigator.of(dialogContext).pop();
 
                                 ref
                                     .read(
-                                      roomLifecycleProvider
-                                          .notifier,
+                                      roomLifecycleProvider.notifier,
                                     )
                                     .closeRoom();
                               },
@@ -1675,14 +1156,9 @@ class _RoomDashboardScreenState
                                 child: Text(
                                   'End Room',
                                   style:
-                                      TSXTypography
-                                          .labelMedium
-                                          .copyWith(
-                                    color:
-                                        Colors.white,
-                                    fontWeight:
-                                        FontWeight
-                                            .w700,
+                                      TSXTypography.labelMedium.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -1712,14 +1188,12 @@ class _RoomDashboardScreenState
         color: TSXColors.background,
         shape: const CircleBorder(),
         child: InkWell(
-          customBorder:
-              const CircleBorder(),
+          customBorder: const CircleBorder(),
           onTap: onPressed,
           child: Icon(
             Icons.close,
             size: 16,
-            color:
-                TSXColors.secondaryText,
+            color: TSXColors.secondaryText,
           ),
         ),
       ),
@@ -1727,8 +1201,7 @@ class _RoomDashboardScreenState
   }
 }
 
-class _HostEndedRoomModal
-    extends ConsumerWidget {
+class _HostEndedRoomModal extends ConsumerWidget {
   const _HostEndedRoomModal();
 
   @override
@@ -1739,35 +1212,28 @@ class _HostEndedRoomModal
     return PopScope(
       canPop: false,
       child: Material(
-        color:
-            TSXColors.overlayScrim,
+        color: TSXColors.overlayScrim,
         child: Center(
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(
+            padding: const EdgeInsets.symmetric(
               horizontal: 16,
             ),
             child: _buildModal(
               context,
               icon: Icons.info_outline,
-              iconColor:
-                  TSXColors.warning,
-              title:
-                  'Host Ended the Room',
+              iconColor: TSXColors.warning,
+              title: 'Host Ended the Room',
               message:
                   'The host has ended the synchronized session. You have been disconnected from the room.',
-              buttonText:
-                  'Back to Home',
+              buttonText: 'Back to Home',
               onPressed: () {
                 ref
                     .read(
-                      roomLifecycleProvider
-                          .notifier,
+                      roomLifecycleProvider.notifier,
                     )
                     .leaveRoom();
 
-                Navigator
-                    .pushNamedAndRemoveUntil(
+                Navigator.pushNamedAndRemoveUntil(
                   context,
                   AppRouter.home,
                   (route) => false,
@@ -1781,8 +1247,7 @@ class _HostEndedRoomModal
   }
 }
 
-class _YouEndedRoomModal
-    extends ConsumerWidget {
+class _YouEndedRoomModal extends ConsumerWidget {
   const _YouEndedRoomModal();
 
   @override
@@ -1793,29 +1258,22 @@ class _YouEndedRoomModal
     return PopScope(
       canPop: false,
       child: Material(
-        color:
-            TSXColors.overlayScrim,
+        color: TSXColors.overlayScrim,
         child: Center(
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(
+            padding: const EdgeInsets.symmetric(
               horizontal: 16,
             ),
             child: _buildModal(
               context,
-              icon:
-                  Icons.check_circle_outline,
-              iconColor:
-                  TSXColors.success,
-              title:
-                  'You Ended the Room',
+              icon: Icons.check_circle_outline,
+              iconColor: TSXColors.success,
+              title: 'You Ended the Room',
               message:
                   'The synchronized session has been ended for all devices.',
-              buttonText:
-                  'Back to Home',
+              buttonText: 'Back to Home',
               onPressed: () {
-                Navigator
-                    .pushNamedAndRemoveUntil(
+                Navigator.pushNamedAndRemoveUntil(
                   context,
                   AppRouter.home,
                   (route) => false,
@@ -1840,95 +1298,65 @@ Widget _buildModal(
 }) {
   return Container(
     width: double.infinity,
-    constraints:
-        const BoxConstraints(
+    constraints: const BoxConstraints(
       maxWidth: 320,
     ),
-    padding:
-        const EdgeInsets.all(24),
+    padding: const EdgeInsets.all(24),
     decoration: BoxDecoration(
       color: TSXColors.surface,
-      borderRadius:
-          BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(24),
       border: Border.all(
         color: TSXColors.surfaceBorder,
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black
-              .withValues(alpha: 0.35),
+          color: Colors.black.withValues(alpha: 0.35),
           blurRadius: 30,
           spreadRadius: 2,
         ),
       ],
     ),
     child: Column(
-      mainAxisSize:
-          MainAxisSize.min,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
           icon,
           size: 32,
           color: iconColor,
         ),
-        const SizedBox(
-          height: 14,
-        ),
+        const SizedBox(height: 14),
         Text(
           title,
-          textAlign:
-              TextAlign.center,
-          style: TSXTypography
-              .headlineMedium
-              .copyWith(
-            color:
-                TSXColors.primaryText,
+          textAlign: TextAlign.center,
+          style: TSXTypography.headlineMedium.copyWith(
+            color: TSXColors.primaryText,
           ),
         ),
-        const SizedBox(
-          height: 8,
-        ),
+        const SizedBox(height: 8),
         Text(
           message,
-          textAlign:
-              TextAlign.center,
-          style: TSXTypography
-              .bodyMedium
-              .copyWith(
-            color:
-                TSXColors.secondaryText,
+          textAlign: TextAlign.center,
+          style: TSXTypography.bodyMedium.copyWith(
+            color: TSXColors.secondaryText,
             height: 1.45,
           ),
         ),
-        const SizedBox(
-          height: 20,
-        ),
+        const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
           height: 44,
           child: Material(
-            color:
-                TSXColors.accent,
-            borderRadius:
-                BorderRadius.circular(
-              12,
-            ),
+            color: TSXColors.accent,
+            borderRadius: BorderRadius.circular(12),
             child: InkWell(
-              borderRadius:
-                  BorderRadius.circular(
-                12,
-              ),
+              borderRadius: BorderRadius.circular(12),
               onTap: onPressed,
               child: Center(
                 child: Text(
                   buttonText,
-                  style: TSXTypography
-                      .labelMedium
-                      .copyWith(
-                    color:
-                        TSXColors.accentOn,
-                    fontWeight:
-                        FontWeight.w700,
+                  style: TSXTypography.labelMedium.copyWith(
+                    color: TSXColors.accentOn,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
