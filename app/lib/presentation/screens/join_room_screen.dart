@@ -292,8 +292,6 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
   final _codeController = TextEditingController();
 
   bool _isJoining = false;
-  bool _showScannerModal = false;
-  bool _scanSuccess = false;
 
   void _handleInputChange(String value) {
     final digits = value.replaceAll(RegExp(r'\D'), '');
@@ -389,264 +387,21 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
     }
   }
 
-  void _handleSimulateScan() {
-    setState(() => _scanSuccess = true);
-
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (!mounted) return;
-
-      setState(() {
-        _codeController.text = '809241';
-        _showScannerModal = false;
-        _scanSuccess = false;
-      });
-    });
+  void _handleOpenQRScanner() {
+    showQRScannerModal(
+      context: context,
+      onScanSuccess: () {
+        // QR code was successfully scanned and processed
+        // The modal will close and the join flow will be triggered
+        setState(() {});
+      },
+    );
   }
 
   @override
   void dispose() {
     _codeController.dispose();
     super.dispose();
-  }
-
-  Widget _buildScannerModal() {
-    return GestureDetector(
-      onTap: () => setState(() => _showScannerModal = false),
-      child: Container(
-        color: TSXColors.overlayScrim,
-        child: Center(
-          child: GestureDetector(
-            onTap: () {},
-            child: Container(
-              margin: EdgeInsets.all(TSXSpacing.xl),
-              constraints: const BoxConstraints(maxWidth: 360),
-              decoration: BoxDecoration(
-                color: TSXColors.surface,
-                borderRadius: BorderRadius.circular(TSXRadius.modal),
-                border: Border.all(
-                  color: TSXColors.surfaceBorder,
-                ),
-                boxShadow: TSXShadows.xl,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.all(TSXSpacing.lg),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.qr_code_scanner,
-                          size: 24,
-                          color: TSXColors.accent,
-                        ),
-                        SizedBox(width: TSXSpacing.md),
-                        Text(
-                          'Scan Host QR',
-                          style: TSXTypography.headlineMedium,
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          onPressed: () => setState(
-                            () => _showScannerModal = false,
-                          ),
-                          icon: Icon(
-                            Icons.close,
-                            size: 20,
-                            color: TSXColors.secondaryText,
-                          ),
-                          style: IconButton.styleFrom(
-                            backgroundColor: TSXColors.background,
-                            shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(TSXRadius.full),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: TSXSpacing.lg,
-                    ),
-                    child: Container(
-                      width: double.infinity,
-                      height: 200,
-                      decoration: BoxDecoration(
-                        color: TSXColors.background,
-                        borderRadius: BorderRadius.circular(
-                          TSXRadius.lg,
-                        ),
-                        border: Border.all(
-                          color: TSXColors.surfaceBorder,
-                        ),
-                      ),
-                      child: Stack(
-                        children: [
-                          Positioned(
-                            top: 16,
-                            left: 16,
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  top: BorderSide(
-                                    color: TSXColors.accent,
-                                    width: 2,
-                                  ),
-                                  left: BorderSide(
-                                    color: TSXColors.accent,
-                                    width: 2,
-                                  ),
-                                ),
-                                borderRadius: const BorderRadius.only(
-                                  topLeft: Radius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 16,
-                            right: 16,
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  top: BorderSide(
-                                    color: TSXColors.accent,
-                                    width: 2,
-                                  ),
-                                  right: BorderSide(
-                                    color: TSXColors.accent,
-                                    width: 2,
-                                  ),
-                                ),
-                                borderRadius: const BorderRadius.only(
-                                  topRight: Radius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 16,
-                            left: 16,
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: TSXColors.accent,
-                                    width: 2,
-                                  ),
-                                  left: BorderSide(
-                                    color: TSXColors.accent,
-                                    width: 2,
-                                  ),
-                                ),
-                                borderRadius: const BorderRadius.only(
-                                  bottomLeft: Radius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 16,
-                            right: 16,
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(
-                                    color: TSXColors.accent,
-                                    width: 2,
-                                  ),
-                                  right: BorderSide(
-                                    color: TSXColors.accent,
-                                    width: 2,
-                                  ),
-                                ),
-                                borderRadius: const BorderRadius.only(
-                                  bottomRight: Radius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned.fill(
-                            child: Center(
-                              child: Container(
-                                height: 2,
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 32,
-                                ),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.transparent,
-                                      TSXColors.accent,
-                                      Colors.transparent,
-                                    ],
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: TSXColors.accent,
-                                      blurRadius: 10,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.radio_button_checked,
-                                  size: 32,
-                                  color:
-                                      TSXColors.accent.withValues(alpha: 0.6),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Align QR code within frame',
-                                  style: TSXTypography.bodySmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: TSXSpacing.lg),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: TSXSpacing.lg,
-                    ),
-                    child: SMButton(
-                      text: _scanSuccess
-                          ? 'Code Detected: 809 - 241'
-                          : 'Detect QR Code',
-                      icon: _scanSuccess
-                          ? Icons.check_circle
-                          : Icons.qr_code_scanner,
-                      variant: SMButtonVariant.tsxPrimary,
-                      onPressed: _handleSimulateScan,
-                    ),
-                  ),
-                  SizedBox(height: TSXSpacing.lg),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   @override
@@ -815,9 +570,7 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
           Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => setState(
-                () => _showScannerModal = true,
-              ),
+              onTap: _handleOpenQRScanner,
               borderRadius: BorderRadius.circular(TSXRadius.lg),
               child: Container(
                 padding: EdgeInsets.all(TSXSpacing.lg),
@@ -929,9 +682,6 @@ class _JoinRoomFormState extends ConsumerState<_JoinRoomForm> {
             textAlign: TextAlign.center,
           ),
           SizedBox(height: TSXSpacing.xxl),
-          _showScannerModal
-              ? _buildScannerModal()
-              : const SizedBox.shrink(),
         ],
       ),
     );

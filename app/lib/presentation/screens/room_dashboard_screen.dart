@@ -947,6 +947,7 @@ class _RoomDashboardScreenState
                 BorderRadius.circular(999),
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment:
                 MainAxisAlignment.center,
             children: [
@@ -958,15 +959,18 @@ class _RoomDashboardScreenState
                     : TSXColors.secondaryText,
               ),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style:
-                    TSXTypography.labelMedium.copyWith(
-                  color: active
-                      ? TSXColors.accent
-                      : TSXColors.secondaryText,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      TSXTypography.labelMedium.copyWith(
+                    color: active
+                        ? TSXColors.accent
+                        : TSXColors.secondaryText,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
                 ),
               ),
               if (active) ...[

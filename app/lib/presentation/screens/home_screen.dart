@@ -277,21 +277,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildActionButtons(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Create Room Button
-        SMButton(
-          text: 'Create Room',
-          icon: Icons.add_circle,
-          variant: SMButtonVariant.tsxPrimary,
-          onPressed: () => Navigator.pushNamed(context, AppRouter.createRoom),
+        // Create Room Button - full width like TSX (w-full h-13)
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: SMButton(
+            text: 'Create Room',
+            icon: Icons.add_circle,
+            variant: SMButtonVariant.tsxPrimary,
+            onPressed: () => Navigator.pushNamed(context, AppRouter.createRoom),
+          ),
         ),
         const SizedBox(height: 12),
-        // Join Room Button
-        SMButton(
-          text: 'Join Room',
-          icon: Icons.sensors,
-          variant: SMButtonVariant.tsxSecondary,
-          onPressed: () => Navigator.pushNamed(context, AppRouter.joinRoom),
+        // Join Room Button - full width like TSX (w-full h-13)
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: SMButton(
+            text: 'Join Room',
+            icon: Icons.sensors,
+            variant: SMButtonVariant.tsxSecondary,
+            onPressed: () => Navigator.pushNamed(context, AppRouter.joinRoom),
+          ),
         ),
       ],
     );

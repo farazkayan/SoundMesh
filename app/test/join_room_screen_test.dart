@@ -35,12 +35,12 @@ void main() {
         ),
       );
 
-      // One text field: Room Code
-      expect(find.byType(TextFormField), findsOneWidget);
+      // One text field: Room Code (uses TextField, not TextFormField)
+      expect(find.byType(TextField), findsOneWidget);
       expect(find.widgetWithText(SMButton, 'Join Room'), findsOneWidget);
     });
 
-    testWidgets('renders Join a Room title',
+    testWidgets('renders Connect to a Room title',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -53,10 +53,10 @@ void main() {
         ),
       );
 
-      expect(find.text('Join a Room'), findsOneWidget);
+      expect(find.text('Connect to a Room'), findsOneWidget);
     });
 
-    testWidgets('renders QR Scan card and divider',
+    testWidgets('renders QR Scan card',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -70,7 +70,7 @@ void main() {
       );
 
       expect(find.text('Scan QR Code'), findsOneWidget);
-      expect(find.text('OR'), findsOneWidget);
+      // No "OR" divider in current implementation
     });
 
     testWidgets('Room Code field accepts digits only',
@@ -87,7 +87,7 @@ void main() {
       );
 
       // Enter room code digits
-      await tester.enterText(find.byType(TextFormField), '123456');
+      await tester.enterText(find.byType(TextField), '123456');
       await tester.pump();
 
       // Verify text field shows entered value

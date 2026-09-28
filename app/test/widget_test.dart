@@ -36,9 +36,9 @@ void main() {
           child: MaterialApp(home: JoinRoomScreen()),
         ),
       );
-      expect(find.text('Join a Room'), findsOneWidget);
-      expect(find.text('Room Code'), findsOneWidget);
-      expect(find.text('Join Room'), findsOneWidget);
+      expect(find.text('Connect to a Room'), findsOneWidget);
+      expect(find.text('ROOM CODE'), findsOneWidget);
+      expect(find.text('Join Room'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('RoomDashboardScreen smoke test', (WidgetTester tester) async {

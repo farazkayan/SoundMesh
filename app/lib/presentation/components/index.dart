@@ -12,6 +12,7 @@ export 'icon_wrapper.dart';
 export 'loading_indicator.dart';
 export 'prepare_audio_modal.dart';
 export 'qr_modal.dart';
+export 'qr_scanner_modal.dart';
 export 'radial_gradient_backdrop.dart';
 export 'surface.dart';
 export 'text_input.dart';
