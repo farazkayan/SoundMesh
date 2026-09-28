@@ -173,6 +173,14 @@ bool isValidRoomCode(String code) {
   return RegExp(r'^\d{6}$').hasMatch(code);
 }
 
+/// Formats a 6-digit room code as XXX-XXX for display.
+String formatRoomCode(String code) {
+  if (code.length == 6) {
+    return '${code.substring(0, 3)}-${code.substring(3, 6)}';
+  }
+  return code;
+}
+
 /// Gets the local IP address for broadcast announcements.
 /// Returns null if no suitable non-loopback IPv4 address is found.
 Future<String?> getLocalIpAddress() async {

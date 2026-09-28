@@ -2,7 +2,7 @@
 // backed by this project's Riverpod providers.
 // This file should NOT be modified - it's a pure adapter.
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:developer' as developer;
 
@@ -115,7 +115,7 @@ class ApplicationState {
 }
 
 /// Maps backend RoomLifecycleState to legacy SMAppState.
-SMAppState _mapLifecycleState(RoomLifecycleState lifecycleState, CreateRoomFlowStatus? createStatus, JoinRoomFlowStatus? joinStatus, Object? screenState) {
+SMAppState mapLifecycleState(RoomLifecycleState lifecycleState, CreateRoomFlowStatus? createStatus, JoinRoomFlowStatus? joinStatus, Object? screenState, {RoomRole? role, bool hostEndedRoom = false}) {
   // Check for error first
   if (createStatus == CreateRoomFlowStatus.failed) return SMAppState.error;
   if (joinStatus == JoinRoomFlowStatus.failed) return SMAppState.error;
@@ -153,17 +153,27 @@ SMAppState _mapLifecycleState(RoomLifecycleState lifecycleState, CreateRoomFlowS
       result = SMAppState.ready;
       break;
     case RoomLifecycleState.closed:
-      result = SMAppState.error;
+      // Intentional host shutdown: host sees idle (clean state for new room),
+      // participant sees error (handled by _HostEndedRoomModal in UI).
+      if (hostEndedRoom && role == RoomRole.host) {
+        result = SMAppState.idle;
+      } else {
+        result = SMAppState.error;
+      }
       break;
   }
 
-  developer.log(
-    '_mapLifecycleState: lifecycle=${lifecycleState.name} '
-    'createStatus=${createStatus?.name} '
-    'joinStatus=${joinStatus?.name} '
-    '→ mapped=$result',
-    name: 'SoundMesh.StateMapping',
-  );
+  if (kDebugMode) {
+    developer.log(
+      '_mapLifecycleState: lifecycle=${lifecycleState.name} '
+      'createStatus=${createStatus?.name} '
+      'joinStatus=${joinStatus?.name} '
+      'role=${role?.name} '
+      'hostEndedRoom=$hostEndedRoom'
+      '→ mapped=$result',
+      name: 'SoundMesh.StateMapping',
+    );
+  }
 
   return result;
 }
@@ -190,21 +200,26 @@ final applicationStateProvider = Provider<ApplicationState>((ref) {
   final createState = ref.watch(createRoomFlowProvider);
   final joinState = ref.watch(joinRoomFlowProvider);
 
-  developer.log(
-    'ApplicationState: Rebuild | '
-    'lifecycle: ${lifecycleState.lifecycleState.name} | '
-    'role: ${lifecycleState.role.name} | '
-    'createStatus: ${createState.status.name} | '
-    'joinCode: ${createState.joinCode ?? "null"} | '
-    'roomId: ${lifecycleState.roomId ?? "null"}',
-    name: 'SoundMesh.ApplicationState',
-  );
+  if (kDebugMode) {
+    developer.log(
+      'ApplicationState: Rebuild | '
+      'lifecycle: ${lifecycleState.lifecycleState.name} | '
+      'role: ${lifecycleState.role.name} | '
+      'hostEndedRoom: ${lifecycleState.hostEndedRoom} | '
+      'createStatus: ${createState.status.name} | '
+      'joinCode: ${createState.joinCode ?? "null"} | '
+      'roomId: ${lifecycleState.roomId ?? "null"}',
+      name: 'SoundMesh.ApplicationState',
+    );
+  }
 
-  final mappedState = _mapLifecycleState(
+  final mappedState = mapLifecycleState(
     lifecycleState.lifecycleState,
     createState.status,
     joinState.status,
     null, // screenState no longer used
+    role: lifecycleState.role,
+    hostEndedRoom: lifecycleState.hostEndedRoom,
   );
 
   final isHost = lifecycleState.role == RoomRole.host;
@@ -228,86 +243,28 @@ final applicationStateProvider = Provider<ApplicationState>((ref) {
   );
 });
 
-/// Compatibility wrapper matching legacy CoreStateController interface.
-class CoreStateController extends ChangeNotifier {
-  CoreStateController(this._ref);
+/// Granular providers for [ApplicationState] fields to avoid unnecessary rebuilds.
+/// Use these with [ref.watch(provider.select(...))] in widgets that only need specific fields.
+final appStateProvider = Provider<SMAppState>((ref) {
+  return ref.watch(applicationStateProvider).state;
+});
 
-  final WidgetRef _ref;
+final appMessageProvider = Provider<String?>((ref) {
+  return ref.watch(applicationStateProvider).message;
+});
 
-  ApplicationState get state => _ref.read(applicationStateProvider);
+final appIsHostProvider = Provider<bool>((ref) {
+  return ref.watch(applicationStateProvider).isHost ?? false;
+});
 
-  Future<void> transitionTo(SMAppState state) async {
-    // No-op - state is driven by Riverpod providers
-  }
+final appRoomIdProvider = Provider<String?>((ref) {
+  return ref.watch(applicationStateProvider).roomId;
+});
 
-  Future<void> resetToIdle() async {
-    _ref.read(createRoomFlowProvider.notifier).reset();
-    _ref.read(joinRoomFlowProvider.notifier).reset();
-  }
+final appJoinCodeProvider = Provider<String?>((ref) {
+  return ref.watch(applicationStateProvider).joinCode;
+});
 
-  Future<void> createRoom({dynamic request}) async {
-    await _ref.read(createRoomFlowProvider.notifier).createRoom(ref: _ref);
-  }
-
-  Future<void> joinRoom({dynamic request}) async {
-    await _ref.read(joinRoomFlowProvider.notifier).joinRoom(ref: _ref);
-  }
-
-  Future<void> startCapture(dynamic request) async {
-    // Not implemented yet
-  }
-
-  Future<void> prepare() async {
-    // Not implemented yet
-  }
-
-  Future<void> leaveRoom() async {
-    await _ref.read(roomLifecycleProvider.notifier).leaveRoom();
-  }
-}
-
-/// Provides a [CoreStateController] to the widget subtree.
-/// Matches legacy StateProvider exactly.
-class StateProvider extends InheritedWidget {
-  const StateProvider({
-    super.key,
-    required this.controller,
-    required super.child,
-  });
-
-  final CoreStateController controller;
-
-  static CoreStateController of(BuildContext context) {
-    final result = context.dependOnInheritedWidgetOfExactType<StateProvider>();
-    if (result == null) {
-      throw StateError(
-        'No StateProvider found in context. '
-        'Wrap your app with StateProvider(controller: ...).',
-      );
-    }
-    return result.controller;
-  }
-
-  static CoreStateController? maybeOf(BuildContext context) {
-    final result = context.dependOnInheritedWidgetOfExactType<StateProvider>();
-    return result?.controller;
-  }
-
-  @override
-  bool updateShouldNotify(covariant StateProvider old) =>
-      controller != old.controller;
-}
-
-/// Convenience widget that rebuilds whenever [CoreStateController.state] changes.
-/// Matches legacy StateBuilder exactly.
-class StateBuilder extends ConsumerWidget {
-  const StateBuilder({super.key, required this.builder});
-
-  final Widget Function(BuildContext context, ApplicationState state) builder;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(applicationStateProvider);
-    return builder(context, state);
-  }
-}
+final appSyncProvider = Provider<SyncInfo?>((ref) {
+  return ref.watch(applicationStateProvider).sync;
+});

@@ -73,8 +73,12 @@ class SampleHistory {
     }
   }
 
-  List<SyncSample> getValidSamples({required int currentGeneration, int maxAgeNs = 10_000_000_000}) {
-    final now = DateTime.now().microsecondsSinceEpoch * 1000;
+  List<SyncSample> getValidSamples({
+    required int currentGeneration,
+    int maxAgeNs = 10_000_000_000,
+    int? nowNs,
+  }) {
+    final now = nowNs ?? DateTime.now().microsecondsSinceEpoch * 1000;
     return _samples.where((s) {
       if (!s.valid) return false;
       if (s.generation != currentGeneration) return false;
@@ -104,8 +108,11 @@ class SampleHistory {
     );
   }
 
-  int getValidSampleCount({required int currentGeneration}) {
-    return getValidSamples(currentGeneration: currentGeneration).length;
+  int getValidSampleCount({
+    required int currentGeneration,
+    int? nowNs,
+  }) {
+    return getValidSamples(currentGeneration: currentGeneration, nowNs: nowNs).length;
   }
 
   void clear() => _samples.clear();

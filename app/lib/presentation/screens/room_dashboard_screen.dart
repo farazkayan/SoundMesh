@@ -1,49 +1,135 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:soundmesh/core/router/app_router.dart';
-import 'package:soundmesh/core/design_system/index.dart';
-import 'package:soundmesh/presentation/components/index.dart';
-import 'package:soundmesh/presentation/state_compat.dart';
-import 'package:soundmesh/infrastructure/discovery/discovery_types.dart';
+
 import 'package:soundmesh/application/protocol.dart';
+import 'package:soundmesh/application/providers/capture_provider.dart';
 import 'package:soundmesh/application/providers/create_room_flow_provider.dart';
 import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
-import 'package:soundmesh/application/providers/capture_provider.dart';
 import 'package:soundmesh/application/room/room_lifecycle.dart';
+import 'package:soundmesh/core/router/app_router.dart';
+import 'package:soundmesh/infrastructure/discovery/discovery_types.dart';
+import 'package:soundmesh/presentation/components/index.dart';
+import 'package:soundmesh/presentation/state_compat.dart';
 
-class RoomDashboardScreen extends ConsumerWidget {
+class RoomDashboardScreen extends ConsumerStatefulWidget {
   const RoomDashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RoomDashboardScreen> createState() =>
+      _RoomDashboardScreenState();
+}
+
+class _RoomDashboardScreenState
+    extends ConsumerState<RoomDashboardScreen> {
+  @override
+  Widget build(BuildContext context) {
     final appState = ref.watch(applicationStateProvider);
     final createState = ref.watch(createRoomFlowProvider);
     final captureState = ref.watch(captureStateProvider);
+    final lifecycleState = ref.watch(roomLifecycleProvider);
 
-    // Determine if background usage modal should show
     final isHost = appState.isHost == true;
     final isInRoom = _isInRoomState(appState.state);
-    final backgroundUsageDisabled = captureState.isIgnoringBatteryOptimizations == false;
-    final showBackgroundUsageModal = isHost && isInRoom && backgroundUsageDisabled;
+
+    final backgroundUsageDisabled =
+        captureState.isIgnoringBatteryOptimizations == false;
+
+    final showBackgroundUsageModal =
+        isHost && isInRoom && backgroundUsageDisabled;
+
+    final showHostEndedModal =
+        !isHost && lifecycleState.hostEndedRoom && isInRoom;
+
+    final showHostEndedModalForHost =
+        isHost && lifecycleState.hostEndedRoom;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(
-                horizontal: SMSpacing.xl,
-                vertical: SMSpacing.xl,
-              ),
-              child: _buildContent(context, ref, appState, createState),
-            ),
-          ),
-          // Background usage required modal - only for host in room
-          if (showBackgroundUsageModal)
-            const BackgroundUsageRequiredModal(),
-        ],
+      backgroundColor: TSXColors.background,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isTablet = constraints.maxWidth >= 600;
+
+            return Stack(
+              children: [
+                const RadialGradientBackdrop(),
+
+                SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: Center(
+                      child: Container(
+                        // On tablet: use 80% width up to 720px;
+                        // on phone: use the available width.
+                        constraints: BoxConstraints(
+                          maxWidth: isTablet
+                              ? (constraints.maxWidth * 0.8)
+                                  .clamp(520.0, 720.0)
+                                  .toDouble()
+                              : double.infinity,
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 32 : TSXSpacing.xl,
+                          vertical: TSXSpacing.xl,
+                        ),
+                        child: _buildDashboardContent(
+                          context,
+                          ref,
+                          appState,
+                          createState,
+                          lifecycleState,
+                          captureState,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Floating navigation dock anchored at bottom.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: FloatingGlassDock(
+                        currentIndex: 0,
+                        // Room tab active.
+                        onTap: (index) {
+                          if (index == 1) {
+                            Navigator.pushReplacementNamed(
+                              context,
+                              AppRouter.roomDevices,
+                            );
+                          }
+                        },
+                        isTablet: isTablet,
+                      ),
+                    ),
+                  ),
+                ),
+
+                if (showBackgroundUsageModal)
+                  const BackgroundUsageRequiredModal(),
+
+                if (showHostEndedModal)
+                  const _HostEndedRoomModal(),
+
+                if (showHostEndedModalForHost)
+                  const _YouEndedRoomModal(),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -55,667 +141,687 @@ class RoomDashboardScreen extends ConsumerWidget {
         state == SMAppState.paused;
   }
 
-  Widget _buildContent(
-    BuildContext context,
-    WidgetRef ref,
-    ApplicationState appState,
-    CreateRoomFlowState createState,
-  ) {
-    final lifecycleState = ref.watch(roomLifecycleProvider);
-    final captureState = ref.watch(captureStateProvider);
-    final screenError = lifecycleState.errorMessage;
-
-    final state = appState.state;
-    final participantJoined = lifecycleState.participantJoined;
-    final deviceCount =
-        1 + (participantJoined ? 1 : 0); // Host + participant if joined
-
-    // Determine room status text from lifecycle state
-    final roomStatusText = _getRoomStatusText(
-      lifecycleState,
-      createState,
-      appState,
-    );
-
-    switch (state) {
-      case SMAppState.error:
-        return Column(
-          children: [
-            SMEmptyState.error(
-              title: 'Room Error',
-              message:
-                  appState.message ?? 'Something went wrong with the room.',
-              icon: Icons.error_outline,
-              onRetry: () => StateProvider.of(context).leaveRoom(),
-            ),
-            SizedBox(height: SMSpacing.xxl),
-          ],
-        );
-
-      case SMAppState.preparing:
-        return _preparingContent(appState);
-
-      case SMAppState.ready:
-        return _readyContent(
-          context,
-          ref,
-          appState,
-          createState,
-          lifecycleState,
-          captureState,
-          deviceCount,
-          participantJoined,
-          roomStatusText,
-          screenError,
-        );
-
-      case SMAppState.playing:
-      case SMAppState.paused:
-        return _sessionStatusContent(
-          context,
-          ref,
-          appState,
-          createState,
-          lifecycleState,
-          captureState,
-          deviceCount,
-          participantJoined,
-          roomStatusText,
-          screenError,
-        );
-
-      case SMAppState.stopping:
-        return _stoppingContent(appState);
-
-      case SMAppState.roomReady:
-        return _roomReadyContent(
-          context,
-          ref,
-          appState,
-          createState,
-          lifecycleState,
-          captureState,
-          deviceCount,
-          participantJoined,
-          roomStatusText,
-          screenError,
-        );
-
-      case SMAppState.idle:
-      case SMAppState.creatingRoom:
-      case SMAppState.joiningRoom:
-        return _notInRoomContent(context);
-    }
-  }
-
-  Widget _roomReadyContent(
+  Widget _buildDashboardContent(
     BuildContext context,
     WidgetRef ref,
     ApplicationState appState,
     CreateRoomFlowState createState,
     RoomLifecycleStateData lifecycleState,
     CaptureUiStateData captureState,
-    int deviceCount,
-    bool participantJoined,
-    String roomStatusText,
-    String? screenError,
   ) {
-    final isHost = appState.isHost == true;
-    final joinCode = appState.joinCode ?? '';
-    final isValidCode = isValidRoomCode(joinCode);
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
 
+    // IMPORTANT:
+    // This Column is already inside the screen's SingleChildScrollView.
+    // Do NOT put another scroll view or Expanded here.
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Room identity with status
-        _roomIdentityHeader(
+        _buildRoomHeader(
           context,
+          ref,
           appState,
           createState,
           lifecycleState,
-          roomStatusText,
+          captureState,
         ),
-        SizedBox(height: SMSpacing.xl),
-
-        // Error banner if any
-        if (screenError != null) ...[
-          _buildErrorBanner(screenError),
-          SizedBox(height: SMSpacing.lg),
-        ],
-
-        // Participant view: simple confirmation without share affordance
-        if (!isHost && joinCode.isNotEmpty) ...[
-          SMCard(
-            elevated: true,
-            padding: EdgeInsets.all(SMSpacing.xl),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.check_circle,
-                  size: SMDimensions.emptyIconSize * 0.7,
-                  color: SMColors.success,
-                ),
-                SizedBox(height: SMSpacing.lg),
-                Text(
-                  'Code Confirmed',
-                  style: SMTypography.heading.copyWith(
-                    color: SMColors.primaryText,
-                  ),
-                ),
-                SizedBox(height: SMSpacing.md),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SMSpacing.xl,
-                    vertical: SMSpacing.lg,
-                  ),
-                  decoration: BoxDecoration(
-                    color: SMColors.surfaceHigh,
-                    borderRadius: BorderRadius.circular(SMRadius.large),
-                    border: Border.all(
-                      color: SMColors.success.withValues(alpha: 0.5),
-                      width: 2,
-                    ),
-                  ),
-                  child: Text(
-                    isValidCode ? _formatCode(joinCode) : joinCode,
-                    style: SMTypography.display.copyWith(
-                      color: SMColors.primaryText,
-                      letterSpacing: 8,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                SizedBox(height: SMSpacing.md),
-                Text(
-                  'Both devices show the same code',
-                  style: SMTypography.caption.copyWith(
-                    color: SMColors.mutedText,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: SMSpacing.xl),
-        ],
-
-        // Audio Share toggle (host only)
-        if (isHost) ...[
-          AudioShareToggle(isHost: true),
-          SizedBox(height: SMSpacing.xl),
-        ],
-
-        // Leave room button
-        SMButton(
-          text: 'Leave Room',
-          icon: Icons.logout,
-          variant: SMButtonVariant.danger,
-          onPressed: () => _showLeaveDialog(context),
+        const SizedBox(height: 16),
+        _buildMainContent(
+          context,
+          ref,
+          appState,
+          createState,
+          lifecycleState,
+          captureState,
         ),
-        SizedBox(height: SMSpacing.xxl),
+
+        // Space for the floating dock at bottom.
+        SizedBox(
+          height: safeBottom > 0 ? safeBottom + 72 : 80,
+        ),
       ],
     );
   }
 
-  Widget _roomIdentityHeader(
+  Widget _buildRoomHeader(
     BuildContext context,
+    WidgetRef ref,
     ApplicationState appState,
     CreateRoomFlowState createState,
     RoomLifecycleStateData lifecycleState,
-    String roomStatusText,
+    CaptureUiStateData captureState,
   ) {
     final isHost = appState.isHost == true;
 
-    return SMCard(
+    final isCapturing =
+        captureState.state == CaptureUiState.capturing;
+
+    final status = isHost
+        ? (isCapturing
+            ? 'Broadcasting spatial stream'
+            : 'Waiting for listeners...')
+        : _participantStatus(
+            appState,
+            lifecycleState,
+          );
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: TSXColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: TSXColors.surfaceBorder,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           Container(
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: SMColors.surfaceContainer,
-              borderRadius: BorderRadius.circular(SMRadius.medium),
+              color: TSXColors.background,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: TSXColors.surfaceBorder,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
-            child: Icon(Icons.group, size: 20, color: SMColors.secondaryText),
+            child: Icon(
+              Icons.radio,
+              size: 20,
+              color: TSXColors.accent,
+            ),
           ),
-          SizedBox(width: SMSpacing.md),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Text(
-                      'Room',
-                      style: SMTypography.heading.copyWith(
-                        color: SMColors.primaryText,
+                    Flexible(
+                      child: Text(
+                        'Room',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TSXTypography.labelLarge.copyWith(
+                          color: TSXColors.primaryText,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
                       ),
                     ),
                     if (isHost) ...[
-                      SizedBox(width: SMSpacing.sm),
+                      const SizedBox(width: 8),
                       Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SMSpacing.xs,
-                          vertical: 2,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: SMColors.soundmeshBlue.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(SMRadius.small),
+                          color: TSXColors.accent.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: TSXColors.accent.withValues(alpha: 0.30),
+                          ),
                         ),
                         child: Text(
                           'HOST',
-                          style: SMTypography.metadata.copyWith(
-                            color: SMColors.soundmeshBlue,
+                          style: TSXTypography.metadata.copyWith(
+                            color: TSXColors.accent,
                             fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ] else ...[
-                      SizedBox(width: SMSpacing.sm),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SMSpacing.xs,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: SMColors.secondaryText.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(SMRadius.small),
-                        ),
-                        child: Text(
-                          'PARTICIPANT',
-                          style: SMTypography.metadata.copyWith(
-                            color: SMColors.secondaryText,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 9,
+                            letterSpacing: 1.0,
                           ),
                         ),
                       ),
                     ],
                   ],
                 ),
-                SizedBox(height: SMSpacing.xs),
+                const SizedBox(height: 2),
                 Text(
-                  roomStatusText,
-                  style: SMTypography.caption.copyWith(
-                    color: SMColors.secondaryText,
+                  status,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TSXTypography.caption.copyWith(
+                    color: TSXColors.secondaryText,
+                    fontSize: 11,
                   ),
                 ),
               ],
             ),
           ),
-          SizedBox(width: SMSpacing.sm),
-          if (isHost)
-            SMButton(
-              text: 'Invite',
-              icon: Icons.person_add,
-              variant: SMButtonVariant.secondary,
-              onPressed: () => _showInviteModal(context, createState),
+          if (isHost) ...[
+            const SizedBox(width: 8),
+            _buildInviteButton(
+              context,
+              createState,
             ),
+          ],
         ],
       ),
     );
   }
 
-  String _getRoomStatusText(
-    RoomLifecycleStateData lifecycleState,
+  Widget _buildInviteButton(
+    BuildContext context,
     CreateRoomFlowState createState,
+  ) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _showInviteModal(
+          context,
+          createState,
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 9,
+          ),
+          decoration: BoxDecoration(
+            color: TSXColors.surfaceBorder,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: TSXColors.surfaceBorder,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.person_add_alt_1,
+                size: 14,
+                color: TSXColors.accent,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '+ Invite',
+                style: TSXTypography.labelMedium.copyWith(
+                  color: TSXColors.primaryText,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainContent(
+    BuildContext context,
+    WidgetRef ref,
     ApplicationState appState,
+    CreateRoomFlowState createState,
+    RoomLifecycleStateData lifecycleState,
+    CaptureUiStateData captureState,
+  ) {
+    switch (appState.state) {
+      case SMAppState.error:
+        return _buildErrorContent(
+          appState,
+          ref,
+        );
+
+      case SMAppState.preparing:
+        return _buildLoadingContent(
+          appState,
+          'Preparing session…',
+          'Waiting for all devices to prepare for the synchronized session.',
+        );
+
+      case SMAppState.stopping:
+        return _buildLoadingContent(
+          appState,
+          'Stopping session…',
+          'Winding down the synchronized session and releasing devices.',
+        );
+
+      case SMAppState.idle:
+      case SMAppState.creatingRoom:
+      case SMAppState.joiningRoom:
+        return _notInRoomContent(context);
+
+      case SMAppState.roomReady:
+      case SMAppState.ready:
+      case SMAppState.playing:
+      case SMAppState.paused:
+        return _buildRoomTab(
+          context,
+          ref,
+          appState,
+          lifecycleState,
+          captureState,
+        );
+    }
+  }
+
+  Widget _buildRoomTab(
+    BuildContext context,
+    WidgetRef ref,
+    ApplicationState appState,
+    RoomLifecycleStateData lifecycleState,
+    CaptureUiStateData captureState,
+  ) {
+    final isHost = appState.isHost == true;
+    final screenError = lifecycleState.errorMessage;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (screenError != null) ...[
+          _buildErrorBanner(screenError),
+          const SizedBox(height: 12),
+        ],
+        if (isHost) ...[
+          AudioShareToggle.tsx(
+            isHost: true,
+          ),
+          const SizedBox(height: 12),
+          _buildEndRoomButton(
+            context,
+            ref,
+          ),
+        ] else ...[
+          _buildParticipantRoomCard(
+            context,
+            appState,
+            lifecycleState,
+          ),
+          const SizedBox(height: 12),
+          _buildParticipantLeaveButton(
+            context,
+            ref,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildEndRoomButton(
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    return SizedBox(
+      height: 48,
+      width: double.infinity,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showEndRoomModal(
+            context,
+            ref,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: TSXColors.rose.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: TSXColors.rose.withValues(alpha: 0.30),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.logout,
+                  size: 16,
+                  color: TSXColors.rose,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'End Room Session',
+                  style: TSXTypography.labelMedium.copyWith(
+                    color: TSXColors.rose,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildParticipantRoomCard(
+    BuildContext context,
+    ApplicationState appState,
+    RoomLifecycleStateData lifecycleState,
+  ) {
+    final code = appState.joinCode ?? '';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: TSXColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: TSXColors.surfaceBorder,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.20),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: TSXColors.accent.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.headphones,
+              size: 20,
+              color: TSXColors.accent,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Connected to Host',
+            style: TSXTypography.headlineMedium.copyWith(
+              color: TSXColors.primaryText,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            code.isNotEmpty
+                ? 'Listening for synchronized audio from room ${formatRoomCode(code)}.'
+                : 'Listening for synchronized audio from the host.',
+            textAlign: TextAlign.center,
+            style: TSXTypography.caption.copyWith(
+              color: TSXColors.secondaryText,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParticipantLeaveButton(
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    return SizedBox(
+      height: 48,
+      width: double.infinity,
+      child: Material(
+        color: TSXColors.surfaceBorder,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () async {
+            await ref
+                .read(roomLifecycleProvider.notifier)
+                .leaveRoom();
+
+            if (!context.mounted) return;
+
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              AppRouter.home,
+              (route) => false,
+            );
+          },
+          child: Center(
+            child: Text(
+              'Leave Room',
+              style: TSXTypography.labelMedium.copyWith(
+                color: TSXColors.primaryText,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorContent(
+    ApplicationState appState,
+    WidgetRef ref,
+  ) {
+    return Center(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: TSXColors.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: TSXColors.surfaceBorder,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: TSXColors.error,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Room Error',
+              style: TSXTypography.headlineMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              appState.message ??
+                  'Something went wrong with the room.',
+              textAlign: TextAlign.center,
+              style: TSXTypography.bodyMedium,
+            ),
+            const SizedBox(height: 20),
+            SMButton(
+              text: 'Leave Room',
+              variant: SMButtonVariant.tsxPrimary,
+              onPressed: () => ref
+                  .read(roomLifecycleProvider.notifier)
+                  .leaveRoom(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingContent(
+    ApplicationState appState,
+    String fallbackTitle,
+    String description,
+  ) {
+    return SizedBox(
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: 80,
+          horizontal: 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SMLoadingIndicator.tsx(
+              size: 48,
+            ),
+            const SizedBox(height: 18),
+            Text(
+              appState.message ?? fallbackTitle,
+              textAlign: TextAlign.center,
+              style: TSXTypography.headlineMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              description,
+              textAlign: TextAlign.center,
+              style: TSXTypography.bodyMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _notInRoomContent(
+    BuildContext context,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 70,
+        horizontal: 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 48,
+            color: TSXColors.warning,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Not in a Room',
+            style: TSXTypography.headlineMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'You are viewing the room dashboard, but no room session is active.',
+            textAlign: TextAlign.center,
+            style: TSXTypography.bodyMedium,
+          ),
+          const SizedBox(height: 20),
+          SMButton(
+            text: 'Go to Home',
+            icon: Icons.home,
+            variant: SMButtonVariant.tsxPrimary,
+            onPressed: () => Navigator.pushNamedAndRemoveUntil(
+              context,
+              AppRouter.home,
+              (route) => false,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorBanner(String error) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 11,
+      ),
+      decoration: BoxDecoration(
+        color: TSXColors.error.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: TSXColors.error.withValues(alpha: 0.30),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.error_outline_rounded,
+            color: TSXColors.error,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              error,
+              style: TextStyle(
+                color: TSXColors.error,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _participantStatus(
+    ApplicationState appState,
+    RoomLifecycleStateData lifecycleState,
   ) {
     switch (lifecycleState.lifecycleState) {
       case RoomLifecycleState.created:
         return 'Initializing…';
+
       case RoomLifecycleState.discoverable:
-        if (createState.status == CreateRoomFlowStatus.listening) {
-          return 'Waiting for participant to join…';
-        }
-        return 'Starting…';
+        return 'Waiting for participant to join…';
+
       case RoomLifecycleState.joining:
         return 'Joining room…';
+
       case RoomLifecycleState.ready:
-        final state = appState.state;
-        if (state == SMAppState.playing) return 'Audio sync active';
-        if (state == SMAppState.paused) return 'Audio sync paused';
-        if (state == SMAppState.ready) {
-          return 'Devices synchronized, ready for audio';
+        if (appState.state == SMAppState.playing) {
+          return 'Audio sync active';
         }
-        return 'Ready';
+
+        if (appState.state == SMAppState.paused) {
+          return 'Audio sync paused';
+        }
+
+        return 'Devices synchronized';
+
       case RoomLifecycleState.closed:
         return 'Room closed';
     }
   }
 
-  Widget _readyContent(
+  void _showInviteModal(
     BuildContext context,
-    WidgetRef ref,
-    ApplicationState appState,
     CreateRoomFlowState createState,
-    RoomLifecycleStateData lifecycleState,
-    CaptureUiStateData captureState,
-    int deviceCount,
-    bool participantJoined,
-    String roomStatusText,
-    String? screenError,
   ) {
-    final isHost = appState.isHost == true;
-    final joinCode = appState.joinCode ?? '';
-    final isValidCode = isValidRoomCode(joinCode);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Room identity
-        _roomIdentityHeader(
-          context,
-          appState,
-          createState,
-          lifecycleState,
-          roomStatusText,
-        ),
-        SizedBox(height: SMSpacing.xl),
-
-        // Error banner if any
-        if (screenError != null) ...[
-          _buildErrorBanner(screenError),
-          SizedBox(height: SMSpacing.lg),
-        ],
-
-        // Show join code for participant (confirmation only)
-        if (joinCode.isNotEmpty && !isHost) ...[
-          SMCard(
-            elevated: true,
-            padding: EdgeInsets.all(SMSpacing.xl),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.check_circle,
-                  size: SMDimensions.emptyIconSize * 0.7,
-                  color: SMColors.success,
-                ),
-                SizedBox(height: SMSpacing.lg),
-                Text(
-                  'Code Confirmed',
-                  style: SMTypography.heading.copyWith(
-                    color: SMColors.primaryText,
-                  ),
-                ),
-                SizedBox(height: SMSpacing.md),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SMSpacing.xl,
-                    vertical: SMSpacing.lg,
-                  ),
-                  decoration: BoxDecoration(
-                    color: SMColors.surfaceHigh,
-                    borderRadius: BorderRadius.circular(SMRadius.large),
-                    border: Border.all(
-                      color: SMColors.success.withValues(alpha: 0.5),
-                      width: 2,
-                    ),
-                  ),
-                  child: Text(
-                    isValidCode ? _formatCode(joinCode) : joinCode,
-                    style: SMTypography.display.copyWith(
-                      color: SMColors.primaryText,
-                      letterSpacing: 8,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                SizedBox(height: SMSpacing.md),
-                Text(
-                  'Both devices show the same code',
-                  style: SMTypography.caption.copyWith(
-                    color: SMColors.mutedText,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: SMSpacing.xl),
-        ],
-        // Session status card
-        SMCard(
-          elevated: true,
-          child: Column(
-            children: [
-              Icon(
-                Icons.check_circle,
-                size: SMDimensions.emptyIconSize,
-                color: SMColors.success,
-              ),
-              SizedBox(height: SMSpacing.lg),
-              Text(
-                'Devices Synchronized',
-                style: SMTypography.heading.copyWith(
-                  color: SMColors.primaryText,
-                ),
-              ),
-              SizedBox(height: SMSpacing.md),
-              Text(
-                'Devices are calibrated and ready. Open your media app and start playing audio to begin the synchronized session.',
-                textAlign: TextAlign.center,
-                style: SMTypography.body.copyWith(
-                  color: SMColors.secondaryText,
-                ),
-              ),
-              SizedBox(height: SMSpacing.lg),
-              const Text(
-                '[UI SCAFFOLDING — NO REAL CAPTURE DATA]',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: SMColors.warning,
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: SMSpacing.xl),
-        // Leave room button
-        SMButton(
-          text: 'Leave Room',
-          icon: Icons.logout,
-          variant: SMButtonVariant.danger,
-          onPressed: () => _showLeaveDialog(context),
-        ),
-        SizedBox(height: SMSpacing.xxl),
-      ],
-    );
-  }
-
-  Widget _sessionStatusContent(
-    BuildContext context,
-    WidgetRef ref,
-    ApplicationState appState,
-    CreateRoomFlowState createState,
-    RoomLifecycleStateData lifecycleState,
-    CaptureUiStateData captureState,
-    int deviceCount,
-    bool participantJoined,
-    String roomStatusText,
-    String? screenError,
-  ) {
-    final state = appState.state;
-    final isPlaying = state == SMAppState.playing;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Session status header
-        Row(
-          children: [
-            Icon(
-              Icons.graphic_eq,
-              size: SMDimensions.iconSize,
-              color: SMColors.soundmeshBlue,
-            ),
-            SizedBox(width: SMSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isPlaying
-                        ? 'Synchronized Audio Active'
-                        : 'Synchronized Audio Paused',
-                    style: SMTypography.largeTitle.copyWith(
-                      color: SMColors.primaryText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: SMSpacing.xl),
-
-        // Room identity
-        _roomIdentityHeader(
-          context,
-          appState,
-          createState,
-          lifecycleState,
-          roomStatusText,
-        ),
-        SizedBox(height: SMSpacing.xl),
-
-        // Error banner if any
-        if (screenError != null) ...[
-          _buildErrorBanner(screenError),
-          SizedBox(height: SMSpacing.lg),
-        ],
-
-        // Audio Share toggle (host only)
-        if (appState.isHost == true) ...[
-          AudioShareToggle(isHost: true),
-          SizedBox(height: SMSpacing.xl),
-        ],
-
-        // Session status card
-        SMCard(
-          elevated: true,
-          child: Column(
-            children: [
-              Text(
-                isPlaying
-                    ? 'External audio is being captured, synchronized, and played on all devices.'
-                    : 'The external media app has paused. Synchronization is maintained at the paused position.',
-                textAlign: TextAlign.center,
-                style: SMTypography.body.copyWith(
-                  color: SMColors.secondaryText,
-                ),
-              ),
-              SizedBox(height: SMSpacing.lg),
-              const Text(
-                '[UI SCAFFOLDING — NO REAL CAPTURE DATA]',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: SMColors.warning,
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: SMSpacing.xl),
-        // Leave room button
-        SMButton(
-          text: 'Leave Room',
-          variant: SMButtonVariant.secondary,
-          onPressed: () => _showLeaveDialog(context),
-        ),
-        SizedBox(height: SMSpacing.xxl),
-      ],
-    );
-  }
-
-  Widget _preparingContent(ApplicationState appState) {
-    return Column(
-      children: [
-        SMLoadingIndicator(size: SMDimensions.emptyIconSize * 0.8),
-        SizedBox(height: SMSpacing.lg),
-        Text(
-          appState.message ?? 'Preparing session…',
-          textAlign: TextAlign.center,
-          style: SMTypography.heading.copyWith(color: SMColors.primaryText),
-        ),
-        SizedBox(height: SMSpacing.md),
-        Text(
-          'Waiting for all devices to prepare for the synchronized session.',
-          textAlign: TextAlign.center,
-          style: SMTypography.body.copyWith(color: SMColors.secondaryText),
-        ),
-        SizedBox(height: SMSpacing.xxl),
-      ],
-    );
-  }
-
-  Widget _stoppingContent(ApplicationState appState) {
-    return Column(
-      children: [
-        SMLoadingIndicator(size: SMDimensions.emptyIconSize * 0.8),
-        SizedBox(height: SMSpacing.lg),
-        Text(
-          appState.message ?? 'Stopping session…',
-          textAlign: TextAlign.center,
-          style: SMTypography.heading.copyWith(color: SMColors.primaryText),
-        ),
-        SizedBox(height: SMSpacing.md),
-        Text(
-          'Winding down the synchronized session and releasing devices.',
-          textAlign: TextAlign.center,
-          style: SMTypography.body.copyWith(color: SMColors.secondaryText),
-        ),
-        SizedBox(height: SMSpacing.xxl),
-      ],
-    );
-  }
-
-  Widget _notInRoomContent(BuildContext context) {
-    return Column(
-      children: [
-        Icon(
-          Icons.warning,
-          size: SMDimensions.emptyIconSize,
-          color: SMColors.warning,
-        ),
-        SizedBox(height: SMSpacing.lg),
-        Text(
-          'Not in a Room',
-          style: SMTypography.heading.copyWith(color: SMColors.primaryText),
-        ),
-        SizedBox(height: SMSpacing.md),
-        Text(
-          'You are viewing the room dashboard, but no room session is active.',
-          textAlign: TextAlign.center,
-          style: SMTypography.body.copyWith(color: SMColors.secondaryText),
-        ),
-        SizedBox(height: SMSpacing.xl),
-        SMButton(
-          text: 'Go to Home',
-          icon: Icons.home,
-          variant: SMButtonVariant.primary,
-          onPressed: () => Navigator.pushNamedAndRemoveUntil(
-            context,
-            AppRouter.home,
-            (route) => false,
-          ),
-        ),
-        SizedBox(height: SMSpacing.xxl),
-      ],
-    );
-  }
-
-  void _showInviteModal(BuildContext context, CreateRoomFlowState createState) {
     final roomId = createState.roomId;
     final hostIp = createState.localIpAddress;
     final port = createState.port ?? 8765;
     final joinCode = createState.joinCode;
 
-    if (roomId == null || hostIp == null || joinCode == null) {
+    if (roomId == null ||
+        hostIp == null ||
+        joinCode == null ||
+        joinCode.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Room information not ready yet'),
+          content: Text(
+            'Room information not ready yet',
+          ),
           duration: Duration(seconds: 2),
         ),
       );
@@ -731,166 +837,533 @@ class RoomDashboardScreen extends ConsumerWidget {
     );
 
     final uriString = payload.toJoinUri();
+    var copied = false;
 
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: SMColors.surfaceHighest,
-        title: Text(
-          'Invite to Room',
-          style: SMTypography.title.copyWith(color: SMColors.primaryText),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Compact code display with copy button
-            Container(
-              padding: EdgeInsets.all(SMSpacing.md),
-              decoration: BoxDecoration(
-                color: SMColors.surfaceHigh,
-                borderRadius: BorderRadius.circular(SMRadius.medium),
-                border: Border.all(color: SMColors.outlineVariant),
+      barrierColor: Colors.black.withValues(alpha: 0.80),
+      builder: (dialogContext) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: 10,
+            sigmaY: 10,
+          ),
+          child: StatefulBuilder(
+            builder: (context, setModalState) {
+              return Dialog(
+                backgroundColor: TSXColors.surface,
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  side: BorderSide(
+                    color: TSXColors.surfaceBorder,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Scan to Join',
+                              style: TSXTypography.headlineMedium.copyWith(
+                                color: TSXColors.primaryText,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          _buildModalCloseButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        width: 160,
+                        height: 160,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.14),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: QrImageView(
+                          data: uriString,
+                          version: QrVersions.auto,
+                          backgroundColor: Colors.white,
+                          eyeStyle: const QrEyeStyle(
+                            eyeShape: QrEyeShape.square,
+                            color: Colors.black,
+                          ),
+                          dataModuleStyle: const QrDataModuleStyle(
+                            dataModuleShape: QrDataModuleShape.square,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () async {
+                          await Clipboard.setData(
+                            ClipboardData(
+                              text: joinCode,
+                            ),
+                          );
+
+                          if (!context.mounted) return;
+
+                          setModalState(() {
+                            copied = true;
+                          });
+
+                          Future<void>.delayed(
+                            const Duration(seconds: 2),
+                            () {
+                              if (context.mounted) {
+                                setModalState(() {
+                                  copied = false;
+                                });
+                              }
+                            },
+                          );
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 13,
+                          ),
+                          decoration: BoxDecoration(
+                            color: TSXColors.background,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: TSXColors.accent,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: TSXColors.accent.withValues(
+                                  alpha: 0.10,
+                                ),
+                                blurRadius: 12,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            formatRoomCode(joinCode),
+                            textAlign: TextAlign.center,
+                            style: TSXTypography.headlineMedium.copyWith(
+                              color: TSXColors.primaryText,
+                              fontFamily: 'monospace',
+                              letterSpacing: 4,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: Material(
+                          color: TSXColors.accent,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () async {
+                              await Clipboard.setData(
+                                ClipboardData(
+                                  text: joinCode,
+                                ),
+                              );
+
+                              if (!context.mounted) return;
+
+                              setModalState(() {
+                                copied = true;
+                              });
+
+                              Future<void>.delayed(
+                                const Duration(seconds: 2),
+                                () {
+                                  if (context.mounted) {
+                                    setModalState(() {
+                                      copied = false;
+                                    });
+                                  }
+                                },
+                              );
+                            },
+                            child: Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  copied
+                                      ? Icons.check
+                                      : Icons.copy,
+                                  size: 16,
+                                  color: TSXColors.accentOn,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  copied
+                                      ? 'Code Copied!'
+                                      : 'Copy Room Code',
+                                  style: TSXTypography.labelMedium.copyWith(
+                                    color: TSXColors.accentOn,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEndRoomModal(
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.80),
+      builder: (dialogContext) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: 10,
+            sigmaY: 10,
+          ),
+          child: Dialog(
+            backgroundColor: TSXColors.surface,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(
+                color: TSXColors.surfaceBorder,
               ),
-              child: Row(
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Text(
-                      _formatCode(joinCode),
-                      style: SMTypography.heading.copyWith(
-                        color: SMColors.primaryText,
-                        letterSpacing: 4,
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: TSXColors.rose.withValues(alpha: 0.10),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: TSXColors.rose.withValues(alpha: 0.20),
                       ),
                     ),
+                    child: Icon(
+                      Icons.warning_amber_rounded,
+                      size: 24,
+                      color: TSXColors.rose,
+                    ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.copy, size: 20),
-                    color: SMColors.soundmeshBlue,
-                    tooltip: 'Copy code',
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: joinCode));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Room code copied to clipboard'),
-                          duration: Duration(seconds: 2),
+                  const SizedBox(height: 14),
+                  Text(
+                    'End Session?',
+                    style: TSXTypography.titleLarge.copyWith(
+                      color: TSXColors.primaryText,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'This will immediately disconnect all active listeners and close the audio stream.',
+                    textAlign: TextAlign.center,
+                    style: TSXTypography.caption.copyWith(
+                      color: TSXColors.secondaryText,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 42,
+                          child: Material(
+                            color: TSXColors.surfaceBorder,
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () =>
+                                  Navigator.of(dialogContext).pop(),
+                              child: Center(
+                                child: Text(
+                                  'Cancel',
+                                  style:
+                                      TSXTypography.labelMedium.copyWith(
+                                    color: TSXColors.primaryText,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SizedBox(
+                          height: 42,
+                          child: Material(
+                            color: TSXColors.rose,
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              borderRadius:
+                                  BorderRadius.circular(12),
+                              onTap: () {
+                                Navigator.of(dialogContext).pop();
+
+                                ref
+                                    .read(
+                                      roomLifecycleProvider.notifier,
+                                    )
+                                    .closeRoom();
+                              },
+                              child: Center(
+                                child: Text(
+                                  'End Room',
+                                  style:
+                                      TSXTypography.labelMedium.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: SMSpacing.lg),
-            // QR code
-            SizedBox(
-              width: 240.0,
-              height: 240.0,
-              child: QrImageView(
-                data: uriString,
-                version: QrVersions.auto,
-                size: 240.0,
-                backgroundColor: Colors.white,
-                eyeStyle: QrEyeStyle(
-                  eyeShape: QrEyeShape.square,
-                  color: SMColors.background,
-                ),
-                dataModuleStyle: QrDataModuleStyle(
-                  dataModuleShape: QrDataModuleShape.square,
-                  color: SMColors.background,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildModalCloseButton({
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: Material(
+        color: TSXColors.background,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: Icon(
+            Icons.close,
+            size: 16,
+            color: TSXColors.secondaryText,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HostEndedRoomModal extends ConsumerWidget {
+  const _HostEndedRoomModal();
+
+  @override
+  Widget build(
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    return PopScope(
+      canPop: false,
+      child: Material(
+        color: TSXColors.overlayScrim,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+            ),
+            child: _buildModal(
+              context,
+              icon: Icons.info_outline,
+              iconColor: TSXColors.warning,
+              title: 'Host Ended the Room',
+              message:
+                  'The host has ended the synchronized session. You have been disconnected from the room.',
+              buttonText: 'Back to Home',
+              onPressed: () {
+                ref
+                    .read(
+                      roomLifecycleProvider.notifier,
+                    )
+                    .leaveRoom();
+
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  AppRouter.home,
+                  (route) => false,
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _YouEndedRoomModal extends ConsumerWidget {
+  const _YouEndedRoomModal();
+
+  @override
+  Widget build(
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    return PopScope(
+      canPop: false,
+      child: Material(
+        color: TSXColors.overlayScrim,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+            ),
+            child: _buildModal(
+              context,
+              icon: Icons.check_circle_outline,
+              iconColor: TSXColors.success,
+              title: 'You Ended the Room',
+              message:
+                  'The synchronized session has been ended for all devices.',
+              buttonText: 'Back to Home',
+              onPressed: () {
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  AppRouter.home,
+                  (route) => false,
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Widget _buildModal(
+  BuildContext context, {
+  required IconData icon,
+  required Color iconColor,
+  required String title,
+  required String message,
+  required String buttonText,
+  required VoidCallback onPressed,
+}) {
+  return Container(
+    width: double.infinity,
+    constraints: const BoxConstraints(
+      maxWidth: 320,
+    ),
+    padding: const EdgeInsets.all(24),
+    decoration: BoxDecoration(
+      color: TSXColors.surface,
+      borderRadius: BorderRadius.circular(24),
+      border: Border.all(
+        color: TSXColors.surfaceBorder,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.35),
+          blurRadius: 30,
+          spreadRadius: 2,
+        ),
+      ],
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 32,
+          color: iconColor,
+        ),
+        const SizedBox(height: 14),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: TSXTypography.headlineMedium.copyWith(
+            color: TSXColors.primaryText,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: TSXTypography.bodyMedium.copyWith(
+            color: TSXColors.secondaryText,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 44,
+          child: Material(
+            color: TSXColors.accent,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: onPressed,
+              child: Center(
+                child: Text(
+                  buttonText,
+                  style: TSXTypography.labelMedium.copyWith(
+                    color: TSXColors.accentOn,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Scan with SoundMesh to join',
-              style: TextStyle(color: SMColors.secondaryText, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Close',
-              style: TextStyle(color: SMColors.mutedText),
-            ),
           ),
-        ],
-      ),
-    );
-  }
-
-  void _showLeaveDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: SMColors.surfaceHighest,
-        title: Text(
-          'Leave Room?',
-          style: SMTypography.title.copyWith(color: SMColors.primaryText),
         ),
-        content: Text(
-          'The synchronized session will end for all connected devices.',
-          style: SMTypography.body.copyWith(color: SMColors.secondaryText),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: SMColors.secondaryText),
-            ),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: SMColors.error),
-            onPressed: () {
-              Navigator.of(context).pop();
-              StateProvider.of(context).leaveRoom();
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                AppRouter.home,
-                (route) => false,
-              );
-            },
-            child: const Text('Leave Room'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatCode(String code) {
-    if (code.length == 6) {
-      return '${code.substring(0, 3)}-${code.substring(3, 6)}';
-    }
-    return code;
-  }
-
-  Widget _buildErrorBanner(String error) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: SMColors.error.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(SMRadius.medium),
-        border: Border.all(
-          color: SMColors.error.withValues(alpha: 0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline_rounded, color: SMColors.error, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              error,
-              style: TextStyle(color: SMColors.error, fontSize: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
 }

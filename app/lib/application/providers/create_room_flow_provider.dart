@@ -87,7 +87,9 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
     _stateSubscription = _networkRepository.connectionStateStream.listen((
       connState,
     ) {
-      debugPrint('[UILifecycle] CreateRoomFlow: connectionState change -> $connState (current status: ${state.status})');
+      if (kDebugMode) {
+        debugPrint('[UILifecycle] CreateRoomFlow: connectionState change -> $connState (current status: ${state.status})');
+      }
       state = state.copyWith(connectionState: connState);
       _handleConnectionStateChange(connState);
     });
@@ -100,7 +102,9 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
 
     _connectionErrorSubscription = _networkRepository.connectionErrorStream.listen(
       (error) {
-        debugPrint('[UILifecycle] CreateRoomFlow: connectionError -> $error');
+        if (kDebugMode) {
+          debugPrint('[UILifecycle] CreateRoomFlow: connectionError -> $error');
+        }
         _handleConnectionError(error);
       },
     );
@@ -322,6 +326,10 @@ class CreateRoomFlowNotifier extends StateNotifier<CreateRoomFlowState> {
         'CreateRoomFlow: startHosting completed',
         name: 'SoundMesh.CreateRoomFlow',
       );
+      // Reset host-ended flag from previous room so new room starts clean
+      if (hostingSuccess && ref != null) {
+        ref.read(roomLifecycleProvider.notifier).resetForNewRoom();
+      }
     } finally {
       _createRoomInProgress = false;
     }

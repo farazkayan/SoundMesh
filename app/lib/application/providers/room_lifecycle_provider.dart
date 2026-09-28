@@ -4,8 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:soundmesh/application/repositories/network_repository.dart';
 import 'package:soundmesh/application/room/room_lifecycle.dart';
 import 'package:soundmesh/application/protocol/protocol_constants.dart';
+import 'package:soundmesh/application/protocol/protocol_message.dart';
 import 'package:soundmesh/application/providers/sync_provider.dart';
+import 'package:soundmesh/application/providers/timeline_provider.dart';
 import 'package:soundmesh/application/providers/discovery_provider.dart';
+import 'package:soundmesh/application/providers/create_room_flow_provider.dart';
 import 'package:soundmesh/infrastructure/discovery/discovery_manager.dart';
 
 class RoomLifecycleStateData {
@@ -16,6 +19,8 @@ class RoomLifecycleStateData {
   final bool participantJoined;
   final String? closedReason;
   final String? errorMessage;
+  final bool hostEndedRoom;
+  final List<RoomMember> members;
 
   const RoomLifecycleStateData({
     this.lifecycleState = RoomLifecycleState.created,
@@ -25,6 +30,8 @@ class RoomLifecycleStateData {
     this.participantJoined = false,
     this.closedReason,
     this.errorMessage,
+    this.hostEndedRoom = false,
+    this.members = const [],
   });
 
   RoomLifecycleStateData copyWith({
@@ -35,6 +42,8 @@ class RoomLifecycleStateData {
     bool? participantJoined,
     String? closedReason,
     String? errorMessage,
+    bool? hostEndedRoom,
+    List<RoomMember>? members,
     bool clearErrorMessage = false,
   }) {
     return RoomLifecycleStateData(
@@ -45,6 +54,8 @@ class RoomLifecycleStateData {
       participantJoined: participantJoined ?? this.participantJoined,
       closedReason: closedReason ?? this.closedReason,
       errorMessage: clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
+      hostEndedRoom: hostEndedRoom ?? this.hostEndedRoom,
+      members: members ?? this.members,
     );
   }
 }
@@ -61,9 +72,13 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
   RoomLifecycleNotifier(this._networkRepository, this._discoveryManager, this._ref) : super(const RoomLifecycleStateData()) {
     // Watch sync lifecycle to ensure sync repository is active when network is connected
     _ref.watch(syncLifecycleProvider);
+    // Watch timeline scheduler to enable Phase 13 scheduling
+    _ref.watch(timelineSchedulerProvider);
 
     _lifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((lifecycleState) {
-      debugPrint('[UILifecycle] RoomLifecycle: roomLifecycleState change -> $lifecycleState');
+      if (kDebugMode) {
+        debugPrint('[UILifecycle] RoomLifecycle: roomLifecycleState change -> $lifecycleState');
+      }
       state = state.copyWith(lifecycleState: lifecycleState);
     });
 
@@ -71,7 +86,11 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
       final messageType = ProtocolMessageTypeX.fromWireValue(message.messageType);
       if (messageType == ProtocolMessageType.roomClosed) {
         final reason = message.payload?['reason'] as String?;
-        state = state.copyWith(closedReason: reason ?? 'Room closed');
+        final isHostEnded = reason == 'Host ended the room';
+        state = state.copyWith(
+          closedReason: reason ?? 'Room closed',
+          hostEndedRoom: isHostEnded,
+        );
       } else if (messageType == ProtocolMessageType.joinAccepted) {
         state = state.copyWith(
           sessionId: _networkRepository.sessionId,
@@ -87,11 +106,19 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
       } else if (messageType == ProtocolMessageType.joinRequest) {
         // Host side: JOIN_REQUEST received means a participant is joining; sync participant state
         _syncRoleAndParticipantState();
+      } else if (messageType == ProtocolMessageType.roomState) {
+        // ROOM_STATE: update membership list from host
+        _handleRoomState(message);
+      } else if (messageType == ProtocolMessageType.participantLeft) {
+        // PARTICIPANT_LEFT: remove participant from membership
+        _handleParticipantLeft(message);
       }
     });
 
     _connectionStateSubscription = _networkRepository.connectionStateStream.listen((connState) {
-      debugPrint('[UILifecycle] RoomLifecycle: connectionState change -> $connState');
+      if (kDebugMode) {
+        debugPrint('[UILifecycle] RoomLifecycle: connectionState change -> $connState');
+      }
       if (connState == NetworkConnectionState.ready) {
         state = state.copyWith(
           sessionId: _networkRepository.sessionId,
@@ -100,8 +127,13 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
         // Connection ready: both role and participantJoined are now stable
         _syncRoleAndParticipantState();
       } else if (connState == NetworkConnectionState.disconnected) {
-        // Disconnected: reset participantJoined (role will be reset on next connect/host)
-        state = state.copyWith(participantJoined: false);
+        // Disconnected: reset participantJoined and room/session IDs (role will be reset on next connect/host)
+        state = state.copyWith(
+          participantJoined: false,
+          roomId: null,
+          sessionId: null,
+          members: [], // Clear membership on full disconnect
+        );
       }
     });
 
@@ -111,6 +143,50 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
 
     // Initial sync after subscriptions are established
     _syncRoleAndParticipantState();
+  }
+
+  /// Handle ROOM_STATE message: update membership list
+  void _handleRoomState(ProtocolMessage message) {
+    final membersPayload = message.payload?['members'] as List<dynamic>?;
+    if (membersPayload == null) {
+      debugPrint('[UILifecycle] ROOM_STATE missing members, ignoring');
+      return;
+    }
+    debugPrint('[UILifecycle] Received ROOM_STATE with ${membersPayload.length} members');
+    final members = <RoomMember>[];
+    for (final member in membersPayload) {
+      final pid = member['participantId'] as String?;
+      final roleStr = member['role'] as String?;
+      final displayName = member['displayName'] as String?;
+      if (pid != null && roleStr != null) {
+        final role = roleStr == 'HOST' ? RoomRole.host : RoomRole.participant;
+        members.add(RoomMember(
+          participantId: pid,
+          displayName: displayName,
+          role: role,
+          joinedAt: DateTime.now(),
+        ));
+      }
+    }
+    // Update membership list
+    state = state.copyWith(members: members, participantJoined: members.any((m) => m.role == RoomRole.participant));
+    debugPrint('[UILifecycle] Updated membership: ${members.map((m) => "${m.participantId}(${m.role.name})").join(", ")}');
+  }
+
+  /// Handle PARTICIPANT_LEFT message: remove participant from membership
+  void _handleParticipantLeft(ProtocolMessage message) {
+    final participantId = message.payload?['participantId'] as String?;
+    if (participantId == null) {
+      debugPrint('[UILifecycle] PARTICIPANT_LEFT missing participantId, ignoring');
+      return;
+    }
+    debugPrint('[UILifecycle] Received PARTICIPANT_LEFT for $participantId');
+    final updatedMembers = state.members.where((m) => m.participantId != participantId).toList();
+    state = state.copyWith(
+      members: updatedMembers,
+      participantJoined: updatedMembers.any((m) => m.role == RoomRole.participant),
+    );
+    debugPrint('[UILifecycle] Updated membership after leave: ${updatedMembers.map((m) => "${m.participantId}(${m.role.name})").join(", ")}');
   }
 
   /// Reads current role and participantJoined from NetworkRepository and updates state.
@@ -132,6 +208,11 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
     _networkRepository.setParticipantDisplayName(displayName);
   }
 
+  /// Reset host-ended flag when starting a new room after intentional close.
+  void resetForNewRoom() {
+    state = state.copyWith(hostEndedRoom: false, members: []);
+  }
+
   Future<void> closeRoom() async {
     debugPrint('[UILifecycle] RoomLifecycle: closeRoom() called');
     await _networkRepository.closeRoom();
@@ -140,7 +221,10 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
     state = state.copyWith(
       lifecycleState: RoomLifecycleState.closed,
       closedReason: _networkRepository.roomClosedReason ?? 'Room ended',
+      hostEndedRoom: true,
     );
+    // Reset the create room flow so the host can create a new room immediately
+    _ref.read(createRoomFlowProvider.notifier).reset();
   }
 
   Future<void> leaveRoom() async {
@@ -149,6 +233,7 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
     state = state.copyWith(
       lifecycleState: RoomLifecycleState.closed,
       closedReason: _networkRepository.roomClosedReason ?? 'You left the room',
+      hostEndedRoom: false,
     );
   }
 

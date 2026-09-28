@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
-import 'package:soundmesh/core/design_system/index.dart';
+import 'package:soundmesh/core/router/app_router.dart';
 import 'package:soundmesh/presentation/components/index.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
+import 'package:soundmesh/application/room/room_lifecycle.dart';
 import 'package:soundmesh/presentation/screens/debug_screen.dart';
 
 class RoomDevicesScreen extends ConsumerWidget {
@@ -13,83 +14,113 @@ class RoomDevicesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(applicationStateProvider);
     final lifecycleState = ref.watch(roomLifecycleProvider);
-    final participantJoined = lifecycleState.participantJoined;
     final isHost = appState.isHost == true;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Devices',
-          style: SMTypography.heading.copyWith(color: SMColors.primaryText),
-        ),
-        backgroundColor: SMColors.background,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.bug_report, color: SMColors.primaryText),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DebugScreen()),
-              );
-            },
-            tooltip: 'Debug / Diagnostics',
-          ),
-        ],
-      ),
+      backgroundColor: TSXColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: SMSpacing.xl,
-            vertical: SMSpacing.xl,
-          ),
-          child: _buildContent(
-            context,
-            appState,
-            lifecycleState,
-            participantJoined,
-            isHost,
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isTablet = constraints.maxWidth >= 600;
+            return Stack(
+              children: [
+                const RadialGradientBackdrop(),
+                SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: Center(
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth: isTablet
+                              ? (constraints.maxWidth * 0.8).clamp(520.0, 720.0)
+                              : double.infinity,
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 32 : TSXSpacing.xl,
+                          vertical: TSXSpacing.xl,
+                        ),
+                        child: _buildDevicesContent(
+                          context,
+                          ref,
+                          appState,
+                          lifecycleState,
+                          isHost,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Floating navigation dock anchored at bottom
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 16),
+                      child: FloatingGlassDock(
+                        currentIndex: 1, // Devices tab active
+                        onTap: (index) {
+                          if (index == 0) {
+                            Navigator.pushReplacementNamed(context, AppRouter.roomDashboard);
+                          }
+                        },
+                        isTablet: isTablet,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
+}
 
-  Widget _buildContent(
+  Widget _buildDevicesContent(
     BuildContext context,
+    WidgetRef ref,
     ApplicationState appState,
     RoomLifecycleStateData lifecycleState,
-    bool participantJoined,
+    bool isHost,
+  ) {
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+
+    return Column(
+      children: [
+        _buildDevicesContentInner(context, ref, appState, lifecycleState, isHost),
+        // Space for the floating dock at bottom
+        SizedBox(height: safeBottom > 0 ? safeBottom + 72 : 80),
+      ],
+    );
+  }
+
+  Widget _buildDevicesContentInner(
+    BuildContext context,
+    WidgetRef ref,
+    ApplicationState appState,
+    RoomLifecycleStateData lifecycleState,
     bool isHost,
   ) {
     final state = appState.state;
 
     switch (state) {
       case SMAppState.error:
-        return Column(
-          children: [
-            SMEmptyState.error(
-              title: 'Room Error',
-              message: appState.message ?? 'Something went wrong.',
-              icon: Icons.error_outline,
-              onRetry: () => StateProvider.of(context).leaveRoom(),
-            ),
-            SizedBox(height: SMSpacing.xxl),
-          ],
-        );
+        return _buildErrorContent(appState, ref);
 
       case SMAppState.preparing:
-        return _preparingContent(context, appState);
+        return _preparingContent(context, ref, appState);
 
       case SMAppState.ready:
       case SMAppState.playing:
       case SMAppState.paused:
-        return _devicesContent(
-          context,
-          appState,
-          lifecycleState,
-          participantJoined,
-          isHost,
-        );
+        return _devicesContent(context, appState, lifecycleState, isHost);
 
       case SMAppState.stopping:
         return _stoppingContent(appState);
@@ -98,138 +129,170 @@ class RoomDevicesScreen extends ConsumerWidget {
       case SMAppState.idle:
       case SMAppState.creatingRoom:
       case SMAppState.joiningRoom:
-        return _devicesContent(
-          context,
-          appState,
-          lifecycleState,
-          participantJoined,
-          isHost,
-        );
+        return _devicesContent(context, appState, lifecycleState, isHost);
     }
+  }
+
+  Widget _buildErrorContent(ApplicationState appState, WidgetRef ref) {
+    return Expanded(
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SMCard.tsx(
+              child: Column(
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: TSXColors.error),
+                  SizedBox(height: TSXSpacing.lg),
+                  Text('Room Error', style: TSXTypography.headlineMedium),
+                  SizedBox(height: TSXSpacing.md),
+                  Text(appState.message ?? 'Something went wrong.', style: TSXTypography.bodyMedium, textAlign: TextAlign.center),
+                  SizedBox(height: TSXSpacing.xl),
+                  SMButton(text: 'Leave Room', variant: SMButtonVariant.tsxPrimary, onPressed: () => ref.read(roomLifecycleProvider.notifier).leaveRoom()),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _devicesContent(
     BuildContext context,
     ApplicationState appState,
     RoomLifecycleStateData lifecycleState,
-    bool participantJoined,
     bool isHost,
   ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Devices header
-        Text(
-          'Devices',
-          style: SMTypography.largeTitle.copyWith(color: SMColors.primaryText),
-        ),
-        SizedBox(height: SMSpacing.md),
-        Text(
-          'Connected devices in this room.',
-          style: SMTypography.body.copyWith(color: SMColors.secondaryText),
-        ),
-        SizedBox(height: SMSpacing.xl),
+    final members = lifecycleState.members;
 
-        // Device list (names + role only — no per-device state available)
-        _buildDeviceListCard(participantJoined, isHost),
-        SizedBox(height: SMSpacing.xxl),
-      ],
-    );
-  }
-
-  Widget _buildDeviceListCard(bool participantJoined, bool isHost) {
-    return SMCard(
-      elevated: true,
+    return Expanded(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Devices',
-            style: SMTypography.label.copyWith(color: SMColors.secondaryText),
+          // Top Header Bar
+          Row(
+            children: [
+              Text('Devices', style: TSXTypography.displayLarge),
+              const Spacer(),
+              IconButton(
+                icon: Icon(Icons.bug_report, color: TSXColors.primaryText),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DebugScreen())),
+                tooltip: 'Debug / Diagnostics',
+              ),
+            ],
           ),
-          SizedBox(height: SMSpacing.md),
-          DeviceRow(
-            name: isHost ? 'This Device (Host)' : 'This Device (Participant)',
-            role: isHost ? 'HOST' : 'PARTICIPANT',
-            roleColor: isHost ? SMColors.soundmeshBlue : SMColors.secondaryText,
-            isCurrent: true,
-          ),
-          if (participantJoined) ...[
-            Divider(color: SMColors.divider, height: SMSpacing.lg),
-            DeviceRow(
-              name: 'Participant',
-              role: 'PARTICIPANT',
-              roleColor: SMColors.secondaryText,
-              isCurrent: false,
+          SizedBox(height: TSXSpacing.md),
+          Text('Connected devices in this room.', style: TSXTypography.bodyMedium),
+          SizedBox(height: TSXSpacing.xl),
+
+          // Main Devices Card
+          Expanded(
+            child: SMCard.tsx(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Devices', style: TSXTypography.metadata),
+                  SizedBox(height: TSXSpacing.md),
+                  ..._buildDeviceRows(members, isHost),
+                  SizedBox(height: TSXSpacing.sm),
+                  if (members.where((m) => m.role == RoomRole.participant).isEmpty && isHost) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.hourglass_empty, size: 16, color: TSXColors.warning),
+                        SizedBox(width: TSXSpacing.sm),
+                        Text('Waiting for participants to join…', style: TSXTypography.bodyMedium.copyWith(color: TSXColors.warning)),
+                      ],
+                    ),
+                  ],
+                  const Spacer(),
+                  Text('Per-device connection, audio, sync, and error state not yet available', style: TSXTypography.caption),
+                ],
+              ),
             ),
-          ] else if (isHost) ...[
-            Divider(color: SMColors.divider, height: SMSpacing.lg),
-            Row(
-              children: [
-                Icon(Icons.hourglass_empty, size: 16, color: SMColors.warning),
-                SizedBox(width: SMSpacing.sm),
-                Text(
-                  'Waiting for participant to join…',
-                  style: SMTypography.body.copyWith(color: SMColors.warning),
-                ),
-              ],
-            ),
-          ],
-          SizedBox(height: SMSpacing.sm),
-          Text(
-            'Per-device connection, audio, sync, and error state not yet available',
-            style: SMTypography.caption.copyWith(color: SMColors.mutedText),
           ),
         ],
       ),
     );
   }
 
-  Widget _preparingContent(BuildContext context, ApplicationState appState) {
-    return Column(
-      children: [
-        SMLoadingIndicator(size: SMDimensions.emptyIconSize * 0.8),
-        SizedBox(height: SMSpacing.lg),
-        Text(
-          appState.message ?? 'Preparing devices…',
-          textAlign: TextAlign.center,
-          style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+  List<Widget> _buildDeviceRows(List<RoomMember> members, bool isHost) {
+    final rows = <Widget>[];
+    final participantMembers = members.where((m) => m.role == RoomRole.participant).toList();
+
+    // Host row
+    if (isHost) {
+      rows.add(DeviceRow.tsx(
+        name: 'This Device (Host)',
+        role: 'HOST',
+        roleColor: TSXColors.accent,
+        isCurrent: true,
+      ));
+    }
+
+    // Participant rows
+    for (int i = 0; i < participantMembers.length; i++) {
+      final member = participantMembers[i];
+      if (i > 0) {
+        rows.add(Divider(color: TSXColors.surfaceBorder, height: TSXSpacing.lg));
+      }
+      rows.add(DeviceRow.tsx(
+        name: member.displayName ?? 'Participant ${i + 1}',
+        role: 'PARTICIPANT',
+        roleColor: TSXColors.secondaryText,
+        isCurrent: false,
+      ));
+    }
+
+    if (participantMembers.isEmpty && isHost) {
+      if (rows.isNotEmpty) {
+        rows.add(Divider(color: TSXColors.surfaceBorder, height: TSXSpacing.lg));
+      }
+      rows.add(Row(
+        children: [
+          Icon(Icons.hourglass_empty, size: 16, color: TSXColors.warning),
+          SizedBox(width: TSXSpacing.sm),
+          Text('Waiting for participants to join…', style: TSXTypography.bodyMedium.copyWith(color: TSXColors.warning)),
+        ],
+      ));
+    }
+
+    return rows;
+  }
+
+  Widget _preparingContent(BuildContext context, WidgetRef ref, ApplicationState appState) {
+    return Expanded(
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SMLoadingIndicator.tsx(size: 48),
+            SizedBox(height: TSXSpacing.lg),
+            Text(appState.message ?? 'Preparing devices…', style: TSXTypography.headlineMedium, textAlign: TextAlign.center),
+            SizedBox(height: TSXSpacing.md),
+            Text('Waiting for all devices to prepare for synchronized session.', style: TSXTypography.bodyMedium, textAlign: TextAlign.center),
+            SizedBox(height: TSXSpacing.xl),
+            SMButton(text: 'Back to Room', variant: SMButtonVariant.tsxSecondary, onPressed: () => ref.read(roomLifecycleProvider.notifier).leaveRoom()),
+          ],
         ),
-        SizedBox(height: SMSpacing.md),
-        Text(
-          'Waiting for all devices to prepare for synchronized session.',
-          textAlign: TextAlign.center,
-          style: SMTypography.body.copyWith(color: SMColors.secondaryText),
-        ),
-        SizedBox(height: SMSpacing.xl),
-        SMButton(
-          text: 'Back to Room',
-          variant: SMButtonVariant.secondary,
-          onPressed: () => StateProvider.of(context).leaveRoom(),
-        ),
-        SizedBox(height: SMSpacing.xxl),
-      ],
+      ),
     );
   }
 
   Widget _stoppingContent(ApplicationState appState) {
-    return Column(
-      children: [
-        SMLoadingIndicator(size: SMDimensions.emptyIconSize * 0.8),
-        SizedBox(height: SMSpacing.lg),
-        Text(
-          appState.message ?? 'Stopping…',
-          textAlign: TextAlign.center,
-          style: SMTypography.heading.copyWith(color: SMColors.primaryText),
+    return Expanded(
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SMLoadingIndicator.tsx(size: 48),
+            SizedBox(height: TSXSpacing.lg),
+            Text(appState.message ?? 'Stopping…', style: TSXTypography.headlineMedium, textAlign: TextAlign.center),
+            SizedBox(height: TSXSpacing.md),
+            Text('Wrapping up calibration and releasing devices.', style: TSXTypography.bodyMedium, textAlign: TextAlign.center),
+          ],
         ),
-        SizedBox(height: SMSpacing.md),
-        Text(
-          'Wrapping up calibration and releasing devices.',
-          textAlign: TextAlign.center,
-          style: SMTypography.body.copyWith(color: SMColors.secondaryText),
-        ),
-        SizedBox(height: SMSpacing.xxl),
-      ],
+      ),
     );
   }
-}
+

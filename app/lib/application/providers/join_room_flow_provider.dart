@@ -79,7 +79,9 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
   JoinRoomFlowNotifier(this._networkRepository)
       : super(const JoinRoomFlowState()) {
     _stateSubscription = _networkRepository.connectionStateStream.listen((connState) {
-      debugPrint('[UILifecycle] JoinRoomFlow: connectionState change -> $connState (current status: ${state.status})');
+      if (kDebugMode) {
+        debugPrint('[UILifecycle] JoinRoomFlow: connectionState change -> $connState (current status: ${state.status})');
+      }
       state = state.copyWith(connectionState: connState);
       _handleConnectionStateChange(connState);
     });
@@ -92,7 +94,9 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
 
     _connectionErrorSubscription = _networkRepository.connectionErrorStream.listen(
       (error) {
-        debugPrint('[UILifecycle] JoinRoomFlow: connectionError -> $error');
+        if (kDebugMode) {
+          debugPrint('[UILifecycle] JoinRoomFlow: connectionError -> $error');
+        }
         _handleConnectionError(error);
       },
     );
@@ -100,7 +104,9 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
     _roomLifecycleSubscription = _networkRepository.roomLifecycleStateStream.listen((
       lifecycleState,
     ) {
-      debugPrint('[UILifecycle] JoinRoomFlow: roomLifecycleState change -> $lifecycleState (current status: ${state.status})');
+      if (kDebugMode) {
+        debugPrint('[UILifecycle] JoinRoomFlow: roomLifecycleState change -> $lifecycleState (current status: ${state.status})');
+      }
       state = state.copyWith(roomLifecycleState: lifecycleState);
       _handleRoomLifecycleStateChange(lifecycleState);
     });

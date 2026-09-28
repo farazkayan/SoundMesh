@@ -44,11 +44,20 @@ dependencies:
   # QR code scanning for participant side
   mobile_scanner: ^7.4.2
 
-  # RevenueCat for in-app purchases
-  purchases_flutter: ^10.0.0
+  # RevenueCat for in-app purchases (vendored with forceAllowTestStoreInReleaseBuilds fix)
+  purchases_flutter:
+    path: third_party/purchases_flutter
 
   # Local storage for user preferences
   shared_preferences: ^2.2.2
+
+  # Google Fonts for Plus Jakarta Sans (TSX design)
+  google_fonts: ^6.2.1
+
+  
+
+  # Confetti animation for TipModal
+  confetti: ^0.7.0
 
 dev_dependencies:
   flutter_test:

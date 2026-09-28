@@ -38,8 +38,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(CreateRoomScreen), findsOneWidget);
-      expect(find.byType(HomeScreen), findsNothing); // HomeScreen should not be visible (covered)
-      // The title "Create Room" should be visible in CreateRoomScreen
+      expect(find.byType(HomeScreen), findsNothing);
       expect(find.text('Create Room'), findsAtLeastNWidgets(1));
     });
 
@@ -58,9 +57,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(JoinRoomScreen), findsOneWidget);
-      expect(find.byType(HomeScreen), findsNothing); // HomeScreen should not be visible (covered)
-      // The title "Join a Room" should be visible in JoinRoomScreen
-      expect(find.text('Join a Room'), findsAtLeastNWidgets(1));
+      expect(find.byType(HomeScreen), findsNothing);
+      expect(find.text('Connect to a Room'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('renders SoundMesh branding', (WidgetTester tester) async {
