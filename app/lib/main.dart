@@ -30,13 +30,16 @@ class SoundMeshApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return MaterialApp(
-      title: 'SoundMesh',
-      debugShowCheckedModeBanner: false,
-      theme: SoundMeshTheme.darkTheme,
-      navigatorKey: navigatorKey,
-      initialRoute: AppRouter.home,
-      onGenerateRoute: AppRouter.onGenerateRoute,
+    return DefaultTextStyle(
+      style: const TextStyle(decoration: TextDecoration.none),
+      child: MaterialApp(
+        title: 'SoundMesh',
+        debugShowCheckedModeBanner: false,
+        theme: SoundMeshTheme.darkTheme,
+        navigatorKey: navigatorKey,
+        initialRoute: AppRouter.home,
+        onGenerateRoute: AppRouter.onGenerateRoute,
+      ),
     );
   }
 }

@@ -12,9 +12,11 @@ class RoomCreatedScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final createState = ref.watch(createRoomFlowProvider);
+
     final roomName = createState.roomName.isNotEmpty
         ? createState.roomName.toUpperCase()
         : 'LIVING ROOM HUB';
+
     final joinCode = createState.joinCode ?? '256 - 093';
 
     return Scaffold(
@@ -25,36 +27,49 @@ class RoomCreatedScreen extends ConsumerWidget {
             // Top Navigation Bar - h-14 (56px)
             _buildHeader(),
 
-            // Main Viewport Container - flex-1, px-5 py-5, justify-between
+            // Main Viewport Container - flex-1, px-5 py-5
             Expanded(
               child: Stack(
                 children: [
                   const RadialGradientBackdrop(),
+
                   LayoutBuilder(
                     builder: (context, constraints) {
+                      final isTablet = constraints.maxWidth >= 600;
                       return SingleChildScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         child: Center(
                           child: Container(
                             constraints: BoxConstraints(
-                              maxWidth: 384, // max-w-md
+                              maxWidth: isTablet
+                                  ? (constraints.maxWidth * 0.8).clamp(520.0, 720.0)
+                                  : 384,
                               minHeight: constraints.maxHeight,
                             ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20, // px-5
-                              vertical: 20,   // py-5
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isTablet ? 32 : 20,
+                              vertical: isTablet ? 32 : 20,
                             ),
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.start,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 // Top Hero & Room Code Card
-                                _buildTopSection(context, roomName, joinCode),
+                                _buildTopSection(
+                                  context,
+                                  roomName,
+                                  joinCode,
+                                ),
 
-                                const Spacer(),
+                                const SizedBox(height: 24),
 
                                 // Bottom Action Buttons & Footer
-                                _buildBottomActions(context, roomName, joinCode, ref),
+                                _buildBottomActions(
+                                  context,
+                                  roomName,
+                                  joinCode,
+                                  ref,
+                                ),
                               ],
                             ),
                           ),
@@ -110,7 +125,11 @@ class RoomCreatedScreen extends ConsumerWidget {
         const SizedBox(height: 8), // pt-2
 
         // Hero Status Section
-        const TSXPulsingEmblem(size: 52, iconSize: 24), // w-13 h-13 (52px), icon w-6 (24px)
+        const TSXPulsingEmblem(
+          size: 52,
+          iconSize: 24,
+        ), // w-13 h-13, icon w-6
+
         const SizedBox(height: 12), // mb-3
 
         const Text(
@@ -124,9 +143,13 @@ class RoomCreatedScreen extends ConsumerWidget {
             letterSpacing: -0.5,
           ),
         ),
+
         const SizedBox(height: 6), // mt-1.5
+
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 280), // max-w-[280px]
+          constraints: const BoxConstraints(
+            maxWidth: 280,
+          ),
           child: const Text(
             'Share the 6-digit code or scan QR to connect nearby devices.',
             textAlign: TextAlign.center,
@@ -139,15 +162,15 @@ class RoomCreatedScreen extends ConsumerWidget {
           ),
         ),
 
-        const SizedBox(height: 16), // my-4 top
+        const SizedBox(height: 16), // my-4
 
-        // Main Room Code Card - p-4 (16px), space-y-2.5 (10px)
+        // Main Room Code Card
         SMCard.tsx(
           padding: const EdgeInsets.all(16), // p-4
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header Row - px-0.5 (2px), justify-between
+              // Header Row
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: Row(
@@ -158,41 +181,43 @@ class RoomCreatedScreen extends ConsumerWidget {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        letterSpacing: 1.2, // tracking-wider
+                        letterSpacing: 1.2,
                         color: TSXColors.secondaryText,
                       ),
                     ),
                     Text(
                       roomName,
                       style: const TextStyle(
-                        fontSize: 12, // text-xs
+                        fontSize: 12,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5, // tracking-wide
+                        letterSpacing: 0.5,
                         color: TSXColors.primaryText,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 10), // space-y-2.5
 
-              // Code Display Box - h-13 (52px), px-3.5 (14px)
+              const SizedBox(height: 10),
+
+              // Code Display Box
               CodeDisplayCard(
                 code: roomCode,
-                label: '', // Label is in header row
+                label: '',
                 onCopy: () {
                   HapticFeedback.lightImpact();
+
                   Clipboard.setData(
                     ClipboardData(
                       text: roomCode.replaceAll(RegExp(r'\D'), ''),
                     ),
                   );
                 },
-                helperText: null, // Handled below
+                helperText: null,
                 compact: false,
               ),
 
-              const SizedBox(height: 2), // mt-0.5
+              const SizedBox(height: 2),
 
               // Helper Label
               const Text(
@@ -200,7 +225,7 @@ class RoomCreatedScreen extends ConsumerWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontFamily: TSXTypography.fontFamily,
-                  fontSize: 11, // text-[11px] sm:text-xs
+                  fontSize: 11,
                   color: TSXColors.secondaryText,
                 ),
               ),
@@ -218,7 +243,10 @@ class RoomCreatedScreen extends ConsumerWidget {
     WidgetRef ref,
   ) {
     return Padding(
-      padding: const EdgeInsets.only(top: 24, bottom: 8), // pt-6 pb-safe handled by SafeArea
+      padding: const EdgeInsets.only(
+        top: 24,
+        bottom: 8,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -229,10 +257,16 @@ class RoomCreatedScreen extends ConsumerWidget {
               text: 'Show QR Code',
               icon: Icons.qr_code,
               variant: SMButtonVariant.tsxSecondary,
-              onPressed: () => _showQrModal(context, roomName, roomCode, ref),
+              onPressed: () => _showQrModal(
+                context,
+                roomName,
+                roomCode,
+                ref,
+              ),
             ),
           ),
-          const SizedBox(height: 12), // mt-3
+
+          const SizedBox(height: 12),
 
           // Primary Action Button: Enter Room - h-13 (52px)
           SizedBox(
@@ -247,7 +281,8 @@ class RoomCreatedScreen extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 20), // mt-5
+
+          const SizedBox(height: 20),
 
           // Footer Readout
           const Text(
@@ -256,8 +291,8 @@ class RoomCreatedScreen extends ConsumerWidget {
             style: TextStyle(
               fontFamily: 'monospace',
               fontSize: 10,
-              letterSpacing: 1.5, // tracking-widest
-              color: Color(0x9987999A), // text-[#87999A]/60
+              letterSpacing: 1.5,
+              color: Color(0x9987999A),
             ),
           ),
         ],
@@ -272,6 +307,7 @@ class RoomCreatedScreen extends ConsumerWidget {
     WidgetRef ref,
   ) {
     final createState = ref.read(createRoomFlowProvider);
+
     final roomId = createState.roomId;
     final hostIp = createState.localIpAddress;
     final port = createState.port ?? 8765;
@@ -304,7 +340,10 @@ class RoomCreatedScreen extends ConsumerWidget {
       roomName: roomName,
       uriString: uriString,
       onCopy: () {
-        Clipboard.setData(ClipboardData(text: uriString));
+        Clipboard.setData(
+          ClipboardData(text: uriString),
+        );
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('QR code URI copied to clipboard'),

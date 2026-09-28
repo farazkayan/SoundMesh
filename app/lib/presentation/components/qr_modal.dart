@@ -4,6 +4,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'tsx_visual_tokens.dart';
 
 /// Reusable QR code modal matching TSX design.
+///
 /// White-on-black grid representation with code display and copy button.
 class QrModal extends StatefulWidget {
   const QrModal({
@@ -31,17 +32,26 @@ class _QrModalState extends State<QrModal> {
   bool _copied = false;
 
   String get _cleanCode => widget.code.replaceAll(RegExp(r'\D'), '');
+
   String get _formattedCode => _cleanCode.length == 6
       ? '${_cleanCode.substring(0, 3)} - ${_cleanCode.substring(3)}'
       : widget.code;
 
   void _handleCopy() {
     HapticFeedback.lightImpact();
-    Clipboard.setData(ClipboardData(text: widget.uriString));
+
+    Clipboard.setData(
+      ClipboardData(text: widget.uriString),
+    );
+
     widget.onCopy?.call();
+
     setState(() => _copied = true);
+
     Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _copied = false);
+      if (mounted) {
+        setState(() => _copied = false);
+      }
     });
   }
 
@@ -52,16 +62,21 @@ class _QrModalState extends State<QrModal> {
       insetPadding: EdgeInsets.all(TSXSpacing.xl),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final double maxModalWidth = constraints.maxWidth < 380 ? constraints.maxWidth : 360;
-          return _QrModalContent(
-            title: widget.title,
-            code: _formattedCode,
-            roomName: widget.roomName,
-            uriString: widget.uriString,
-            copied: _copied,
-            onCopy: _handleCopy,
-            onClose: widget.onClose ?? () => Navigator.pop(context),
-            maxModalWidth: maxModalWidth,
+          final double maxModalWidth =
+              constraints.maxWidth < 380 ? constraints.maxWidth : 360;
+
+          return SizedBox(
+            width: maxModalWidth,
+            child: _QrModalContent(
+              title: widget.title,
+              code: _formattedCode,
+              roomName: widget.roomName,
+              uriString: widget.uriString,
+              copied: _copied,
+              onCopy: _handleCopy,
+              onClose: widget.onClose ?? () => Navigator.pop(context),
+              maxModalWidth: maxModalWidth,
+            ),
           );
         },
       ),
@@ -103,16 +118,32 @@ class _QrModalContentState extends State<_QrModalContent>
   @override
   void initState() {
     super.initState();
+
     _controller = AnimationController(
       duration: TSXAnimation.major,
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(begin: 0.95, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: TSXAnimation.spring),
+
+    _scaleAnimation = Tween<double>(
+      begin: 0.95,
+      end: 1.0,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: TSXAnimation.spring,
+      ),
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: TSXAnimation.standard),
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: TSXAnimation.standard,
+      ),
     );
+
     _controller.forward();
   }
 
@@ -131,11 +162,16 @@ class _QrModalContentState extends State<_QrModalContent>
         child: Material(
           color: Colors.transparent,
           child: Container(
-            constraints: BoxConstraints(maxWidth: widget.maxModalWidth),
+            width: widget.maxModalWidth,
+            constraints: BoxConstraints(
+              maxWidth: widget.maxModalWidth,
+            ),
             decoration: BoxDecoration(
               color: TSXColors.surface,
               borderRadius: BorderRadius.circular(TSXRadius.modal),
-              border: Border.all(color: TSXColors.surfaceBorder),
+              border: Border.all(
+                color: TSXColors.surfaceBorder,
+              ),
               boxShadow: TSXShadows.xl,
             ),
             child: SingleChildScrollView(
@@ -169,7 +205,9 @@ class _QrModalContentState extends State<_QrModalContent>
                           style: IconButton.styleFrom(
                             backgroundColor: TSXColors.background,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(TSXRadius.full),
+                              borderRadius: BorderRadius.circular(
+                                TSXRadius.full,
+                              ),
                             ),
                           ),
                         ),
@@ -179,7 +217,9 @@ class _QrModalContentState extends State<_QrModalContent>
 
                   // QR Code Display
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: TSXSpacing.lg),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: TSXSpacing.lg,
+                    ),
                     child: Container(
                       width: 160,
                       height: 160,
@@ -218,7 +258,9 @@ class _QrModalContentState extends State<_QrModalContent>
 
                   // Code Display
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: TSXSpacing.lg),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: TSXSpacing.lg,
+                    ),
                     child: GestureDetector(
                       onTap: widget.onCopy,
                       child: AnimatedContainer(
@@ -229,7 +271,9 @@ class _QrModalContentState extends State<_QrModalContent>
                         ),
                         decoration: BoxDecoration(
                           color: TSXColors.background,
-                          borderRadius: BorderRadius.circular(TSXRadius.lg),
+                          borderRadius: BorderRadius.circular(
+                            TSXRadius.lg,
+                          ),
                           border: Border.all(
                             color: TSXColors.accent,
                             width: 2,
@@ -260,7 +304,9 @@ class _QrModalContentState extends State<_QrModalContent>
                                 color: widget.copied
                                     ? TSXColors.accent
                                     : TSXColors.surface,
-                                borderRadius: BorderRadius.circular(TSXRadius.md),
+                                borderRadius: BorderRadius.circular(
+                                  TSXRadius.md,
+                                ),
                                 border: Border.all(
                                   color: widget.copied
                                       ? TSXColors.accent
@@ -271,7 +317,9 @@ class _QrModalContentState extends State<_QrModalContent>
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    widget.copied ? Icons.check : Icons.copy,
+                                    widget.copied
+                                        ? Icons.check
+                                        : Icons.copy,
                                     size: 16,
                                     color: widget.copied
                                         ? TSXColors.accentOn
@@ -299,7 +347,9 @@ class _QrModalContentState extends State<_QrModalContent>
 
                   // Subtitle
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: TSXSpacing.lg),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: TSXSpacing.lg,
+                    ),
                     child: Text(
                       'Point any phone camera to connect directly to ${widget.roomName}',
                       style: TSXTypography.caption,
@@ -311,7 +361,9 @@ class _QrModalContentState extends State<_QrModalContent>
 
                   // Copy Link Button
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: TSXSpacing.lg),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: TSXSpacing.lg,
+                    ),
                     child: SizedBox(
                       width: double.infinity,
                       height: 48,
@@ -322,9 +374,13 @@ class _QrModalContentState extends State<_QrModalContent>
                           foregroundColor: TSXColors.accentOn,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(TSXRadius.lg),
+                            borderRadius: BorderRadius.circular(
+                              TSXRadius.lg,
+                            ),
                           ),
-                          shadowColor: TSXColors.accent.withValues(alpha: 0.1),
+                          shadowColor: TSXColors.accent.withValues(
+                            alpha: 0.1,
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -335,7 +391,9 @@ class _QrModalContentState extends State<_QrModalContent>
                             ),
                             SizedBox(width: TSXSpacing.sm),
                             Text(
-                              widget.copied ? 'Code Copied!' : 'Copy Link & Code',
+                              widget.copied
+                                  ? 'Code Copied!'
+                                  : 'Copy Link & Code',
                               style: TSXTypography.button,
                             ),
                           ],
@@ -355,7 +413,7 @@ class _QrModalContentState extends State<_QrModalContent>
   }
 }
 
-/// Helper to show QR modal
+/// Helper to show QR modal.
 Future<void> showQrModal({
   required BuildContext context,
   required String title,

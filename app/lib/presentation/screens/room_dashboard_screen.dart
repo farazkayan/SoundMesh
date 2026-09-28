@@ -49,25 +49,58 @@ class _RoomDashboardScreenState
     final showHostEndedModalForHost =
         isHost && lifecycleState.hostEndedRoom;
 
-    return Container(
-      color: TSXColors.background,
-      child: Stack(
-        children: [
-          _buildDashboardShell(
-            context,
-            ref,
-            appState,
-            createState,
-            lifecycleState,
-            captureState,
-          ),
-          if (showBackgroundUsageModal)
-            const BackgroundUsageRequiredModal(),
-          if (showHostEndedModal)
-            const _HostEndedRoomModal(),
-          if (showHostEndedModalForHost)
-            const _YouEndedRoomModal(),
-        ],
+    return Scaffold(
+      backgroundColor: TSXColors.background,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            const RadialGradientBackdrop(),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isTablet = constraints.maxWidth >= 600;
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: Center(
+                      child: Container(
+                        // On tablet: use 80% width up to 720px; on phone: full width
+                        constraints: BoxConstraints(
+                          maxWidth: isTablet
+                              ? (constraints.maxWidth * 0.8).clamp(520.0, 720.0)
+                              : double.infinity,
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 32 : TSXSpacing.xl,
+                          vertical: TSXSpacing.xl,
+                        ),
+                        child: _buildDashboardContent(
+                          context,
+                          ref,
+                          appState,
+                          createState,
+                          lifecycleState,
+                          captureState,
+                          showBackgroundUsageModal,
+                          showHostEndedModal,
+                          showHostEndedModalForHost,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            if (showBackgroundUsageModal)
+              const BackgroundUsageRequiredModal(),
+            if (showHostEndedModal)
+              const _HostEndedRoomModal(),
+            if (showHostEndedModalForHost)
+              const _YouEndedRoomModal(),
+          ],
+        ),
       ),
     );
   }
@@ -79,126 +112,50 @@ class _RoomDashboardScreenState
         state == SMAppState.paused;
   }
 
-  Widget _buildDashboardShell(
+  Widget _buildDashboardContent(
     BuildContext context,
     WidgetRef ref,
     ApplicationState appState,
     CreateRoomFlowState createState,
     RoomLifecycleStateData lifecycleState,
     CaptureUiStateData captureState,
+    bool showBackgroundUsageModal,
+    bool showHostEndedModal,
+    bool showHostEndedModalForHost,
   ) {
-    final size = MediaQuery.sizeOf(context);
-    final screenHeight = size.height;
-    final isCompact = screenHeight < 760;
-    final isDesktop = size.width >= 600;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    return Container(
-      color: TSXColors.background,
-      child: SafeArea(
-        bottom: false, // We handle bottom safe area manually for the dock
-        child: Center(
-          child: Container(
-            width: double.infinity,
-            constraints: BoxConstraints(
-              maxWidth: isDesktop ? 420 : double.infinity,
-            ),
-            margin: EdgeInsets.symmetric(
-              horizontal: isDesktop ? 16 : 0,
-            ),
-            height: double.infinity,
-            decoration: BoxDecoration(
-              color: TSXColors.background,
-              border: isDesktop
-                  ? Border.all(
-                      color: TSXColors.surfaceBorder,
-                    )
-                  : null,
-              borderRadius: isDesktop
-                  ? BorderRadius.circular(40)
-                  : BorderRadius.zero,
-              boxShadow: isDesktop
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        blurRadius: 40,
-                        spreadRadius: 4,
-                      ),
-                    ]
-                  : null,
-            ),
-            child: ClipRRect(
-              borderRadius: isDesktop
-                  ? BorderRadius.circular(40)
-                  : BorderRadius.zero,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: const Alignment(0, -0.85),
-                            radius: 1.0,
-                            colors: [
-                              TSXColors.accent.withValues(alpha: 0.08),
-                              TSXColors.background.withValues(alpha: 0),
-                            ],
-                            stops: const [0.0, 0.78],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        16,
-                        16,
-                        16,
-                        isCompact ? 10 : 14,
-                      ),
-                      child: Column(
-                        children: [
-                          _buildRoomHeader(
-                            context,
-                            ref,
-                            appState,
-                            createState,
-                            lifecycleState,
-                            captureState,
-                          ),
-                          const SizedBox(height: 16),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              physics:
-                                  const BouncingScrollPhysics(),
-                              child: _buildMainContent(
-                                context,
-                                ref,
-                                appState,
-                                createState,
-                                lifecycleState,
-                                captureState,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          // Floating dock with safe area bottom padding
-                          Padding(
-                            padding: EdgeInsets.only(bottom: safeBottom > 0 ? safeBottom : TSXSpacing.xl),
-                            child: _buildFloatingDock(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+    return Column(
+      children: [
+        _buildRoomHeader(
+          context,
+          ref,
+          appState,
+          createState,
+          lifecycleState,
+          captureState,
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: _buildMainContent(
+              context,
+              ref,
+              appState,
+              createState,
+              lifecycleState,
+              captureState,
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 10),
+        // Floating dock with safe area bottom padding
+        Padding(
+          padding: EdgeInsets.only(bottom: safeBottom > 0 ? safeBottom : TSXSpacing.xl),
+          child: _buildFloatingDock(),
+        ),
+      ],
     );
   }
 

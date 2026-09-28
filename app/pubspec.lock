@@ -595,10 +595,9 @@ packages:
   purchases_flutter:
     dependency: "direct main"
     description:
-      name: purchases_flutter
-      sha256: "114ae9d228aa249dc38546f54259cb3c24bdf81816bec923a3f46525938ca43b"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/purchases_flutter"
+      relative: true
+    source: path
     version: "10.13.1"
   qr:
     dependency: transitive

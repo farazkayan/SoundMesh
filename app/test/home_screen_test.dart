@@ -35,7 +35,7 @@ void main() {
       );
 
       await tester.tap(find.widgetWithText(SMButton, 'Create Room'));
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
 
       expect(find.byType(CreateRoomScreen), findsOneWidget);
       expect(find.byType(HomeScreen), findsNothing);
@@ -54,7 +54,7 @@ void main() {
       );
 
       await tester.tap(find.widgetWithText(SMButton, 'Join Room'));
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
 
       expect(find.byType(JoinRoomScreen), findsOneWidget);
       expect(find.byType(HomeScreen), findsNothing);

@@ -16,106 +16,74 @@ class RoomDevicesScreen extends ConsumerWidget {
     final lifecycleState = ref.watch(roomLifecycleProvider);
     final isHost = appState.isHost == true;
 
-    return Container(
-      color: TSXColors.background,
-      child: SafeArea(
+    return Scaffold(
+      backgroundColor: TSXColors.background,
+      body: SafeArea(
         child: Stack(
           children: [
-            _buildDashboardShell(context, ref, appState, lifecycleState, isHost),
+            const RadialGradientBackdrop(),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isTablet = constraints.maxWidth >= 600;
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: Center(
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth: isTablet
+                              ? (constraints.maxWidth * 0.8).clamp(520.0, 720.0)
+                              : double.infinity,
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 32 : TSXSpacing.xl,
+                          vertical: TSXSpacing.xl,
+                        ),
+                        child: _buildDevicesContent(
+                          context,
+                          ref,
+                          appState,
+                          lifecycleState,
+                          isHost,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDashboardShell(
+  Widget _buildDevicesContent(
     BuildContext context,
     WidgetRef ref,
     ApplicationState appState,
     RoomLifecycleStateData lifecycleState,
     bool isHost,
   ) {
-    final size = MediaQuery.sizeOf(context);
-    final isDesktop = size.width >= 600;
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    return Container(
-      color: TSXColors.background,
-      child: SafeArea(
-        bottom: false, // We handle bottom safe area manually for the dock
-        child: Center(
-          child: Container(
-            width: double.infinity,
-            constraints: BoxConstraints(
-              maxWidth: isDesktop ? 420 : double.infinity,
-            ),
-            margin: EdgeInsets.symmetric(
-              horizontal: isDesktop ? 16 : 0,
-            ),
-            height: double.infinity,
-            decoration: BoxDecoration(
-              color: TSXColors.background,
-              border: isDesktop
-                  ? Border.all(color: TSXColors.surfaceBorder)
-                  : null,
-              borderRadius: isDesktop ? BorderRadius.circular(40) : BorderRadius.zero,
-              boxShadow: isDesktop
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        blurRadius: 40,
-                        spreadRadius: 4,
-                      ),
-                    ]
-                  : null,
-            ),
-            child: ClipRRect(
-              borderRadius: isDesktop ? BorderRadius.circular(40) : BorderRadius.zero,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: const Alignment(0, -0.85),
-                            radius: 1.0,
-                            colors: [
-                              TSXColors.accent.withValues(alpha: 0.08),
-                              TSXColors.background.withValues(alpha: 0),
-                            ],
-                            stops: const [0.0, 0.78],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 14),
-                      child: Column(
-                        children: [
-                          _buildDevicesContent(context, ref, appState, lifecycleState, isHost),
-                          const SizedBox(height: 10),
-                          // Floating dock with safe area bottom padding
-                          Padding(
-                            padding: EdgeInsets.only(bottom: safeBottom > 0 ? safeBottom : TSXSpacing.xl),
-                            child: _buildFloatingDock(context),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+    return Column(
+      children: [
+        _buildDevicesContentInner(context, ref, appState, lifecycleState, isHost),
+        const SizedBox(height: 10),
+        // Floating dock with safe area bottom padding
+        Padding(
+          padding: EdgeInsets.only(bottom: safeBottom > 0 ? safeBottom : TSXSpacing.xl),
+          child: _buildFloatingDock(context),
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildDevicesContent(
+  Widget _buildDevicesContentInner(
     BuildContext context,
     WidgetRef ref,
     ApplicationState appState,

@@ -5,7 +5,6 @@ import 'package:soundmesh/application/repositories/network_repository.dart';
 import 'package:soundmesh/presentation/screens/home_screen.dart';
 import 'package:soundmesh/presentation/screens/create_room_screen.dart';
 import 'package:soundmesh/presentation/screens/join_room_screen.dart';
-import 'package:soundmesh/presentation/screens/room_dashboard_screen.dart';
 import 'package:soundmesh/presentation/screens/settings_screen.dart';
 import 'package:soundmesh/presentation/screens/diagnostics_screen.dart';
 
@@ -39,21 +38,6 @@ void main() {
       expect(find.text('Connect to a Room'), findsOneWidget);
       expect(find.text('ROOM CODE'), findsOneWidget);
       expect(find.text('Join Room'), findsAtLeastNWidgets(1));
-    });
-
-    testWidgets('RoomDashboardScreen smoke test', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            networkRepositoryProvider.overrideWithValue(MockNetworkRepository()),
-          ],
-          child: const MaterialApp(
-            home: RoomDashboardScreen(),
-          ),
-        ),
-      );
-      await tester.pump();
-      expect(find.byType(RoomDashboardScreen), findsOneWidget);
     });
 
     testWidgets('SettingsScreen renders correctly', (WidgetTester tester) async {

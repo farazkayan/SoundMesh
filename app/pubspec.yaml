@@ -44,8 +44,9 @@ dependencies:
   # QR code scanning for participant side
   mobile_scanner: ^7.4.2
 
-  # RevenueCat for in-app purchases
-  purchases_flutter: ^10.0.0
+  # RevenueCat for in-app purchases (vendored with forceAllowTestStoreInReleaseBuilds fix)
+  purchases_flutter:
+    path: third_party/purchases_flutter
 
   # Local storage for user preferences
   shared_preferences: ^2.2.2

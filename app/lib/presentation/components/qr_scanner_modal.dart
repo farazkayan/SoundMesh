@@ -7,7 +7,7 @@ import 'package:soundmesh/presentation/components/soundmesh_empty_state.dart';
 import 'package:soundmesh/presentation/components/index.dart';
 
 /// Real functional QR scanner modal that uses mobile_scanner.
-/// Opens as a modal over JoinRoomScreen, reuses the working scanner logic.
+/// Opens as a modal over JoinRoomScreen and reuses the working scanner logic.
 class QRScannerModal extends ConsumerStatefulWidget {
   const QRScannerModal({
     super.key,
@@ -24,14 +24,18 @@ class QRScannerModal extends ConsumerStatefulWidget {
 
 class _QRScannerModalState extends ConsumerState<QRScannerModal> {
   MobileScannerController? _controller;
+
   bool _isScanning = true;
   bool _permissionDenied = false;
   bool _hasError = false;
+  bool _isProcessingScan = false;
+
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
+
     _controller = MobileScannerController(
       detectionSpeed: DetectionSpeed.normal,
       facing: CameraFacing.back,
@@ -46,16 +50,21 @@ class _QRScannerModalState extends ConsumerState<QRScannerModal> {
   }
 
   void _onDetect(BarcodeCapture capture) {
-    if (!_isScanning) return;
+    if (!_isScanning || _isProcessingScan) {
+      return;
+    }
 
-    final List<Barcode> barcodes = capture.barcodes;
-    for (final barcode in barcodes) {
-      final String? rawValue = barcode.rawValue;
-      if (rawValue == null || rawValue.isEmpty) continue;
+    for (final barcode in capture.barcodes) {
+      final rawValue = barcode.rawValue;
 
-      // Quick check for soundmesh://join URI before attempting full parse
+      if (rawValue == null || rawValue.isEmpty) {
+        continue;
+      }
+
+      // Only process SoundMesh join QR codes.
       if (rawValue.startsWith('soundmesh://join')) {
         _isScanning = false;
+        _controller?.stop();
         _handleValidQrCode(rawValue);
         return;
       }
@@ -64,216 +73,299 @@ class _QRScannerModalState extends ConsumerState<QRScannerModal> {
 
   Future<void> _handleValidQrCode(String uriString) async {
     late final JoinPayload payload;
+
     try {
       payload = JoinPayload.parseJoinUri(uriString);
     } on JoinPayloadException catch (e) {
       _showErrorAndReset(e.message);
       return;
-    }
-
-    // Validate protocol version
-    if (payload.protocolVersion != currentProtocolVersion) {
-      _showErrorAndReset('Protocol version mismatch: QR code is v${payload.protocolVersion}, this app is v$currentProtocolVersion');
+    } catch (_) {
+      _showErrorAndReset('Invalid SoundMesh QR code');
       return;
     }
 
-    // Feed parsed values into existing JoinRoomFlowNotifier
-    ref.read(joinRoomFlowProvider.notifier).setHostIpAddress(payload.hostAddress);
-    ref.read(joinRoomFlowProvider.notifier).setHostPort(payload.hostPort);
-    ref.read(joinRoomFlowProvider.notifier).setJoinCode(payload.code);
+    // Validate protocol version before touching the join flow.
+    if (payload.protocolVersion != currentProtocolVersion) {
+      _showErrorAndReset(
+        'Protocol version mismatch: QR code is '
+        'v${payload.protocolVersion}, this app is v$currentProtocolVersion',
+      );
+      return;
+    }
 
-    // Notify success and close modal
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isProcessingScan = true;
+    });
+
+    final joinNotifier = ref.read(joinRoomFlowProvider.notifier);
+
+    joinNotifier.setHostIpAddress(payload.hostAddress);
+    joinNotifier.setHostPort(payload.hostPort);
+    joinNotifier.setJoinCode(payload.code);
+
+    try {
+      // Start the actual join while this widget is still alive.
+      // Do not wait until after Navigator.pop().
+      await joinNotifier.joinRoom();
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isProcessingScan = false;
+        _isScanning = false;
+      });
+
+      _showErrorAndReset('Failed to join room: $e');
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
     widget.onScanSuccess();
     widget.onClose();
-
-    // Trigger the join after navigation
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        ref.read(joinRoomFlowProvider.notifier).joinRoom();
-      }
-    });
   }
 
   void _showErrorAndReset(String message) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
+
+    _controller?.stop();
+
     setState(() {
       _hasError = true;
       _errorMessage = message;
       _isScanning = false;
+      _isProcessingScan = false;
     });
 
-    // Auto-reset after 3 seconds to allow retry
     Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() {
-          _hasError = false;
-          _errorMessage = null;
-          _isScanning = true;
-        });
+      if (!mounted) {
+        return;
       }
+
+      setState(() {
+        _hasError = false;
+        _errorMessage = null;
+        _isScanning = true;
+        _isProcessingScan = false;
+      });
+
+      _controller?.start();
     });
   }
 
-  void _onPermissionDenied() {
-    if (!mounted) return;
-    setState(() {
-      _permissionDenied = true;
-      _isScanning = false;
+  void _handleScannerError(MobileScannerException error) {
+    if (!mounted) {
+      return;
+    }
+
+    final isPermissionDenied =
+        error.errorCode == MobileScannerErrorCode.permissionDenied;
+
+    // errorBuilder can run during a build, so defer the state mutation.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      if (isPermissionDenied) {
+        if (_permissionDenied && !_isScanning) {
+          return;
+        }
+
+        setState(() {
+          _permissionDenied = true;
+          _isScanning = false;
+          _hasError = false;
+          _isProcessingScan = false;
+        });
+
+        _controller?.stop();
+        return;
+      }
+
+      setState(() {
+        _permissionDenied = false;
+        _hasError = true;
+        _errorMessage = 'Unable to start the camera. Please try again.';
+        _isScanning = false;
+        _isProcessingScan = false;
+      });
+
+      _controller?.stop();
     });
   }
 
   void _retryScanning() {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
       _permissionDenied = false;
       _hasError = false;
       _errorMessage = null;
       _isScanning = true;
+      _isProcessingScan = false;
     });
+
     _controller?.start();
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final double maxHeight = constraints.maxHeight * 0.9;
-        final double availableWidth = constraints.maxWidth;
-        final double modalWidth = availableWidth < 380 ? availableWidth - 32 : 360.0;
-
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.all(16),
-          child: Stack(
-            children: [
-              // Modal backdrop with blur
-              GestureDetector(
-                onTap: widget.onClose,
-                child: Container(
-                  color: TSXColors.overlayScrim,
-                ),
-              ),
-
-              // Modal content
-              Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: modalWidth,
-                    maxHeight: maxHeight,
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 360,
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
+          ),
+          child: SizedBox(
+            width: 360,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: TSXColors.surface,
+                  borderRadius: BorderRadius.circular(TSXRadius.modal),
+                  border: Border.all(
+                    color: TSXColors.surfaceBorder,
                   ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: TSXColors.surface,
-                        borderRadius: BorderRadius.circular(TSXRadius.modal),
-                        border: Border.all(color: TSXColors.surfaceBorder),
-                        boxShadow: TSXShadows.xl,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Header
-                          Padding(
-                            padding: EdgeInsets.all(TSXSpacing.lg),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.qr_code_scanner,
-                                  size: 24,
-                                  color: TSXColors.accent,
-                                ),
-                                SizedBox(width: TSXSpacing.md),
-                                Expanded(
-                                  child: Text(
-                                    'Scan Host QR',
-                                    style: TSXTypography.headlineMedium,
-                                  ),
-                                ),
-                                IconButton(
-                                  onPressed: widget.onClose,
-                                  icon: Icon(
-                                    Icons.close,
-                                    size: 20,
-                                    color: TSXColors.secondaryText,
-                                  ),
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: TSXColors.background,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(TSXRadius.full),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                  boxShadow: TSXShadows.xl,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Header
+                      Padding(
+                        padding: EdgeInsets.all(TSXSpacing.lg),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.qr_code_scanner,
+                              size: 24,
+                              color: TSXColors.accent,
                             ),
-                          ),
-
-                          // Scanner View
-                          if (_permissionDenied)
-                            _buildPermissionDenied()
-                          else if (_hasError)
-                            _buildErrorBanner()
-                          else
-                            _buildScannerView(),
-
-                          SizedBox(height: TSXSpacing.lg),
-
-                          // Bottom hint
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: TSXSpacing.lg),
-                            child: Text(
-                              'Point camera at a SoundMesh QR code',
-                              style: TSXTypography.caption.copyWith(
+                            SizedBox(width: TSXSpacing.md),
+                            Expanded(
+                              child: Text(
+                                'Scan Host QR',
+                                style: TSXTypography.headlineMedium,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: widget.onClose,
+                              icon: Icon(
+                                Icons.close,
+                                size: 20,
                                 color: TSXColors.secondaryText,
                               ),
-                              textAlign: TextAlign.center,
+                              style: IconButton.styleFrom(
+                                backgroundColor: TSXColors.background,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(
+                                    TSXRadius.full,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-
-                          SizedBox(height: TSXSpacing.lg),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+
+                      // Scanner / Error / Permission State
+                      if (_permissionDenied)
+                        _buildPermissionDenied()
+                      else if (_hasError)
+                        _buildErrorBanner()
+                      else if (_isProcessingScan)
+                        _buildProcessingView()
+                      else
+                        _buildScannerView(),
+
+                      SizedBox(height: TSXSpacing.lg),
+
+                      // Bottom hint
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: TSXSpacing.lg,
+                        ),
+                        child: Text(
+                          _isProcessingScan
+                              ? 'Connecting to the host…'
+                              : 'Point camera at a SoundMesh QR code',
+                          style: TSXTypography.caption.copyWith(
+                            color: TSXColors.secondaryText,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+
+                      SizedBox(height: TSXSpacing.lg),
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
   Widget _buildScannerView() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Calculate square scan area size (75% of width)
-        final double scanAreaSize = (constraints.maxWidth - 32) * 0.75;
+        final double scanAreaSize =
+            ((constraints.maxWidth - 32) * 0.75).clamp(180.0, 280.0);
 
         return SizedBox(
           width: double.infinity,
           height: scanAreaSize,
           child: Stack(
+            fit: StackFit.expand,
             children: [
               // Mobile Scanner
               ClipRRect(
                 borderRadius: BorderRadius.circular(TSXRadius.lg),
                 child: MobileScanner(
                   controller: _controller!,
+                  fit: BoxFit.cover,
                   onDetect: _onDetect,
                   errorBuilder: (context, error) {
-                    _onPermissionDenied();
-                    return _buildPermissionDenied();
+                    _handleScannerError(error);
+
+                    if (error.errorCode ==
+                        MobileScannerErrorCode.permissionDenied) {
+                      return _buildPermissionDenied();
+                    }
+
+                    return _buildErrorBanner();
                   },
                 ),
               ),
 
-              // Scanner Overlay (corner brackets + scan line)
-              CustomPaint(
-                painter: _ScannerOverlayPainter(
-                  scanAreaSize: scanAreaSize,
-                  accentColor: TSXColors.accent,
+              // Scanner Overlay
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _ScannerOverlayPainter(
+                    scanAreaSize: scanAreaSize,
+                    accentColor: TSXColors.accent,
+                  ),
                 ),
               ),
             ],
@@ -283,15 +375,38 @@ class _QRScannerModalState extends ConsumerState<QRScannerModal> {
     );
   }
 
+  Widget _buildProcessingView() {
+    return SizedBox(
+      height: 220,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SMLoadingIndicator.tsx(size: 48),
+            SizedBox(height: TSXSpacing.lg),
+            Text(
+              'Joining Room',
+              style: TSXTypography.headlineMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildPermissionDenied() {
     return SizedBox(
-      height: 200,
+      height: 220,
       child: Center(
         child: Padding(
           padding: EdgeInsets.all(TSXSpacing.xl),
           child: SoundMeshEmptyState.error(
             title: 'Camera Permission Required',
-            message: 'SoundMesh needs camera access to scan QR codes. Please enable camera permission in settings and try again, or use the 6-digit code entry instead.',
+            message:
+                'SoundMesh needs camera access to scan QR codes. '
+                'Please enable camera permission in settings and try again, '
+                'or use the 6-digit code entry instead.',
             icon: Icons.camera_alt_outlined,
             onRetry: _retryScanning,
             retryLabel: 'Retry Camera',
@@ -302,28 +417,44 @@ class _QRScannerModalState extends ConsumerState<QRScannerModal> {
   }
 
   Widget _buildErrorBanner() {
-    return Container(
-      margin: EdgeInsets.all(TSXSpacing.md),
-      padding: EdgeInsets.all(TSXSpacing.md),
-      decoration: BoxDecoration(
-        color: TSXColors.error.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(TSXRadius.md),
-        border: Border.all(color: TSXColors.error.withValues(alpha: 0.3), width: 1),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline_rounded, color: TSXColors.error, size: 20),
-          SizedBox(width: TSXSpacing.md),
-          Expanded(
-            child: Text(
-              _errorMessage ?? 'Invalid QR code',
-              style: TextStyle(
-                color: TSXColors.error,
-                fontSize: 14,
+    return SizedBox(
+      height: 220,
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.all(TSXSpacing.lg),
+          child: Container(
+            width: double.infinity,
+            margin: EdgeInsets.all(TSXSpacing.md),
+            padding: EdgeInsets.all(TSXSpacing.md),
+            decoration: BoxDecoration(
+              color: TSXColors.error.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(TSXRadius.md),
+              border: Border.all(
+                color: TSXColors.error.withValues(alpha: 0.3),
+                width: 1,
               ),
             ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  color: TSXColors.error,
+                  size: 20,
+                ),
+                SizedBox(width: TSXSpacing.md),
+                Expanded(
+                  child: Text(
+                    _errorMessage ?? 'Unable to use the camera.',
+                    style: TextStyle(
+                      color: TSXColors.error,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -349,15 +480,29 @@ class _ScannerOverlayPainter extends CustomPainter {
     final right = left + scanAreaSize;
     final bottom = top + scanAreaSize;
 
-    // Draw dark overlay with transparent square in the middle
+    // Draw dark overlay with a transparent square in the middle.
     final path = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..addRect(Rect.fromLTWH(left, top, scanAreaSize, scanAreaSize))
+      ..addRect(
+        Rect.fromLTWH(
+          0,
+          0,
+          size.width,
+          size.height,
+        ),
+      )
+      ..addRect(
+        Rect.fromLTWH(
+          left,
+          top,
+          scanAreaSize,
+          scanAreaSize,
+        ),
+      )
       ..fillType = PathFillType.evenOdd;
 
     canvas.drawPath(path, paint);
 
-    // Draw corner brackets
+    // Draw corner brackets.
     final cornerPaint = Paint()
       ..color = accentColor
       ..style = PaintingStyle.stroke
@@ -382,16 +527,15 @@ class _ScannerOverlayPainter extends CustomPainter {
 
     canvas.drawPath(cornerPath, cornerPaint);
 
-    // Animated scan line
-    // We'll use a simple pulsing line in the center
+    // Static scan line.
     final scanLinePaint = Paint()
       ..color = accentColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
 
-    // Draw a centered horizontal line
     final centerY = size.height / 2;
+
     canvas.drawLine(
       Offset(left + 16, centerY),
       Offset(right - 16, centerY),
@@ -400,10 +544,13 @@ class _ScannerOverlayPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _ScannerOverlayPainter oldDelegate) {
+    return oldDelegate.scanAreaSize != scanAreaSize ||
+        oldDelegate.accentColor != accentColor;
+  }
 }
 
-/// Helper to show QR scanner modal
+/// Helper to show QR scanner modal.
 Future<void> showQRScannerModal({
   required BuildContext context,
   required VoidCallback onScanSuccess,

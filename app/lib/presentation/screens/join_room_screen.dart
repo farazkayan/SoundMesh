@@ -26,23 +26,32 @@ class JoinRoomScreen extends ConsumerWidget {
         child: Stack(
           children: [
             const RadialGradientBackdrop(),
-            SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight:
-                      MediaQuery.of(context).size.height -
-                      MediaQuery.of(context).padding.top -
-                      MediaQuery.of(context).padding.bottom,
-                ),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: TSXSpacing.xl,
-                    vertical: TSXSpacing.xl,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isTablet = constraints.maxWidth >= 600;
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: Center(
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth: isTablet
+                              ? (constraints.maxWidth * 0.8).clamp(520.0, 720.0)
+                              : double.infinity,
+                        ),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isTablet ? 32 : TSXSpacing.xl,
+                          vertical: TSXSpacing.xl,
+                        ),
+                        child: _buildContent(context, appState, ref),
+                      ),
+                    ),
                   ),
-                  child: _buildContent(context, appState, ref),
-                ),
-              ),
+                );
+              },
             ),
           ],
         ),
@@ -104,9 +113,10 @@ class JoinRoomScreen extends ConsumerWidget {
                 SMButton(
                   text: 'Try Again',
                   variant: SMButtonVariant.tsxPrimary,
-                  onPressed: () => ref
-                      .read(roomLifecycleProvider.notifier)
-                      .leaveRoom(),
+                  onPressed: () {
+                    ref.read(roomLifecycleProvider.notifier).leaveRoom();
+                    ref.read(joinRoomFlowProvider.notifier).reset();
+                  },
                 ),
               ],
             ),
