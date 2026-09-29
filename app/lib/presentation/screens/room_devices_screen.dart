@@ -5,7 +5,6 @@ import 'package:soundmesh/presentation/components/index.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
 import 'package:soundmesh/application/room/room_lifecycle.dart';
-import 'package:soundmesh/presentation/screens/debug_screen.dart';
 
 class RoomDevicesScreen extends ConsumerWidget {
   const RoomDevicesScreen({super.key});
@@ -190,12 +189,6 @@ Widget _devicesListContent(
       Row(
         children: [
           Text('Devices', style: TSXTypography.displayLarge),
-          const Spacer(),
-          IconButton(
-            icon: Icon(Icons.bug_report, color: TSXColors.primaryText),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DebugScreen())),
-            tooltip: 'Debug / Diagnostics',
-          ),
         ],
       ),
       SizedBox(height: TSXSpacing.md),
