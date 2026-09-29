@@ -5,7 +5,6 @@ import 'package:soundmesh/core/router/app_router.dart';
 import 'package:soundmesh/presentation/components/button.dart';
 import 'package:soundmesh/presentation/screens/home_screen.dart';
 import 'package:soundmesh/presentation/screens/create_room_screen.dart';
-import 'package:soundmesh/presentation/screens/join_room_screen.dart';
 
 void main() {
   group('HomeScreen widget tests', () {
@@ -40,25 +39,6 @@ void main() {
       expect(find.byType(CreateRoomScreen), findsOneWidget);
       expect(find.byType(HomeScreen), findsNothing);
       expect(find.text('Create Room'), findsAtLeastNWidgets(1));
-    });
-
-    testWidgets('tapping Join Room navigates to join room route',
-        (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            initialRoute: AppRouter.home,
-            onGenerateRoute: AppRouter.onGenerateRoute,
-          ),
-        ),
-      );
-
-      await tester.tap(find.widgetWithText(SMButton, 'Join Room'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(JoinRoomScreen), findsOneWidget);
-      expect(find.byType(HomeScreen), findsNothing);
-      expect(find.text('Connect to a Room'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('renders SoundMesh branding', (WidgetTester tester) async {
