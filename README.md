@@ -1,391 +1,327 @@
 # SoundMesh
 
 <p align="center">
-  <strong>Turn nearby Android phones into one synchronized speaker.</strong>
+  <img src="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/FOR_APP_ICON.png" alt="SoundMesh logo" width="180">
 </p>
 
 <p align="center">
-  <em>Multiple phones. One sound.</em>
+  <strong>Multiple phones. One sound.</strong>
 </p>
 
 <p align="center">
-  A local-first Android app that coordinates nearby phones into a synchronized multi-device speaker system.
+  Turn nearby Android phones into a synchronized speaker system — without a cloud server or dedicated speaker.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Platform-Android-0B0D10?style=for-the-badge&logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/Flutter-3.47.2-0B0D10?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter">
-  <img src="https://img.shields.io/badge/Dart-3.12+-0B0D10?style=for-the-badge&logo=dart&logoColor=white" alt="Dart">
-  <img src="https://img.shields.io/badge/License-Open%20Source-0B0D10?style=for-the-badge" alt="License">
+  <a href="https://github.com/farazkayan/SoundMesh/releases">
+    <img src="https://img.shields.io/github/v/release/farazkayan/SoundMesh?style=flat-square" alt="Latest release">
+  </a>
+  <img src="https://img.shields.io/badge/platform-Android-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android">
+  <img src="https://img.shields.io/badge/Flutter-3.47.2-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter">
+  <img src="https://img.shields.io/badge/Dart-3.12%2B-0175C2?style=flat-square&logo=dart&logoColor=white" alt="Dart">
+  <img src="https://img.shields.io/github/license/farazkayan/SoundMesh?style=flat-square" alt="License">
 </p>
 
 ---
 
-## The idea
+## The problem
 
-We had music.
+You have music.
 
-We had several phones.
+You have five phones.
 
-We didn't have a speaker.
+You don't have a speaker.
 
-So we built one.
+What if the phones could become the speaker?
 
-SoundMesh lets a group of nearby Android phones work together as a coordinated speaker system.
+That's SoundMesh.
 
-Instead of asking every phone to simply "play this now", SoundMesh builds a shared timing model between devices, distributes audio, prepares local playback, and schedules playback against a shared future timeline.
+SoundMesh is a local-first Android application that coordinates nearby phones so they can contribute to the same audio session as a distributed speaker system.
 
-The goal is simple:
+The idea sounds simple.
 
-> **Make several independent phones feel like one audio system.**
-
----
-
-## Why SoundMesh?
-
-A phone already has:
-
-* a speaker
-* a microphone/audio subsystem
-* a clock
-* processing power
-* a network connection
-
-What it doesn't have is a way to naturally coordinate those things with several other phones.
-
-If five phones all start the same audio at slightly different times, the result can sound like:
-
-* echo
-* flamming
-* phase-like separation
-* obvious device-to-device timing differences
-
-The challenge isn't playing audio.
-
-The challenge is **coordinating independent devices well enough that the separation becomes difficult to notice**.
-
-SoundMesh treats that as a distributed-systems problem.
+The engineering isn't.
 
 ---
 
-# How it works
+## Why synchronized audio is hard
 
-At a high level:
+Playing the same audio on several phones is easy.
+
+Getting several independent phones to behave like **one** is a completely different problem.
+
+Every device has its own:
+
+* clock
+* processor
+* audio pipeline
+* speaker hardware
+* operating-system behavior
+* network conditions
+* buffering
+* latency
+* timing drift
+
+Even a small difference in when playback begins can turn a synchronized session into several noticeably separate speakers.
+
+SoundMesh therefore approaches the problem as a **distributed timing system**, not simply a multi-device media player.
+
+---
+
+# How SoundMesh works
+
+At the user level, the experience is intentionally simple:
 
 ```text
-                     SOUND MESH ROOM
-
-                           HOST
-                            │
-             ┌──────────────┼──────────────┐
-             │              │              │
-             ▼              ▼              ▼
-        PARTICIPANT    PARTICIPANT    PARTICIPANT
-             │              │              │
-             └──────────────┼──────────────┘
-                            │
-                            ▼
-                    Shared Timing Model
-                            │
-                            ▼
-                     Scheduled Playback
-                            │
-                            ▼
-                     Coordinated Output
+Create
+  ↓
+Join
+  ↓
+Play
 ```
 
-The normal flow is:
+Underneath that simple flow:
 
 ```text
 Create Room
-     ↓
-Display QR Code
-     ↓
-Participant Scans
-     ↓
-Connect
-     ↓
+      ↓
+Display QR
+      ↓
+Participant Joins
+      ↓
+Discover / Connect
+      ↓
 Exchange Room State
-     ↓
+      ↓
 Distribute Audio
-     ↓
+      ↓
 Prepare Devices
-     ↓
-Synchronize Timing
-     ↓
-Create Shared Timeline
-     ↓
-Schedule Playback
-     ↓
-Play
-     ↓
-Monitor
-     ↓
-Recover / Resynchronize when needed
+      ↓
+Calibrate Timing
+      ↓
+Build Shared Timeline
+      ↓
+Schedule Future Playback
+      ↓
+Play Locally
+      ↓
+Monitor Session
+      ↓
+Recover When Necessary
 ```
 
 ---
 
-# The core technical idea
+# The key idea: schedule, don't shout
 
-## Don't just send "PLAY NOW"
-
-A naive implementation might do this:
+A naive multi-device player might tell every phone:
 
 ```text
-HOST
-  │
-  │ "PLAY"
-  ├──────────────► Phone A
-  ├──────────────► Phone B
-  └──────────────► Phone C
+"PLAY NOW"
 ```
 
-That doesn't guarantee synchronized physical output.
+But a network message does not arrive at every device at exactly the same instant.
 
-Network transmission times differ.
-
-Device processing times differ.
-
-Audio pipelines differ.
-
-Clock references differ.
-
-Instead, SoundMesh prefers:
+Instead, SoundMesh works toward a future playback target:
 
 ```text
-          Shared logical timeline
+                 Shared timeline
 
-                    │
-                    ▼
-             Future target T
-             /       |       \
-            /        |        \
-           ▼         ▼         ▼
-       Phone A    Phone B    Phone C
-           │         │         │
-           │ schedule locally  │
-           ▼         ▼         ▼
-       AudioTrack AudioTrack AudioTrack
-           │         │         │
-           └─────────┼─────────┘
-                     ▼
-              Coordinated output
+                        │
+                        ▼
+                  Future target
+                   /    |    \
+                  /     |     \
+                 ▼      ▼      ▼
+             Phone A Phone B Phone C
+                 │      │      │
+                 │ local scheduling
+                 ▼      ▼      ▼
+             Playback Playback Playback
+                 │      │      │
+                 └──────┼──────┘
+                        ▼
+                 coordinated output
 ```
 
-Each device schedules against a future target using its own local playback system.
+Each device schedules playback against the shared logical timeline using its own local audio system.
 
-That makes timing a property of the **shared timeline**, not of whether three network packets happened to arrive in the same millisecond.
+That distinction is at the center of SoundMesh.
 
 ---
 
 # Synchronization
 
-Synchronization is the heart of SoundMesh.
+SoundMesh treats synchronization as a measurable engineering problem.
 
-The system distinguishes between several different timing concepts.
+The system works with concepts including:
 
-| Concept           | Meaning                                              |
-| ----------------- | ---------------------------------------------------- |
-| Clock offset      | Difference between device timing references          |
-| RTT               | Round-trip network communication time                |
-| Jitter            | Variation in packet/network timing                   |
-| Audio latency     | Delay introduced by the audio pipeline               |
-| Playback position | Where a device currently is in the audio stream      |
-| Drift             | Change in synchronization over time                  |
-| Sync error        | Difference between devices' intended playback timing |
+| Concept           | What it represents                          |
+| ----------------- | ------------------------------------------- |
+| Clock offset      | Difference between device timing references |
+| RTT               | Round-trip communication time               |
+| Jitter            | Variation in network timing                 |
+| Audio latency     | Delay introduced by the audio pipeline      |
+| Playback position | Current position within the audio stream    |
+| Drift             | Change in timing alignment over time        |
+| Sync state        | Current quality of synchronization          |
 
 These values are related, but they are not interchangeable.
 
 For example:
 
-> Low network latency does **not** automatically mean synchronized audio.
+> **Low network latency does not automatically mean synchronized audio.**
 
 ---
 
-## Clock synchronization
+## Clock calibration
 
-SoundMesh exchanges timing information between devices using multiple timestamps.
+Devices exchange timing information to estimate their timing relationship.
 
 Conceptually:
 
 ```text
 Participant                         Host
 
-   t1  ─────── TIME_SYNC_REQUEST ───────►
+    t1 ───── TIME_SYNC_REQUEST ─────►
 
-       ◄────── TIME_SYNC_RESPONSE ──────  t3
+        ◄──── TIME_SYNC_RESPONSE ──── t3
 
-   t4
+    t4
 ```
 
-The system uses the exchange to estimate:
+The exchange provides information used to estimate:
 
 * round-trip time
 * clock offset
-* uncertainty
+* timing uncertainty
 
-The calibration process is based on a monotonic timing source rather than wall-clock time.
+SoundMesh relies on monotonic timing for synchronization rather than the device's user-facing wall clock.
 
-On Android, monotonic timing is used so synchronization isn't affected by changes to the device's displayed clock.
+This matters because a phone's displayed clock can change while elapsed monotonic time continues moving forward consistently.
 
 ---
 
 # Shared playback timeline
 
-After timing relationships are established, SoundMesh maps audio frames onto a shared timeline.
-
-Conceptually:
+Once devices are calibrated, audio frames can be mapped onto a shared logical timeline.
 
 ```text
 Shared timeline
-─────────────────────────────────────────────►
+────────────────────────────────────────────────►
 
         preparation
              │
              ▼
-         audio ready
+          audio ready
              │
              ▼
-       future target
+        future target
              │
-      ┌──────┴──────┐
-      ▼             ▼
-   Device A       Device B
-      │             │
-      ▼             ▼
+       ┌─────┴─────┐
+       ▼           ▼
+    Device A    Device B
+       │           │
+       ▼           ▼
  local schedule  local schedule
-      │             │
-      └──────┬──────┘
+       │           │
+       └─────┬─────┘
              ▼
-        synchronized
-          playback
+         playback
 ```
 
-This is why SoundMesh is fundamentally different from simply sending identical files to multiple phones.
+This gives SoundMesh a common temporal reference without requiring the phones to share identical hardware.
 
 ---
 
 # Audio pipeline
 
-SoundMesh separates application orchestration from timing-critical native audio work.
+SoundMesh keeps timing-sensitive audio work close to the native Android audio stack.
 
-The simplified pipeline is:
+The simplified pipeline looks like:
 
 ```text
-External Audio
-      │
-      ▼
-Capture
-      │
-      ▼
-PCM Frames
-      │
-      ▼
-Packetization
-      │
-      ▼
-Network Transport
-      │
-      ▼
-Participant Receive
-      │
-      ▼
-Jitter / Buffer Preparation
-      │
-      ▼
-Shared Timeline Mapping
-      │
-      ▼
-Scheduled Native Playback
-      │
-      ▼
-AudioTrack
-      │
-      ▼
-Phone Speaker
+System / External Audio
+          │
+          ▼
+       Capture
+          │
+          ▼
+      PCM Frames
+          │
+          ▼
+     Packetization
+          │
+          ▼
+   Local Network Transport
+          │
+          ▼
+      Participant
+          │
+          ▼
+   Receive / Buffer
+          │
+          ▼
+ Shared Timeline Mapping
+          │
+          ▼
+ Scheduled Native Playback
+          │
+          ▼
+       AudioTrack
+          │
+          ▼
+      Phone Speaker
 ```
 
-The high-frequency playback path stays close to the native Android audio stack.
+Flutter handles application logic and UI.
 
-Flutter handles the application and user-facing orchestration.
+Android handles the timing-critical platform work.
 
 ---
 
-# Local-first architecture
+# Local-first by design
 
-SoundMesh is designed around nearby-device communication.
+SoundMesh is built around nearby-device communication.
 
-Normal operation does not depend on:
-
-* a cloud backend
-* a remote database
-* a central media server
-* user accounts
-* streaming infrastructure
-* permanent Internet access
+Ordinary playback does not require a cloud backend, remote database, or media server.
 
 The intended model is:
 
 ```text
-                  LOCAL NETWORK
+                LOCAL NETWORK
 
-        ┌────────────────────────────┐
-        │                            │
-        │   HOST ◄──────────────►    │
-        │    │        nearby         │
-        │    ├──────────────► PHONE  │
-        │    └──────────────► PHONE  │
-        │                            │
-        └────────────────────────────┘
+             ┌──────────────────┐
+             │                  │
+             │      HOST        │
+             │      / \         │
+             │     /   \        │
+             │    ▼     ▼       │
+             │ Phone   Phone    │
+             │                  │
+             └──────────────────┘
 ```
 
-The network exists primarily to coordinate and distribute the session.
+The network coordinates the room and distributes the session data.
 
-The final playback happens locally on each device.
-
----
-
-# Room system
-
-A SoundMesh room represents one synchronized playback session.
-
-## Host
-
-The host:
-
-* creates the room
-* exposes join information
-* distributes room state
-* distributes audio
-* coordinates synchronization
-* manages connected participants
-* can end the session
-
-## Participants
-
-Participants:
-
-* join through the room QR code or join flow
-* connect directly to the host
-* receive room state
-* receive audio
-* calibrate timing
-* prepare playback
-* schedule local output
+Each phone ultimately performs playback locally.
 
 ---
 
-# QR joining
+# QR-based joining
 
-Joining is designed to be simple.
+Joining a room is designed to be fast.
+
+The host creates a room and presents a QR code.
+
+A participant scans it.
 
 ```text
 HOST
   │
   │ Create Room
   ▼
-ROOM CODE + QR
+QR CODE
   │
   │ Scan
   ▼
@@ -396,75 +332,83 @@ PARTICIPANT
 ROOM
 ```
 
-The QR payload contains temporary room-joining information required to establish the local session.
+The QR payload contains the temporary information required to establish the local room connection.
 
-It is not intended to act as a permanent account credential.
-
----
-
-# Multi-device support
-
-SoundMesh is designed around a host with multiple participants rather than a single fixed peer.
-
-Conceptually:
-
-```text
-                  HOST
-
-          ┌────────┼────────┐
-          │        │        │
-          ▼        ▼        ▼
-       Phone A  Phone B  Phone C
-          │        │        │
-          ▼        ▼        ▼
-       Audio A  Audio B  Audio C
-```
-
-The architecture isolates participant connections so that one problematic connection should not unnecessarily destabilize the others.
-
-The room state also tracks membership explicitly.
+It is designed for session joining, not as a permanent account credential.
 
 ---
 
-# Failure handling
+# Multi-device rooms
 
-Distributed systems fail.
-
-Phones disconnect.
-
-Networks change.
-
-Users leave rooms.
-
-A host can intentionally end a session.
-
-SoundMesh therefore treats recovery as part of the product rather than an afterthought.
-
-Examples include:
+SoundMesh is built around a host and multiple participants.
 
 ```text
-Join failure
-    ↓
-Retry / recover
+                       HOST
+                        │
+          ┌─────────────┼─────────────┐
+          │             │             │
+          ▼             ▼             ▼
+       Phone A       Phone B       Phone C
+      Participant   Participant   Participant
+```
+
+The architecture maintains participant-specific connections and room membership so devices can be managed independently.
+
+A problem with one participant should not unnecessarily destabilize the entire room.
+
+---
+
+# Room lifecycle and recovery
+
+A room is more than a connection.
+
+It has a lifecycle:
+
+```text
+Create
+  ↓
+Discoverable
+  ↓
+Participants Join
+  ↓
+Ready
+  ↓
+Playing
+  ↓
+Paused / Ready
+  ↓
+Closed
+```
+
+SoundMesh also treats recovery as part of the product.
+
+Examples:
+
+```text
+Join fails
+   ↓
+Retry
+   ↓
+New attempt
 ```
 
 ```text
-Participant disconnect
-    ↓
+Participant disconnects
+   ↓
 Remove participant
-    ↓
-Continue remaining session
+   ↓
+Room continues
 ```
 
 ```text
 Host ends room
-    ↓
-Participants receive intentional termination
-    ↓
+   ↓
+Participants are informed
+   ↓
 Return to normal app flow
 ```
 
-The intended invariant is:
+A fundamental goal is:
 
 > **A failed room should not require restarting the application.**
 
@@ -472,133 +416,130 @@ The intended invariant is:
 
 # Android-first
 
-SoundMesh is currently an **Android-only application**.
+SoundMesh is intentionally **Android-only**.
 
-The production codebase is intentionally focused on Android rather than maintaining unused iOS, macOS, Windows, or Linux application implementations.
+The project focuses its engineering effort on the platform features required to make synchronized device audio possible instead of maintaining unused desktop or iOS application layers.
 
-This lets the project focus engineering effort on the platform capabilities SoundMesh actually needs, including:
+That includes Android-specific capabilities such as:
 
-* AudioPlaybackCapture
-* MediaProjection
-* AudioRecord
-* AudioTrack
-* Android lifecycle behavior
-* Android background execution requirements
-* Android networking
-* Android settings and permissions
+* system audio capture
+* `MediaProjection`
+* `AudioRecord`
+* `AudioTrack`
+* native networking
+* monotonic timing
+* Android lifecycle handling
+* background execution requirements
+* Android permissions and settings
 
 ---
 
 # Architecture
 
-SoundMesh uses Flutter for the application layer and native Android for platform-critical functionality.
+The application is split between Flutter and native Android responsibilities.
 
 ```text
-┌─────────────────────────────────────────────┐
-│                 FLUTTER                     │
-│                                             │
-│  UI                                         │
-│  Navigation                                 │
-│  Application state                          │
-│  User interaction                           │
-│  High-level orchestration                   │
-│                                             │
-└───────────────────┬─────────────────────────┘
-                    │
-              Typed bridge
-                    │
-                    ▼
-┌─────────────────────────────────────────────┐
-│                ANDROID                      │
-│                                             │
-│  Audio capture                              │
-│  Audio playback                             │
-│  Networking                                 │
-│  Connection lifecycle                       │
-│  Monotonic timing                            │
-│  Scheduling                                 │
-│  Platform services                          │
-│                                             │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│                  Flutter                 │
+│                                          │
+│  UI                                      │
+│  Navigation                              │
+│  Application State                       │
+│  Room UX                                 │
+│  User Interaction                        │
+│  High-level orchestration                │
+│                                          │
+└────────────────────┬─────────────────────┘
+                     │
+                Typed bridge
+                     │
+                     ▼
+┌──────────────────────────────────────────┐
+│             Native Android              │
+│                                          │
+│  Audio Capture                           │
+│  Audio Playback                          │
+│  Networking                              │
+│  Timing                                  │
+│  Scheduling                              │
+│  Connection Lifecycle                    │
+│  Platform Services                       │
+│                                          │
+└──────────────────────────────────────────┘
 ```
 
-Timing-critical operations should remain close to the native Android audio system rather than being driven by Flutter frame timing.
+The principle is simple:
+
+> **Flutter runs the experience. Android runs the time-critical machinery.**
 
 ---
 
 # Technology stack
 
-| Layer                    | Technology                |
-| ------------------------ | ------------------------- |
-| UI / application         | Flutter                   |
-| Language                 | Dart                      |
-| Android native           | Kotlin / Java             |
-| Native audio             | Android audio APIs        |
-| Audio playback           | `AudioTrack`              |
-| Audio capture            | Android capture APIs      |
-| Networking               | Native Android networking |
-| State management         | Riverpod                  |
-| QR generation            | `qr_flutter`              |
-| QR scanning              | `mobile_scanner`          |
-| Monetization integration | RevenueCat                |
-| RevenueCat testing       | RevenueCat Test Store     |
-| Local persistence        | `shared_preferences`      |
-| Source control           | Git / GitHub              |
+| Layer                    | Technology                 |
+| ------------------------ | -------------------------- |
+| Application              | Flutter                    |
+| Language                 | Dart                       |
+| Android                  | Native Android             |
+| Native code              | Kotlin / Java              |
+| State management         | Riverpod                   |
+| Audio capture            | Android audio capture APIs |
+| Audio playback           | `AudioTrack`               |
+| Networking               | Native Android networking  |
+| QR generation            | `qr_flutter`               |
+| QR scanning              | `mobile_scanner`           |
+| Local preferences        | `shared_preferences`       |
+| Monetization integration | RevenueCat                 |
+| Purchase testing         | RevenueCat Test Store      |
+| Source control           | Git / GitHub               |
 
 ---
 
 # RevenueCat
 
-SoundMesh includes RevenueCat integration as part of the project.
+SoundMesh includes RevenueCat integration using the **RevenueCat Test Store**.
 
-The current implementation uses **RevenueCat's Test Store** for simulated purchase flows rather than real-money purchases.
+The goal is to exercise a real RevenueCat integration and entitlement flow while keeping the project independent from real-money purchases during development and testing.
 
-That allows the project to exercise the RevenueCat integration without requiring a Google Play production billing setup.
-
-The intended development model is:
+Conceptually:
 
 ```text
 RevenueCat Test Store
         │
         ▼
-Simulated purchase
+Simulated Purchase
         │
         ▼
-Entitlement
+Customer Entitlement
         │
         ▼
 SoundMesh UI
 ```
 
-No real-money transaction is required for the development/test flow.
+The project does not require real payment transactions for this test flow.
+
+For Android release builds, the repository includes the required local RevenueCat plugin modification so the Test Store can continue functioning in an internal release build.
 
 ---
 
 # UI
 
-SoundMesh uses a dark, minimal visual system built around a **Midnight Teal** aesthetic.
+SoundMesh uses a dark, minimal interface built around a **Midnight Teal** visual language.
 
-The interface focuses on:
+The design emphasizes:
 
-* clear hierarchy
+* strong hierarchy
 * restrained color
-* compact information density
 * subtle surfaces
-* strong contrast
+* clear typography
 * responsive layouts
-* minimal navigation
-* functional feedback
+* compact navigation
+* useful feedback
+* minimal visual noise
 
-The UI is intentionally designed to hide the complexity of the distributed system underneath it.
+The complexity belongs underneath the interface.
 
-The user experience should feel like:
-
-```text
-Create.
-Join.
-Choose.
-Play.
-```
+The experience should not feel complicated.
 
 ---
 
@@ -606,119 +547,134 @@ Play.
 
 ### Local first
 
-Prefer nearby direct communication whenever practical.
+Prefer direct nearby-device communication whenever practical.
 
 ### Measure, don't guess
 
-Synchronization behavior should be derived from timing measurements rather than assumptions.
+Timing behavior should be based on measurements instead of assumptions.
 
 ### Schedule, don't shout
 
-Future-target scheduling is preferred over blindly broadcasting "play now".
+Future-target playback is preferred over blindly broadcasting "play now".
 
 ### Native where timing matters
 
-Audio and timing-critical operations belong close to the platform audio system.
+Realtime audio and timing-sensitive work should stay close to the platform audio system.
 
 ### Simple on the surface
 
-The implementation may be complex.
+The technology can be complicated.
 
-The user experience should not be.
+The experience should not be.
 
 ### Recover instead of restart
 
-A failed operation should return the user to a valid state whenever possible.
+Failures should return the user to a valid state whenever practical.
 
 ### Evidence over claims
 
-A feature isn't considered reliable merely because it compiles.
+A feature is not considered reliable simply because it compiles.
+
+---
+
+# What makes the project interesting
+
+SoundMesh sits at the intersection of several engineering problems:
+
+```text
+                 SoundMesh
+
+      ┌──────── Distributed Systems ────────┐
+      │                                      │
+      │  Clock Synchronization               │
+      │  Network Timing                     │
+      │  Audio Scheduling                   │
+      │  Buffering                          │
+      │  Device Heterogeneity               │
+      │  Lifecycle Recovery                 │
+      │                                      │
+      └──────────────────────────────────────┘
+                       │
+                       ▼
+                One User Experience
+```
+
+The user doesn't need to think about any of this.
+
+They just need to:
+
+```text
+Create.
+Join.
+Play.
+```
 
 ---
 
 # Testing
 
-SoundMesh is tested at multiple levels.
+SoundMesh uses multiple layers of validation:
 
 ```text
-Static analysis
+Static Analysis
       ↓
-Unit tests
+Unit Tests
       ↓
-Widget tests
+Widget Tests
       ↓
-Integration / flow tests
+Flow / Integration Tests
       ↓
-Android build
+Android Build
       ↓
-Physical-device validation
+Physical Device Testing
       ↓
-Multi-device validation
+Multi-Device Testing
 ```
 
-Automated tests are important, but they cannot completely prove synchronized physical audio behavior.
+Automated tests can verify software behavior.
 
-The most meaningful validation happens on real Android hardware.
+They cannot completely prove what synchronized audio sounds like across different physical speakers.
 
-Important areas include:
+That's why real hardware matters.
+
+Important validation areas include:
 
 * room creation
 * room joining
-* reconnect/recovery
+* QR joining
 * room teardown
-* multi-device membership
+* repeated room creation
+* participant recovery
+* lifecycle transitions
 * background behavior
 * audio capture
 * audio transport
-* scheduled playback
+* playback scheduling
 * synchronization
-* lifecycle transitions
+* multi-device membership
 
 ---
 
 # Current status
 
-SoundMesh is an actively developed Android project with the core room, networking, audio, synchronization, multi-device, recovery, RevenueCat, and responsive UI systems implemented.
+SoundMesh is currently in **pre-submission hardening and physical validation**.
 
-The project is currently in **pre-submission hardening and physical validation**.
+The project has implemented the core systems required for its current Android demo:
 
-The focus at this stage is not adding random features.
+* room creation and joining
+* QR-based joining
+* local device discovery
+* multi-participant rooms
+* audio capture
+* audio distribution
+* synchronized playback scheduling
+* clock synchronization
+* participant-scoped synchronization
+* lifecycle recovery
+* responsive UI
+* RevenueCat integration
 
-It is making the existing experience:
-
-* stable
-* reproducible
-* understandable
-* visually polished
-* recoverable
-* testable on real hardware
-
----
-
-# Repository structure
-
-```text
-SoundMesh/
-│
-├── app/
-│   ├── android/
-│   ├── lib/
-│   │   ├── application/
-│   │   ├── core/
-│   │   ├── infrastructure/
-│   │   └── presentation/
-│   │
-│   ├── test/
-│   ├── third_party/
-│   │   └── purchases_flutter/
-│   ├── pubspec.yaml
-│   └── pubspec.lock
-│
-├── LICENSE
-└── README.md
-```
-
-The `third_party/purchases_flutter` directory contains the repository-local RevenueCat Flutter plugin used to keep the Android Test Store release-build behavior reproducible.
+The current focus is stability, reproducibility, and real-device validation rather than continuously adding features.
 
 ---
 
@@ -726,13 +682,11 @@ The `third_party/purchases_flutter` directory contains the repository-local Reve
 
 ## Requirements
 
-You need:
-
-* Flutter SDK compatible with the project
+* Flutter SDK compatible with this repository
 * Android SDK
-* Android Studio / Android tooling
-* an Android device or emulator
-* USB debugging enabled for physical-device testing
+* Android build tools
+* Android Studio or equivalent Android tooling
+* Android device or emulator
 
 SoundMesh is Android-only.
 
@@ -755,7 +709,7 @@ flutter pub get
 
 ---
 
-## Run in development
+## Run
 
 ```bash
 flutter run
@@ -763,33 +717,31 @@ flutter run
 
 ---
 
-## Build a release APK
+# Build the release APK
 
 ```bash
 flutter build apk --release
 ```
 
-The generated APK is located at:
+The APK will be generated at:
 
 ```text
 build/app/outputs/flutter-apk/app-release.apk
 ```
 
----
-
-## Install on a connected Android device
+Install it with:
 
 ```bash
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
-To see connected devices:
+Check connected devices with:
 
 ```bash
 adb devices
 ```
 
-To target a specific device:
+Or target a specific device:
 
 ```bash
 adb -s DEVICE_SERIAL install -r build/app/outputs/flutter-apk/app-release.apk
@@ -797,95 +749,105 @@ adb -s DEVICE_SERIAL install -r build/app/outputs/flutter-apk/app-release.apk
 
 ---
 
-# Physical testing
+# Physical multi-device testing
 
-Because SoundMesh is a distributed audio system, the most meaningful test setup is multiple real Android phones on the same local network.
+SoundMesh is fundamentally a multi-device application.
 
-A basic session looks like:
+A basic setup:
 
 ```text
-Phone A
-  Host
-    │
-    ├────────► Phone B
-    │           Participant
-    │
-    └────────► Phone C
-                Participant
+             HOST PHONE
+                  │
+          ┌───────┴───────┐
+          │               │
+          ▼               ▼
+    PARTICIPANT      PARTICIPANT
+       PHONE             PHONE
 ```
 
-For serious synchronization validation, use multiple physical devices rather than relying exclusively on emulators.
+For meaningful synchronization testing, use multiple physical Android devices connected to the same local network.
+
+Real hardware exposes timing, audio, networking, and lifecycle behavior that automated tests cannot fully reproduce.
 
 ---
 
-# Performance considerations
+# Repository structure
 
-SoundMesh contains several timing-sensitive paths.
+```text
+SoundMesh/
+│
+├── app/
+│   ├── android/
+│   ├── assets/
+│   ├── lib/
+│   │   ├── application/
+│   │   ├── core/
+│   │   ├── infrastructure/
+│   │   └── presentation/
+│   │
+│   ├── test/
+│   ├── third_party/
+│   │   └── purchases_flutter/
+│   │
+│   ├── pubspec.yaml
+│   └── pubspec.lock
+│
+├── LICENSE
+└── README.md
+```
 
-The architecture therefore avoids pushing realtime work into the Flutter UI thread where possible.
+The repository-local `purchases_flutter` package contains the Android-specific integration required for the project's RevenueCat Test Store release configuration.
 
-Particular care is taken around:
+---
 
-* monotonic clocks
+# Performance
+
+SoundMesh has several timing-sensitive paths, so the architecture avoids relying on Flutter UI-frame timing for realtime work.
+
+Particular attention is given to:
+
+* monotonic timing
 * audio buffering
 * packet scheduling
 * connection lifecycle
 * participant isolation
-* background execution
-* repeated room creation/teardown
+* room teardown
+* repeated room creation
 * native playback scheduling
 
-Performance should be evaluated on the devices SoundMesh is actually expected to run on.
+Performance and synchronization behavior should ultimately be evaluated on real hardware.
 
 ---
 
 # Privacy
 
-SoundMesh follows a local-first model.
+SoundMesh is designed around local communication.
 
-The application is designed to minimize unnecessary remote communication and does not require a cloud backend for ordinary nearby-device playback.
+Ordinary nearby-device playback does not require a cloud media backend.
 
-Audio used by the local session is intended to remain within the local SoundMesh environment rather than being uploaded to a remote media service solely for synchronization.
+The project is designed to avoid unnecessary collection or remote transmission of user information.
 
-Room information is session-oriented rather than intended to function as a permanent identity system.
-
----
-
-# What SoundMesh is not
-
-SoundMesh is not intended to be:
-
-* a music streaming platform
-* a social network
-* a cloud music service
-* a professional multi-room audio replacement
-* a long-distance audio transport system
-* an always-online service
-* an unlimited-device audio infrastructure
-
-Its focus is intentionally narrow:
-
-> **Make nearby independent phones behave like one coordinated speaker system.**
+Room information is session-oriented rather than intended as a permanent user identity system.
 
 ---
 
 # Limitations
 
-SoundMesh is an engineering project, not a claim that every Android phone will behave identically.
+SoundMesh cannot guarantee identical behavior across every Android device.
 
 Real-world behavior can vary with:
 
 * Android version
-* device hardware
+* manufacturer modifications
+* processor load
 * speaker hardware
 * audio pipeline characteristics
 * network conditions
 * background restrictions
-* device load
-* thermal conditions
-* manufacturer-specific Android behavior
+* thermal behavior
+* device-specific latency
 
-Some capabilities require physical-device validation to establish reliable behavior across hardware.
+Physical validation is therefore an important part of evaluating the system.
 
 ---
 
@@ -893,74 +855,84 @@ Some capabilities require physical-device validation to establish reliable behav
 
 Contributions are welcome.
 
-Before changing core functionality:
+For meaningful changes:
 
 1. Inspect the existing implementation.
-2. Understand the current state flow.
-3. Keep the scope focused.
-4. Preserve existing behavior unless the change intentionally modifies it.
-5. Test the change.
-6. Run static analysis.
-7. Inspect the final diff.
-8. Document important behavioral changes.
+2. Keep the scope focused.
+3. Preserve existing behavior unless the change intentionally modifies it.
+4. Avoid unnecessary architectural rewrites.
+5. Run analysis and tests.
+6. Inspect the final diff.
+7. Document important behavioral changes.
 
-Please avoid large architectural rewrites when a smaller correct change is sufficient.
+Please prefer the smallest correct change over a broad rewrite.
 
 ---
 
-# Project philosophy
+# The engineering challenge
 
-SoundMesh exists because a surprisingly difficult engineering problem can hide inside a very simple idea.
-
-At first glance:
+At first glance, SoundMesh looks like this:
 
 ```text
-Play the same audio on several phones.
+Play audio on several phones.
 ```
 
-Underneath that:
+In reality:
 
 ```text
 Independent clocks
-       +
-Independent audio pipelines
-       +
+        +
+Independent audio systems
+        +
 Network delay
-       +
+        +
 Jitter
-       +
+        +
+Buffering
+        +
 Device-specific behavior
-       +
+        +
 Lifecycle failures
-       +
-Clock drift
-       +
-Real-world hardware
-       =
+        +
+Timing drift
+        +
+Real hardware
+        │
+        ▼
 Distributed synchronization problem
 ```
 
-That is the interesting part.
+That's what SoundMesh is really about.
 
 ---
 
 # The goal
 
-The goal isn't merely to make several phones play the same audio.
+The goal isn't simply to make several phones play the same file.
 
-The goal is to make the user **forget there are several phones**.
+The goal is to make the user **forget that there are several phones**.
 
-Ideally:
+The ideal experience is:
 
 ```text
-Create.
-Join.
-Play.
+        Create
+           ↓
+          Join
+           ↓
+          Play
 
-Multiple phones.
-
-One sound.
+    ┌─────────────────┐
+    │ Multiple phones │
+    │                 │
+    │    One sound    │
+    └─────────────────┘
 ```
+
+A speaker is usually one device.
+
+SoundMesh asks a different question:
+
+> **What if the speaker could be the devices you already have?**
 
 ---
 
@@ -971,14 +943,10 @@ See [`LICENSE`](LICENSE) for the current project license.
 ---
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/FOR_APP_ICON.png" alt="SoundMesh" width="90">
+</p>
+
+<p align="center">
   <strong>SoundMesh</strong><br>
   Multiple phones. One sound.
-</p>
-
-<p align="center">
-  Built to answer one simple question:
-</p>
-
-<p align="center">
-  <em>Can a handful of phones become a speaker when you don't have one?</em>
 </p>
