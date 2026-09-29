@@ -359,7 +359,11 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
   }
 
   void reset() {
-    _networkRepository.disconnect();
+    // Do NOT call _networkRepository.disconnect() here.
+    // Room cleanup (leaveRoom) is handled by RoomLifecycleNotifier
+    // and already performs the necessary network teardown. Calling disconnect()
+    // again causes a double-teardown that leaves the platform in a bad state
+    // for subsequent room joins.
     state = const JoinRoomFlowState();
   }
 
