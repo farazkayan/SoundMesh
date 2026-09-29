@@ -7,11 +7,18 @@ import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide StateProvider;
 import 'dart:developer' as developer;
 
-class CreateRoomScreen extends ConsumerWidget {
+class CreateRoomScreen extends ConsumerStatefulWidget {
   const CreateRoomScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CreateRoomScreen> createState() => _CreateRoomScreenState();
+}
+
+class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
+  bool _isCreating = false;
+
+  @override
+  Widget build(BuildContext context) {
     final appState = ref.watch(applicationStateProvider);
     final createState = ref.watch(createRoomFlowProvider);
 
@@ -48,6 +55,29 @@ class CreateRoomScreen extends ConsumerWidget {
                 );
               },
             ),
+            // Loading overlay - appears immediately on button press
+            if (_isCreating)
+              Container(
+                color: TSXColors.background.withValues(alpha: 0.9),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SMLoadingIndicator.tsx(size: 48),
+                      SizedBox(height: TSXSpacing.lg),
+                      Text(
+                        'Creating room…',
+                        style: TSXTypography.headlineMedium,
+                      ),
+                      SizedBox(height: TSXSpacing.md),
+                      Text(
+                        'Setting up network and discovery…',
+                        style: TSXTypography.bodyMedium.copyWith(color: TSXColors.secondaryText),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -242,6 +272,7 @@ class CreateRoomScreen extends ConsumerWidget {
           icon: Icons.add,
           variant: SMButtonVariant.tsxPrimary,
           onPressed: () => _createRoom(context, ref),
+          isLoading: _isCreating,
         ),
         SizedBox(height: TSXSpacing.lg),
         SMButton(
@@ -259,6 +290,9 @@ class CreateRoomScreen extends ConsumerWidget {
   }
 
   Future<void> _createRoom(BuildContext context, WidgetRef ref) async {
+    // Immediate local loading state for instant feedback before native calls block
+    setState(() => _isCreating = true);
+
     developer.log(
       'CreateRoomScreen: _createRoom() called',
       name: 'SoundMesh.CreateRoomScreen',
@@ -284,6 +318,10 @@ class CreateRoomScreen extends ConsumerWidget {
             behavior: SnackBarBehavior.floating,
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCreating = false);
       }
     }
   }
