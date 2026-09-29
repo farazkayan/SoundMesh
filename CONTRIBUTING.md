@@ -1,2718 +1,577 @@
-\# Contributing to SoundMesh
+# Contributing to SoundMesh
 
+Thanks for your interest in contributing to **SoundMesh**.
 
+SoundMesh is an Android-first Flutter project exploring a simple idea:
 
-\## 1. Purpose
+> **Can nearby phones work together like one speaker?**
 
+The user experience is intentionally simple, but the system underneath involves networking, audio processing, timing, synchronization, and device lifecycle management.
 
+Because of that, contributions should favor **small, understandable, testable changes** over large rewrites.
 
-This document defines how contributors work on SoundMesh safely and consistently.
+---
 
+## Before You Start
 
+SoundMesh is currently developed as an **Android-only application**.
 
-SoundMesh is developed by a small human team with assistance from AI coding agents. Because multiple developers and AI agents may work on the project concurrently, contribution rules must protect:
+Please keep contributions focused on the supported platform.
 
+The project is built primarily with:
 
+* Flutter
+* Dart
+* Native Android
+* Kotlin / Java
+* Riverpod
 
-\* code correctness
+Before making a change, inspect the existing implementation around the feature you are modifying.
 
-\* architectural consistency
+Do not assume that a component is isolated just because it appears to belong to one screen. SoundMesh has several systems where UI, state, networking, and native Android behavior interact.
 
-\* Git history
+---
 
-\* documentation accuracy
+# What We Welcome
 
-\* synchronization correctness
+We welcome improvements such as:
 
-\* platform-specific behavior
+* bug fixes
+* UI improvements
+* accessibility improvements
+* responsive-layout fixes
+* test coverage
+* performance improvements
+* Android compatibility fixes
+* networking reliability improvements
+* room lifecycle improvements
+* audio pipeline improvements
+* synchronization improvements
+* developer tooling
+* documentation improvements
 
-\* reproducibility
+For larger changes, open an issue first so the scope can be discussed before implementation.
 
-\* contributor ownership boundaries
+---
 
+# What to Avoid
 
+Please avoid:
 
-This document is a workflow specification.
+* unnecessary rewrites
+* replacing working architecture for stylistic reasons
+* introducing unrelated dependencies
+* changing multiple subsystems for a single bug
+* platform implementations that SoundMesh does not use
+* fake or simulated functionality presented as real functionality
+* removing tests simply because they are inconvenient
+* changing synchronization behavior without understanding its timing model
 
+A smaller correct fix is usually preferable to a larger clever one.
 
+---
 
-For AI-specific behavior, see:
+# Project Structure
 
+The main application lives under `app/`.
 
+```text
+SoundMesh/
+│
+├── app/
+│   ├── android/
+│   ├── assets/
+│   ├── lib/
+│   │   ├── application/
+│   │   ├── core/
+│   │   ├── infrastructure/
+│   │   └── presentation/
+│   │
+│   ├── test/
+│   ├── third_party/
+│   ├── pubspec.yaml
+│   └── pubspec.lock
+│
+├── CONTRIBUTING.md
+├── LICENSE
+└── README.md
+```
 
-\* `AGENTS.md`
+### Application
 
-\* `DOCS/AI/ai-context.md`
+High-level application behavior, providers, room flows, and orchestration.
 
-\* `DOCS/AI/rules.md`
+### Core
 
-\* `DOCS/AI/task-protocol.md`
+Shared models, routing, configuration, and design/system-level code.
 
+### Infrastructure
 
+Discovery, networking, platform integration, and other implementation details.
 
-For technical architecture and requirements, consult the relevant documents under `DOCS/`.
+### Presentation
 
+Screens, components, UI state, and user-facing interaction.
 
+### Android
 
-\---
+Native Android functionality, including timing-sensitive and audio-related platform work.
 
+### Third-party
 
+Repository-local dependencies that have been intentionally customized for SoundMesh.
 
-\# 2. Project Philosophy
+---
 
+# Development Setup
 
+You will need:
 
-SoundMesh is not developed by adding features as quickly as possible.
+* Flutter SDK compatible with the project
+* Android SDK
+* Android build tools
+* Android Studio or equivalent Android tooling
+* an Android emulator or physical Android device
 
+For meaningful SoundMesh testing, physical Android devices are strongly recommended.
 
+---
 
-The project prioritizes:
+# Running SoundMesh
 
-
-
-1\. proving the difficult technical assumptions
-
-2\. maintaining a clear architecture
-
-3\. measuring synchronization behavior
-
-4\. testing on real devices
-
-5\. keeping the user experience simple
-
-6\. documenting important decisions
-
-7\. avoiding unnecessary complexity
-
-
-
-A contribution is successful when it improves the system without weakening its architecture, reliability, measurability, or maintainability.
-
-
-
-\---
-
-
-
-\# 3. Before Contributing
-
-
-
-Before making a meaningful change, contributors must:
-
-
-
-1\. understand the requested task
-
-2\. inspect the repository
-
-3\. check the current Git state
-
-4\. read the relevant documentation
-
-5\. identify affected subsystems
-
-6\. check whether another contributor is modifying the same area
-
-7\. determine whether the task is already covered by an existing requirement
-
-8\. identify unresolved technical questions
-
-
-
-AI agents must additionally follow the workflow in:
-
-
-
-`DOCS/AI/task-protocol.md`
-
-
-
-Do not begin implementation merely because a feature sounds useful.
-
-
-
-\---
-
-
-
-\# 4. Documentation Authority
-
-
-
-When documents disagree, use this general authority order:
-
-
-
-1\. current explicit human instruction
-
-2\. `DOCS/decisions.md`
-
-3\. relevant technical specification
-
-4\. `DOCS/blueprint.md`
-
-5\. `DOCS/roadmap.md`
-
-6\. `DOCS/AI/ai-context.md`
-
-7\. `DOCS/AI/rules.md`
-
-8\. `DOCS/AI/task-protocol.md`
-
-9\. implementation
-
-10\. assumptions
-
-
-
-If an important conflict cannot be resolved from existing documentation, stop and ask for clarification.
-
-
-
-Do not silently choose an architectural direction.
-
-
-
-\---
-
-
-
-\# 5. Git Repository
-
-
-
-The Git repository is the source of truth for code and tracked project files.
-
-
-
-Contributors should keep the repository in a recoverable state.
-
-
-
-Before starting work:
-
-
+From the `app/` directory:
 
 ```bash
-
-git status
-
+flutter pub get
 ```
 
-
-
-Review:
-
-
-
-\* current branch
-
-\* uncommitted changes
-
-\* untracked files
-
-\* unexpected modifications
-
-
-
-Do not overwrite another contributor's uncommitted work.
-
-
-
-\---
-
-
-
-\# 6. Branch Strategy
-
-
-
-The repository uses a simple branch model.
-
-
-
-\## Main branch
-
-
-
-`main`
-
-
-
-Purpose:
-
-
-
-\* stable shared baseline
-
-\* integration branch
-
-\* competition-ready code when appropriate
-
-
-
-Contributors should not directly perform large experimental changes on `main`.
-
-
-
-\---
-
-
-
-\## Developer branches
-
-
-
-Each contributor should normally work on their own branch.
-
-
-
-Examples:
-
-
-
-```text
-
-faraz-foundation
-
-mahin-foundation
-
-```
-
-
-
-For focused work, branches may use:
-
-
-
-```text
-
-faraz/<area>
-
-mahin/<area>
-
-```
-
-
-
-Examples:
-
-
-
-```text
-
-faraz/networking
-
-mahin/audio-engine
-
-faraz/ui-room
-
-mahin/sync-spike
-
-```
-
-
-
-Do not create dozens of unnecessary branches for trivial edits.
-
-
-
-\---
-
-
-
-\# 7. Branch Ownership
-
-
-
-A branch represents a contributor's working area.
-
-
-
-A contributor is responsible for:
-
-
-
-\* understanding their changes
-
-\* testing their changes
-
-\* reviewing their diff
-
-\* resolving conflicts
-
-\* documenting relevant architectural changes
-
-\* communicating dependencies with other contributors
-
-
-
-Ownership does not mean permanent control over a file.
-
-
-
-It means contributors should coordinate before making overlapping changes.
-
-
-
-\---
-
-
-
-\# 8. AI Agent Branches
-
-
-
-AI coding agents should normally operate on the branch belonging to the human directing them.
-
-
-
-An AI agent must not:
-
-
-
-\* switch branches without authorization
-
-\* reset another contributor's branch
-
-\* delete another contributor's work
-
-\* force-push without explicit authorization
-
-\* rewrite unrelated commits
-
-\* modify unrelated subsystems
-
-\* create architectural changes silently
-
-
-
-If an AI agent discovers changes that appear to belong to another contributor, it should stop before overwriting them.
-
-
-
-\---
-
-
-
-\# 9. Multi-Agent Collaboration
-
-
-
-Multiple AI agents may be used during development.
-
-
-
-However:
-
-
-
-> Two agents must not independently modify the same critical subsystem at the same time unless the work has been explicitly divided.
-
-
-
-High-risk shared areas include:
-
-
-
-\* synchronization engine
-
-\* native audio engine
-
-\* networking protocol
-
-\* room state machine
-
-\* platform bridge
-
-\* playback scheduling
-
-\* shared protocol models
-
-
-
-Safer parallelization uses explicit ownership.
-
-
-
-Example:
-
-
-
-```text
-
-Agent A
-
-├── Flutter UI
-
-└── navigation
-
-
-
-Agent B
-
-├── Android native audio
-
-└── Android timing
-
-
-
-Agent C
-
-├── networking protocol
-
-└── room connection logic
-
-```
-
-
-
-Each agent must know:
-
-
-
-\* allowed files
-
-\* forbidden files
-
-\* interface dependencies
-
-\* expected outputs
-
-\* acceptance criteria
-
-
-
-\---
-
-
-
-\# 10. Live Collaboration
-
-
-
-Real-time collaboration tools may be used when useful.
-
-
-
-However:
-
-
-
-\* Git remains the source of truth.
-
-\* Live editing does not replace commits.
-
-\* Shared editing does not remove ownership boundaries.
-
-\* Contributors must communicate before changing shared critical files.
-
-
-
-Live collaboration is a convenience, not the project's version-control system.
-
-
-
-\---
-
-
-
-\# 11. Task Scope
-
-
-
-Every implementation task should have a clearly defined scope.
-
-
-
-A good task identifies:
-
-
-
-\* objective
-
-\* reason
-
-\* affected subsystem
-
-\* allowed files
-
-\* dependencies
-
-\* acceptance criteria
-
-\* tests
-
-\* known limitations
-
-
-
-Contributors should avoid unrelated cleanup while implementing a focused task.
-
-
-
-For example, if the task is:
-
-
-
-> Implement QR room joining.
-
-
-
-Do not simultaneously:
-
-
-
-\* redesign the entire navigation system
-
-\* replace the networking library
-
-\* rewrite the audio engine
-
-\* introduce authentication
-
-\* reorganize unrelated folders
-
-
-
-unless those changes are necessary and explicitly approved.
-
-
-
-\---
-
-
-
-\# 12. Architecture Changes
-
-
-
-Architecture changes require additional care.
-
-
-
-Examples include:
-
-
-
-\* changing the networking topology
-
-\* replacing the audio engine
-
-\* changing the Flutter/native boundary
-
-\* introducing a new synchronization algorithm
-
-\* changing the room state machine
-
-\* changing the protocol
-
-\* introducing cloud infrastructure
-
-\* changing device identity semantics
-
-
-
-These should not be treated as ordinary implementation details.
-
-
-
-If an architectural decision changes, update:
-
-
-
-`DOCS/decisions.md`
-
-
-
-and any affected technical specification.
-
-
-
-\---
-
-
-
-\# 13. Requirement Status
-
-
-
-SoundMesh uses explicit requirement statuses:
-
-
-
-```text
-
-REQUIRED
-
-PREFERRED
-
-OPTIONAL
-
-UNDECIDED
-
-REJECTED
-
-EXPERIMENTAL
-
-```
-
-
-
-Contributors must respect these meanings.
-
-
-
-In particular:
-
-
-
-> `UNDECIDED` does not mean "choose whatever seems easiest."
-
-
-
-If implementation requires an undecided architectural choice, document the alternatives and obtain a decision before committing to a permanent direction.
-
-
-
-\---
-
-
-
-\# 14. Experimental Work
-
-
-
-Experimental work is encouraged when it reduces uncertainty.
-
-
-
-Examples:
-
-
-
-\* testing Android audio latency
-
-\* comparing audio engines
-
-\* measuring clock offset
-
-\* testing Wi-Fi hotspot behavior
-
-\* testing Wi-Fi Direct
-
-\* testing Bluetooth
-
-\* measuring playback drift
-
-\* testing 5 or 10 devices
-
-\* testing background behavior
-
-
-
-Experiments should be isolated from production architecture where practical.
-
-
-
-An experiment should record:
-
-
-
-\* hypothesis
-
-\* setup
-
-\* devices
-
-\* software versions
-
-\* procedure
-
-\* measurements
-
-\* observations
-
-\* conclusion
-
-\* limitations
-
-\* next action
-
-
-
-Do not convert an experiment into a permanent architecture decision without evidence.
-
-
-
-\---
-
-
-
-\# 15. Commit Guidelines
-
-
-
-Commits should represent coherent units of work.
-
-
-
-Good examples:
-
-
-
-```text
-
-feat: add room creation state machine
-
-feat: add QR room join flow
-
-fix: handle participant reconnect
-
-test: add clock offset estimation tests
-
-docs: clarify playback scheduling requirements
-
-refactor: isolate native audio adapter
-
-```
-
-
-
-Avoid vague commits such as:
-
-
-
-```text
-
-stuff
-
-changes
-
-fixed things
-
-update
-
-lol
-
-```
-
-
-
-A commit should ideally answer:
-
-
-
-> What changed, and why?
-
-
-
-\---
-
-
-
-\# 16. Commit Size
-
-
-
-Prefer focused commits.
-
-
-
-Good:
-
-
-
-```text
-
-feat: add timestamp exchange protocol
-
-test: add timestamp exchange validation
-
-docs: document timestamp exchange
-
-```
-
-
-
-Less desirable:
-
-
-
-```text
-
-feat: build networking, audio, UI, sync, settings, diagnostics,
-
-and refactor the whole project
-
-```
-
-
-
-Large commits make:
-
-
-
-\* review harder
-
-\* debugging harder
-
-\* conflict resolution harder
-
-\* rollback harder
-
-\* AI-assisted development less reliable
-
-
-
-\---
-
-
-
-\# 17. Pull Requests
-
-
-
-When using pull requests, a PR should contain:
-
-
-
-\### Summary
-
-
-
-What changed?
-
-
-
-\### Motivation
-
-
-
-Why was it needed?
-
-
-
-\### Scope
-
-
-
-What files/subsystems were affected?
-
-
-
-\### Testing
-
-
-
-What was tested?
-
-
-
-\### Evidence
-
-
-
-What results were observed?
-
-
-
-\### Limitations
-
-
-
-What remains unverified?
-
-
-
-\### Documentation
-
-
-
-What documentation changed?
-
-
-
-\### Breaking changes
-
-
-
-Does the change alter an interface, protocol, state machine, or architecture?
-
-
-
-\---
-
-
-
-\# 18. Pull Request Review
-
-
-
-Reviewers should check:
-
-
-
-\* correctness
-
-\* scope
-
-\* architecture
-
-\* tests
-
-\* error handling
-
-\* concurrency
-
-\* platform behavior
-
-\* synchronization implications
-
-\* performance
-
-\* security
-
-\* documentation
-
-\* unnecessary complexity
-
-
-
-For synchronization-related changes, reviewers should additionally ask:
-
-
-
-\* What clock is being used?
-
-\* Is it monotonic?
-
-\* How is offset measured?
-
-\* How is uncertainty handled?
-
-\* Is network RTT being confused with audio latency?
-
-\* How is actual playback position determined?
-
-\* What happens when the network degrades?
-
-\* What happens when a device drifts?
-
-\* What happens when a participant disconnects?
-
-\* Has this been tested on real devices?
-
-
-
-\---
-
-
-
-\# 19. Testing Requirements
-
-
-
-A contribution should have the strongest applicable testing level.
-
-
-
-\## Level 1 — Static verification
-
-
-
-Examples:
-
-
-
-\* formatting
-
-\* linting
-
-\* type checking
-
-\* compilation
-
-\* static analysis
-
-
-
-\## Level 2 — Automated tests
-
-
-
-Examples:
-
-
-
-\* unit tests
-
-\* protocol tests
-
-\* state-machine tests
-
-\* serialization tests
-
-\* synchronization calculations
-
-
-
-\## Level 3 — Integration tests
-
-
-
-Examples:
-
-
-
-\* room creation
-
-\* device joining
-
-\* audio transfer
-
-\* playback coordination
-
-\* reconnect behavior
-
-
-
-\## Level 4 — Real-device testing
-
-
-
-Required for behavior involving:
-
-
-
-\* audio
-
-\* networking
-
-\* timing
-
-\* permissions
-
-\* Bluetooth
-
-\* background behavior
-
-\* hardware
-
-\* battery
-
-\* thermal behavior
-
-
-
-A real-device claim must not be made from simulator/emulator results alone.
-
-
-
-\---
-
-
-
-\# 20. Test Evidence
-
-
-
-Testing reports must distinguish:
-
-
-
-```text
-
-VERIFIED
-
-INFERRED
-
-UNTESTED
-
-BLOCKED
-
-```
-
-
-
-Example:
-
-
-
-```text
-
-Android room creation: VERIFIED
-
-iOS room creation: UNTESTED
-
-Two-device synchronization: VERIFIED on Pixel + iPhone
-
-Five-device synchronization: BLOCKED
-
-Bluetooth route recovery: EXPERIMENTAL
-
-```
-
-
-
-Do not write:
-
-
-
-> Works everywhere.
-
-
-
-unless it has actually been demonstrated across the relevant supported configurations.
-
-
-
-\---
-
-
-
-\# 21. Synchronization Changes
-
-
-
-Synchronization is a high-risk subsystem.
-
-
-
-Changes affecting synchronization must consider:
-
-
-
-\* clock source
-
-\* clock offset
-
-\* RTT
-
-\* network jitter
-
-\* timing uncertainty
-
-\* audio latency
-
-\* output latency
-
-\* playback position
-
-\* drift
-
-\* correction behavior
-
-\* startup scheduling
-
-\* late joining
-
-\* pause/resume
-
-\* seek
-
-\* recovery
-
-
-
-Never optimize synchronization using a single unexplained magic number.
-
-
-
-If a threshold is introduced, document:
-
-
-
-\* what it represents
-
-\* why it exists
-
-\* how it was selected
-
-\* whether it is measured or provisional
-
-\* how it can be validated
-
-
-
-\---
-
-
-
-\# 22. Audio Changes
-
-
-
-Audio changes must consider:
-
-
-
-\* decoder behavior
-
-\* sample rate
-
-\* channel count
-
-\* buffering
-
-\* native scheduling
-
-\* playback position
-
-\* output route
-
-\* hardware latency
-
-\* interruptions
-
-\* background behavior
-
-\* CPU usage
-
-\* battery usage
-
-
-
-Do not move high-frequency audio timing work into Flutter merely for implementation convenience.
-
-
-
-\---
-
-
-
-\# 23. Networking Changes
-
-
-
-Networking changes must preserve:
-
-
-
-\* local-first operation
-
-\* explicit protocol versions
-
-\* message identity
-
-\* session identity
-
-\* participant identity
-
-\* generation numbers
-
-\* reliable control behavior
-
-\* timeout handling
-
-\* reconnection behavior
-
-\* malformed-message handling
-
-
-
-Do not use IP addresses as persistent device identity.
-
-
-
-Do not put permanent secrets in QR codes.
-
-
-
-Do not introduce Internet/cloud requirements into the MVP without an explicit architectural decision.
-
-
-
-\---
-
-
-
-\# 24. Security
-
-
-
-Contributors must consider security even though SoundMesh is primarily a local application.
-
-
-
-Important principles:
-
-
-
-\* validate incoming messages
-
-\* validate protocol versions
-
-\* validate room membership
-
-\* use short-lived join authorization
-
-\* avoid permanent secrets in QR codes
-
-\* avoid trusting arbitrary local-network traffic
-
-\* use standard cryptographic primitives
-
-\* do not invent custom cryptography
-
-\* avoid logging secrets
-
-\* avoid logging unnecessary personal data
-
-
-
-Security decisions should be documented when they materially affect architecture.
-
-
-
-\---
-
-
-
-\# 25. Flutter and Native Code
-
-
-
-SoundMesh uses Flutter for:
-
-
-
-\* UI
-
-\* navigation
-
-\* high-level application state
-
-\* user interaction
-
-\* orchestration
-
-
-
-Native Android/iOS code handles timing-sensitive platform behavior such as:
-
-
-
-\* audio scheduling
-
-\* low-level audio playback
-
-\* timing
-
-\* platform networking
-
-\* platform-specific capabilities
-
-
-
-Pigeon is preferred for strongly typed Flutter/native interfaces where appropriate.
-
-
-
-Avoid sending high-frequency realtime timing data through Flutter if the operation can remain native.
-
-
-
-\---
-
-
-
-\# 26. UI Contributions
-
-
-
-UI contributions must follow `DOCS/ui-ux.md`.
-
-
-
-The interface should remain:
-
-
-
-\* dark-first
-
-\* minimal
-
-\* premium
-
-\* calm
-
-\* audio-focused
-
-\* readable
-
-\* accessible
-
-
-
-Core visual direction:
-
-
-
-```text
-
-Background:        #0B0D10
-
-Surface:            #181D23
-
-Elevated surface:   #20262D
-
-Primary text:       #F5F7FA
-
-Secondary text:     #A7AFB9
-
-Muted text:         #6F7883
-
-SoundMesh Blue:     #5B8CFF
-
-Success:            #39D98A
-
-Warning:            #FFB84D
-
-Error:              #FF5C6C
-
-```
-
-
-
-Do not introduce random colors, excessive gradients, neon effects, or unrelated visual styles.
-
-
-
-\---
-
-
-
-\# 27. Documentation Contributions
-
-
-
-Documentation is part of implementation.
-
-
-
-Update documentation when a change affects:
-
-
-
-\* architecture
-
-\* protocol
-
-\* synchronization
-
-\* audio behavior
-
-\* networking
-
-\* UI behavior
-
-\* requirements
-
-\* testing methodology
-
-\* important technical decisions
-
-
-
-Do not allow implementation to become the only source of truth for important behavior.
-
-
-
-\---
-
-
-
-\# 28. Dependency Changes
-
-
-
-Adding a dependency requires justification.
-
-
-
-Before adding one, consider:
-
-
-
-\* Is it actually necessary?
-
-\* Does Flutter already provide the capability?
-
-\* Can platform APIs provide it?
-
-\* Is it maintained?
-
-\* Is the license compatible?
-
-\* Does it increase app size?
-
-\* Does it affect performance?
-
-\* Does it introduce network/cloud requirements?
-
-\* Does it complicate iOS/Android compatibility?
-
-\* Does it affect synchronization or audio timing?
-
-
-
-Avoid adding dependencies simply because they make a small task easier.
-
-
-
-\---
-
-
-
-\# 29. Generated Files
-
-
-
-Do not manually edit generated files unless the generation system explicitly requires it.
-
-
-
-When generated code changes:
-
-
-
-1\. modify the source definition
-
-2\. regenerate
-
-3\. verify generated output
-
-4\. review the diff
-
-5\. commit the appropriate files according to project conventions
-
-
-
-\---
-
-
-
-\# 30. Configuration and Secrets
-
-
-
-Never commit:
-
-
-
-\* API keys
-
-\* passwords
-
-\* private tokens
-
-\* personal credentials
-
-\* signing secrets
-
-\* private certificates
-
-\* production credentials
-
-
-
-Use appropriate local configuration mechanisms.
-
-
-
-Example:
-
-
-
-```text
-
-.env
-
-local configuration
-
-platform-specific secret storage
-
-```
-
-
-
-Never put secrets inside:
-
-
-
-\* QR payloads
-
-\* screenshots
-
-\* logs
-
-\* source code
-
-\* public documentation
-
-
-
-\---
-
-
-
-\# 31. Formatting and Code Quality
-
-
-
-Code should follow the conventions of the language and framework being used.
-
-
-
-Before submitting:
-
-
-
-\* format code
-
-\* run available static checks
-
-\* remove debug code
-
-\* remove unused imports
-
-\* remove dead code
-
-\* inspect warnings
-
-\* inspect the final diff
-
-
-
-Do not perform unrelated formatting across the repository unless intentionally requested.
-
-
-
-\---
-
-
-
-\# 32. Error Handling
-
-
-
-Errors should be explicit and actionable.
-
-
-
-Good:
-
-
-
-```text
-
-Audio transfer failed.
-
-Check that both devices are still connected and try again.
-
-```
-
-
-
-Bad:
-
-
-
-```text
-
-Error 0x8293
-
-```
-
-
-
-Internal error codes may exist for diagnostics, but users should receive understandable messages.
-
-
-
-Errors should distinguish:
-
-
-
-\* expected user action
-
-\* temporary failure
-
-\* recoverable system failure
-
-\* unrecoverable session failure
-
-\* developer/configuration error
-
-
-
-\---
-
-
-
-\# 33. State Machines
-
-
-
-Important distributed behavior should use explicit states rather than scattered boolean flags.
-
-
-
-Examples:
-
-
-
-```text
-
-DISCOVERABLE
-
-JOINING
-
-CALIBRATING
-
-READY
-
-PLAYING
-
-DEGRADED
-
-RECOVERING
-
-ENDING
-
-CLOSED
-
-```
-
-
-
-When modifying a state machine:
-
-
-
-\* identify valid transitions
-
-\* identify invalid transitions
-
-\* define recovery behavior
-
-\* update documentation if the state model changes
-
-\* add tests for important transitions
-
-
-
-\---
-
-
-
-\# 34. Distributed-System Safety
-
-
-
-SoundMesh consists of multiple independently executing devices.
-
-
-
-Contributors must assume:
-
-
-
-\* messages can be delayed
-
-\* messages can be duplicated
-
-\* messages can arrive out of order
-
-\* devices can disconnect
-
-\* clocks differ
-
-\* network conditions change
-
-\* devices can sleep
-
-\* audio output can behave differently
-
-
-
-Do not write distributed code as if all devices share one perfect clock or reliable instantaneous communication.
-
-
-
-\---
-
-
-
-\# 35. Playback Commands
-
-
-
-Playback commands should use explicit session/playback generations where required.
-
-
-
-Examples:
-
-
-
-```text
-
-PLAY
-
-PAUSE
-
-RESUME
-
-SEEK
-
-STOP
-
-```
-
-
-
-A stale command must not accidentally control a newer playback generation.
-
-
-
-Do not use “play immediately on receipt” as the primary synchronization mechanism.
-
-
-
-Future-target scheduling is the preferred model.
-
-
-
-\---
-
-
-
-\# 36. Reproducibility
-
-
-
-When reporting a bug or performance issue, provide enough information to reproduce it.
-
-
-
-Useful information includes:
-
-
-
-\* device model
-
-\* operating system version
-
-\* app version
-
-\* build/version identifier
-
-\* network topology
-
-\* number of devices
-
-\* audio asset
-
-\* reproduction steps
-
-\* expected behavior
-
-\* actual behavior
-
-\* logs/diagnostics
-
-\* frequency of occurrence
-
-
-
-For synchronization experiments, include timing measurements where available.
-
-
-
-\---
-
-
-
-\# 37. Performance
-
-
-
-Performance work should be evidence-driven.
-
-
-
-Do not optimize solely because code "looks slow."
-
-
-
-Measure where possible:
-
-
-
-\* CPU
-
-\* memory
-
-\* startup time
-
-\* join time
-
-\* audio preparation time
-
-\* synchronization time
-
-\* network throughput
-
-\* RTT
-
-\* battery impact
-
-\* thermal behavior
-
-\* playback drift
-
-
-
-Document the baseline before claiming improvement.
-
-
-
-\---
-
-
-
-\# 38. Battery and Thermal Behavior
-
-
-
-SoundMesh may require simultaneous audio playback and networking on several devices.
-
-
-
-Contributors must consider:
-
-
-
-\* CPU utilization
-
-\* audio processing cost
-
-\* network activity
-
-\* wake locks/background execution
-
-\* device temperature
-
-\* battery drain
-
-
-
-Do not trade significant battery life for tiny synchronization improvements without measurement.
-
-
-
-\---
-
-
-
-\# 39. Platform Differences
-
-
-
-Android and iOS are not assumed to behave identically.
-
-
-
-Platform-specific behavior must be tested independently.
-
-
-
-Examples:
-
-
-
-\* local-network permissions
-
-\* service discovery
-
-\* background execution
-
-\* audio sessions/routes
-
-\* audio latency
-
-\* clock APIs
-
-\* Wi-Fi behavior
-
-\* Bluetooth behavior
-
-\* lifecycle events
-
-
-
-Shared interfaces are desirable.
-
-
-
-Identical internal implementations are not required.
-
-
-
-\---
-
-
-
-\# 40. Conflict Resolution
-
-
-
-If Git reports conflicts:
-
-
-
-1\. stop and inspect the conflict
-
-2\. understand both changes
-
-3\. determine whether the changes are compatible
-
-4\. preserve intended behavior from both sides where possible
-
-5\. run tests after resolution
-
-6\. inspect the resulting diff
-
-
-
-Do not blindly choose:
-
-
+Run the application:
 
 ```bash
-
-git checkout --theirs
-
+flutter run
 ```
 
-
-
-or:
-
-
+Build a debug APK:
 
 ```bash
-
-git checkout --ours
-
+flutter build apk --debug
 ```
 
-
-
-for important files.
-
-
-
-Never resolve a conflict by deleting functionality simply because it is easier.
-
-
-
-\---
-
-
-
-\# 41. Protecting Work
-
-
-
-Before risky operations, ensure work is recoverable.
-
-
-
-Useful actions include:
-
-
+Build a release APK:
 
 ```bash
-
-git status
-
-git diff
-
-git add
-
-git commit
-
+flutter build apk --release
 ```
 
+---
 
+# Testing
 
-For especially risky work, create a checkpoint commit before experimentation.
-
-
-
-Do not use destructive commands such as:
-
-
+Before submitting a contribution, run:
 
 ```bash
-
-git reset --hard
-
-git clean -fd
-
-git push --force
-
+flutter analyze
+flutter test
 ```
 
+For changes that affect Android behavior, also build the application:
 
-
-unless the consequences are understood and the operation is explicitly authorized.
-
-
-
-\---
-
-
-
-\# 42. Code Review Checklist
-
-
-
-Reviewers should ask:
-
-
-
-\### Correctness
-
-
-
-\* Does the implementation actually satisfy the requirement?
-
-\* Are edge cases handled?
-
-
-
-\### Architecture
-
-
-
-\* Does it respect the Flutter/native boundary?
-
-\* Does it preserve the local-first design?
-
-\* Does it fit the existing state model?
-
-
-
-\### Synchronization
-
-
-
-\* Are timing assumptions explicit?
-
-\* Is behavior measured?
-
-
-
-\### Networking
-
-
-
-\* Are messages validated?
-
-\* Are reconnects and failures handled?
-
-
-
-\### Audio
-
-
-
-\* Is playback scheduled correctly?
-
-\* Are hardware differences considered?
-
-
-
-\### Testing
-
-
-
-\* Are appropriate tests present?
-
-\* Were real devices used where necessary?
-
-
-
-\### Security
-
-
-
-\* Are secrets protected?
-
-\* Is input validated?
-
-
-
-\### Scope
-
-
-
-\* Did the contribution modify only what was necessary?
-
-
-
-\### Documentation
-
-
-
-\* Is the relevant documentation still accurate?
-
-
-
-\---
-
-
-
-\# 43. Definition of Done
-
-
-
-A contribution is considered complete when applicable requirements have been satisfied and:
-
-
-
-\* implementation is complete
-
-\* tests are added or updated
-
-\* relevant checks pass
-
-\* real-device testing is performed when required
-
-\* the final diff is reviewed
-
-\* no unrelated changes remain
-
-\* documentation is updated
-
-\* known limitations are recorded
-
-\* architectural decisions are documented
-
-\* Git state is clean or intentionally understood
-
-
-
-"Code compiles" is not automatically equivalent to "done."
-
-
-
-\---
-
-
-
-\# 44. AI-Assisted Development
-
-
-
-AI agents are first-class development tools in SoundMesh, but they operate under the same engineering standards as human contributors.
-
-
-
-AI-generated code must be:
-
-
-
-\* inspected
-
-\* tested
-
-\* reviewed
-
-\* integrated intentionally
-
-
-
-AI agents must not be trusted merely because generated code looks plausible.
-
-
-
-Agents must follow:
-
-
-
-`AGENTS.md`
-
-
-
-and:
-
-
-
-```text
-
-DOCS/AI/ai-context.md
-
-DOCS/AI/rules.md
-
-DOCS/AI/task-protocol.md
-
+```bash
+flutter build apk --debug
 ```
 
+For changes that affect release behavior, verify the release build:
 
-
-An AI agent must report:
-
-
-
-\* what it changed
-
-\* why
-
-\* what it tested
-
-\* what it could not test
-
-\* what remains uncertain
-
-\* what files changed
-
-\* whether documentation changed
-
-
-
-\---
-
-
-
-\# 45. AI Task Boundaries
-
-
-
-When assigning an AI agent a task, provide:
-
-
-
-```text
-
-Objective:
-
-Scope:
-
-Allowed files:
-
-Relevant documentation:
-
-Constraints:
-
-Acceptance criteria:
-
-Tests:
-
-Expected output:
-
+```bash
+flutter build apk --release
 ```
 
+Do not report a test or build as successful unless you actually ran it.
 
+---
 
-Example:
+# Physical Device Testing
 
+SoundMesh is a distributed audio application, so automated tests cannot validate everything.
 
+Whenever a change affects:
+
+* audio
+* synchronization
+* networking
+* room lifecycle
+* permissions
+* background behavior
+* Android-specific behavior
+* device discovery
+* playback
+
+test it on real Android hardware when possible.
+
+For multi-device changes, test with multiple physical devices connected to the same local network.
+
+A useful baseline setup is:
 
 ```text
-
-Objective:
-
-Implement the initial room handshake.
-
-
-
-Scope:
-
-Networking protocol only.
-
-
-
-Allowed files:
-
-lib/network/\*\*
-
-native/network/\*\*
-
-
-
-Relevant documentation:
-
-DOCS/networking.md
-
-DOCS/AI/rules.md
-
-
-
-Constraints:
-
-Do not implement audio transfer.
-
-Do not change synchronization.
-
-Do not introduce cloud services.
-
-
-
-Acceptance criteria:
-
-Host accepts HELLO.
-
-Participant receives WELCOME.
-
-Protocol version is validated.
-
-Invalid sessions are rejected.
-
-
-
-Tests:
-
-Unit tests for valid and invalid handshakes.
-
+             HOST
+              │
+        ┌─────┴─────┐
+        │           │
+   PARTICIPANT  PARTICIPANT
 ```
 
+Document any hardware-specific behavior you discover.
 
+---
 
-This keeps AI work bounded and reviewable.
+# Making UI Changes
 
+SoundMesh's interface follows a dark, minimal visual system.
 
+When changing UI:
 
-\---
+* preserve the existing visual hierarchy
+* keep layouts responsive
+* support different Android screen sizes
+* avoid hard-coded dimensions when they are not necessary
+* check for overflow and clipping
+* consider text scaling
+* respect safe areas
+* keep interactive elements usable on both phones and tablets
 
+Do not solve a responsive-layout problem by placing a phone-sized UI inside a tablet-sized frame.
 
+When modifying a shared component, check its other usages before changing its behavior globally.
 
-\# 46. AI Agent Handoff
+---
 
+# Working With Audio
 
+Audio is one of the most sensitive parts of SoundMesh.
 
-When an AI agent finishes a task, it should leave a clear handoff.
+Do not casually change:
 
+* capture behavior
+* audio packetization
+* playback scheduling
+* buffer handling
+* timing calculations
+* native audio lifecycle
+* synchronization behavior
 
+Audio changes should be accompanied by focused tests and, where practical, physical-device validation.
 
-Example:
+A change that makes one device sound better but breaks synchronization across devices is not an improvement.
 
+---
 
+# Working With Synchronization
+
+Synchronization is based on measured timing relationships between devices.
+
+Keep these concepts distinct:
+
+* clock offset
+* round-trip time
+* jitter
+* buffering
+* playback position
+* drift
+* synchronization state
+
+Do not replace monotonic timing with wall-clock time for synchronization logic.
+
+Do not introduce timing assumptions based only on UI frame timing.
+
+When modifying synchronization behavior, explain:
+
+1. what timing relationship changed
+2. why the change is necessary
+3. how it was tested
+4. whether physical-device validation was performed
+
+---
+
+# Working With Networking
+
+SoundMesh uses nearby-device communication for room coordination and audio-related transport.
+
+When modifying networking:
+
+* preserve existing protocol behavior unless the change intentionally updates it
+* handle disconnects cleanly
+* avoid leaking sockets or connections
+* consider repeated room creation and teardown
+* isolate participant-specific failures where possible
+* test both host and participant paths
+
+Do not assume that a successful connection once means the lifecycle is correct.
+
+Also test:
 
 ```text
-
-Status: COMPLETE WITH LIMITATIONS
-
-
-
-Implemented:
-
-\- Room HELLO/WELCOME handshake
-
-\- Protocol version validation
-
-\- Session ID validation
-
-
-
-Tests:
-
-\- Unit tests pass
-
-\- Android build passes
-
-
-
-Not tested:
-
-\- iOS networking
-
-\- Real-device Wi-Fi behavior
-
-
-
-Known limitation:
-
-\- Reconnection is not implemented yet
-
-
-
-Files changed:
-
-\- ...
-
+connect
+→ use
+→ disconnect
+→ reconnect
 ```
 
-
-
-The next agent should be able to continue without reconstructing the entire history.
-
-
-
-\---
-
-
-
-\# 47. When to Stop
-
-
-
-A contributor or AI agent should stop and request clarification when:
-
-
-
-\* requirements conflict
-
-\* architecture is ambiguous
-
-\* an `UNDECIDED` decision blocks implementation
-
-\* a security-sensitive choice is unclear
-
-\* multiple valid architectures have materially different consequences
-
-\* testing is impossible and the result would otherwise be presented as verified
-
-\* another contributor's work would be overwritten
-
-\* a task expands beyond its defined scope
-
-
-
-Stopping is preferable to silently making a permanent wrong decision.
-
-
-
-\---
-
-
-
-\# 48. What SoundMesh Contributors Should Optimize For
-
-
-
-Do not optimize primarily for:
-
-
+and, where relevant:
 
 ```text
-
-lines of code
-
-number of features
-
-number of commits
-
-speed of implementation
-
-AI token efficiency
-
+create room
+→ end room
+→ create another room
 ```
 
+---
 
+# Working With Room Lifecycle
 
-Optimize for:
+Room state must be safe across repeated sessions.
 
-
-
-```text
-
-correctness
-
-measurability
-
-reliability
-
-simplicity
-
-maintainability
-
-user experience
-
-evidence
-
-```
-
-
-
-\---
-
-
-
-\# 49. Final Contribution Principle
-
-
-
-SoundMesh is a distributed realtime system disguised as a simple mobile app.
-
-
-
-The user should experience:
-
-
+A valid lifecycle should support:
 
 ```text
-
 Create
-
-Join
-
-Choose
-
-Play
-
+  ↓
+Use
+  ↓
+End
+  ↓
+Create again
 ```
 
+without requiring an application restart.
 
+When changing lifecycle code, inspect:
 
-while the engineering underneath handles:
+* provider state
+* network cleanup
+* discovery state
+* timers
+* listeners
+* connection handles
+* asynchronous cleanup
+* cached room information
 
+Do not fix lifecycle bugs by blindly resetting unrelated state.
 
+Find the resource or state transition that is actually wrong.
+
+---
+
+# RevenueCat
+
+SoundMesh includes RevenueCat integration.
+
+The project currently uses the **RevenueCat Test Store** for simulated purchase flows.
+
+The repository contains a local customized `purchases_flutter` dependency under:
 
 ```text
-
-Networking
-
-Clock relationships
-
-Latency
-
-Audio preparation
-
-Scheduling
-
-Drift
-
-Recovery
-
-Platform differences
-
+app/third_party/purchases_flutter/
 ```
 
+This dependency is intentionally part of the repository.
 
+### Important
 
-Contributors should preserve that separation.
+Do not replace the repository-local package with an arbitrary hosted version.
 
+Do not remove the Android Test Store release-build configuration.
 
+Do not commit RevenueCat secret keys.
 
-The goal is not to make the codebase look complicated.
+Public SDK keys may be present in client applications, but secret credentials must never be committed.
 
+---
 
+# Dependencies
 
-The goal is to make the complexity \*\*disappear for the user\*\*.
+Before adding a dependency, ask whether the existing project can solve the problem without one.
 
+When a dependency is necessary:
 
+1. choose a maintained package
+2. confirm Android compatibility
+3. keep the addition narrowly scoped
+4. verify it does not introduce unnecessary platform requirements
+5. run the full test suite afterward
 
-> \*\*Build carefully. Measure honestly. Keep the architecture understandable.\*\*
+Avoid adding packages for problems that can be solved with existing Flutter or Android APIs.
 
->
+---
 
-> \*\*Multiple phones. One sound.\*\*
+# Commits
 
+Keep commits focused.
 
+Good:
 
+```text
+Fix room recreation after host teardown
+```
+
+```text
+Improve tablet room layout
+```
+
+```text
+Add failed-join recovery test
+```
+
+Avoid commits that mix unrelated changes such as UI redesign + networking rewrite + dependency upgrades.
+
+---
+
+# Pull Requests
+
+A good pull request should explain:
+
+### What changed?
+
+Describe the change in a few sentences.
+
+### Why?
+
+Explain the problem or motivation.
+
+### How was it tested?
+
+Include the actual commands/results.
+
+For example:
+
+```text
+flutter analyze
+flutter test
+flutter build apk --release
+```
+
+If physical testing was performed, mention:
+
+* device type
+* Android version
+* host/participant setup
+* relevant scenario tested
+
+Do not claim physical validation when only automated tests were run.
+
+---
+
+# Bug Reports
+
+When reporting a bug, include:
+
+* what you expected
+* what actually happened
+* steps to reproduce
+* Android version
+* device model when relevant
+* whether it happens consistently
+* relevant logs if available
+
+For distributed-system bugs, also mention whether the problem occurred on:
+
+* host
+* participant
+* both
+
+and how many devices were involved.
+
+---
+
+# Security
+
+Please do not commit:
+
+* passwords
+* private tokens
+* secret API keys
+* service credentials
+* signing keys
+* `.env` files containing secrets
+
+If you accidentally expose a credential, revoke or rotate it immediately.
+
+For security issues that should not be public, use GitHub's private security-reporting mechanism where available rather than opening a public issue.
+
+---
+
+# Evidence Matters
+
+SoundMesh distinguishes between code existing and code actually being validated.
+
+These are not equivalent:
+
+```text
+Implemented
+    ≠
+Tested
+    ≠
+Physically validated
+```
+
+When describing a change, be precise about what was actually verified.
+
+For example:
+
+```text
+✅ Unit tests pass
+✅ Release APK builds
+⚠️ Physical multi-device testing not performed
+```
+
+is better than claiming the feature is fully verified.
+
+---
+
+# Review Philosophy
+
+When reviewing a contribution, we care about:
+
+* correctness
+* clarity
+* minimal scope
+* maintainability
+* testability
+* Android compatibility
+* lifecycle safety
+* evidence of verification
+
+A contribution does not need to be large to be valuable.
+
+A small fix that prevents a difficult production bug can be more important than a large feature.
+
+---
+
+# Final Checklist
+
+Before opening a pull request:
+
+```text
+[ ] Change is focused
+[ ] Existing behavior was inspected
+[ ] No unnecessary dependencies added
+[ ] No unrelated architecture changed
+[ ] flutter analyze passes
+[ ] flutter test passes
+[ ] APK builds when relevant
+[ ] Physical testing performed when relevant
+[ ] No secrets committed
+[ ] Final diff reviewed
+[ ] PR description explains what changed
+```
+
+---
+
+# Thank You
+
+SoundMesh started with a simple problem:
+
+> **We had music. We had phones. We didn't have a speaker.**
+
+Contributions help turn that simple idea into a genuinely interesting piece of software.
+
+Thanks for building with us.
