@@ -255,18 +255,38 @@ class _SettingsContentState extends ConsumerState<_SettingsContent> {
           _showSnackBar('No purchases to restore.');
         }
       }
-    } on PlatformException catch (e) {
+    } on PurchasesNotConfiguredException catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Restore failed: ${e.message}';
+          _errorMessage = e.message;
+        });
+      }
+    } on RestorePurchasesException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          final errorCode = e.errorCode;
+          if (errorCode == PurchasesErrorCode.operationAlreadyInProgressError) {
+            _errorMessage = 'Restore already in progress. Please wait.';
+          } else if (errorCode == PurchasesErrorCode.networkError ||
+              errorCode == PurchasesErrorCode.offlineConnectionError) {
+            _errorMessage = 'Network error. Please check your connection and try again.';
+          } else if (errorCode == PurchasesErrorCode.invalidCredentialsError ||
+              errorCode == PurchasesErrorCode.configurationError) {
+            _errorMessage = 'Configuration error. Please restart the app and try again.';
+          } else if (errorCode == PurchasesErrorCode.testStoreSimulatedPurchaseError) {
+            _errorMessage = 'Test Store error. Please try again.';
+          } else {
+            _errorMessage = 'Restore failed: ${e.message}';
+          }
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'An error occurred: $e';
+          _errorMessage = 'An unexpected error occurred: $e';
         });
       }
     }

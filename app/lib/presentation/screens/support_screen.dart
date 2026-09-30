@@ -561,7 +561,7 @@ class _SupportContentState extends ConsumerState<_SupportContent> {
           });
         }
       });
-    } on PlatformException catch (e) {
+    } on PurchasesNotConfiguredException catch (e) {
       if (!mounted) return;
 
       setState(() {
@@ -571,9 +571,38 @@ class _SupportContentState extends ConsumerState<_SupportContent> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Restore failed: ${e.message ?? 'Unknown error'}',
-          ),
+          content: Text(e.message),
+          backgroundColor: TSXColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } on RestorePurchasesException catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _restoreState = 'idle';
+      });
+
+      final errorCode = e.errorCode;
+      String message;
+      if (errorCode == PurchasesErrorCode.operationAlreadyInProgressError) {
+        message = 'Restore already in progress. Please wait.';
+      } else if (errorCode == PurchasesErrorCode.networkError ||
+          errorCode == PurchasesErrorCode.offlineConnectionError) {
+        message = 'Network error. Please check your connection and try again.';
+      } else if (errorCode == PurchasesErrorCode.invalidCredentialsError ||
+          errorCode == PurchasesErrorCode.configurationError) {
+        message = 'Configuration error. Please restart the app and try again.';
+      } else if (errorCode == PurchasesErrorCode.testStoreSimulatedPurchaseError) {
+        message = 'Test Store error. Please try again.';
+      } else {
+        message = 'Restore failed: ${e.message}';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
           backgroundColor: TSXColors.error,
           behavior: SnackBarBehavior.floating,
         ),
@@ -589,7 +618,7 @@ class _SupportContentState extends ConsumerState<_SupportContent> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'An error occurred: $e',
+            'An unexpected error occurred: $e',
           ),
           backgroundColor: TSXColors.error,
           behavior: SnackBarBehavior.floating,
