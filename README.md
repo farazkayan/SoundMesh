@@ -17,21 +17,21 @@
 </p>
 
 <p align="center">
-<a href="https://github.com/farazkayan/SoundMesh/releases">
-  <img src="https://img.shields.io/github/v/release/farazkayan/SoundMesh?style=flat-square&label=latest%20release" alt="Latest release">
-</a>
+  <a href="https://getsoundmesh.pages.dev">Website</a>
+  ·
+  <a href="https://github.com/farazkayan/SoundMesh/releases">Latest Release</a>
+  ·
+  <a href="https://github.com/farazkayan/SoundMesh/issues">Issues</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/farazkayan/SoundMesh/releases">
+    <img src="https://img.shields.io/github/v/release/farazkayan/SoundMesh?style=flat-square&label=latest%20release" alt="Latest release">
+  </a>
   <img src="https://img.shields.io/badge/Android-172126?style=flat-square&logo=android&logoColor=3DDC84&labelColor=172126" alt="Android">
   <img src="https://img.shields.io/badge/Flutter-3.47.2-172126?style=flat-square&logo=flutter&logoColor=54C5F8" alt="Flutter">
   <img src="https://img.shields.io/badge/Dart-3.12%2B-172126?style=flat-square&logo=dart&logoColor=54C5F8" alt="Dart">
   <img src="https://img.shields.io/badge/license-MIT-172126?style=flat-square" alt="MIT License">
-</p>
-
-<p align="center">
-  <a href="https://github.com/farazkayan/SoundMesh">Repository</a>
-  ·
-  <a href="https://github.com/farazkayan/SoundMesh/releases">Releases</a>
-  ·
-  <a href="https://github.com/farazkayan/SoundMesh/issues">Issues</a>
 </p>
 
 ---
@@ -56,53 +56,11 @@ The engineering is not.
 
 ---
 
-# Why Synchronized Audio Is Hard
-
-Playing the same audio file on several phones is easy.
-
-Getting several independent phones to behave like **one system** is a distributed-systems problem.
-
-Every phone has its own:
-
-* clock
-* processor
-* audio pipeline
-* buffering
-* speaker hardware
-* network conditions
-* operating-system behavior
-* processing latency
-* timing drift
-
-A tiny difference in playback timing can turn one intended sound into several obvious speakers.
-
-SoundMesh therefore doesn't treat synchronization as:
-
-> "Send the same command to every phone."
-
-It treats synchronization as:
-
-> **Measure the devices, build a shared timing model, and schedule playback against it.**
-
----
-
 # The Experience
 
 At the surface, SoundMesh is intentionally simple:
 
-```text
-┌─────────────────┐
-│   Create Room   │
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│  Join with QR   │
-└────────┬────────┘
-         ↓
-┌─────────────────┐
-│      Play       │
-└─────────────────┘
-```
+**Create a room → Join nearby → Connect → Play together**
 
 Underneath that simple experience:
 
@@ -135,6 +93,94 @@ Recover When Necessary
 ```
 
 The complexity stays underneath the interface.
+
+---
+
+## SoundMesh in Action
+
+The interface is intentionally simple on the surface — the difficult parts happen underneath.
+
+<details>
+<summary><strong>View SoundMesh screenshots</strong></summary>
+
+<br>
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <strong>Home</strong><br><br>
+      <a href="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/home_screen.png">
+        <img src="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/home_screen.png" alt="SoundMesh Home Screen" width="100%">
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <strong>Create Room</strong><br><br>
+      <a href="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/create_room.png">
+        <img src="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/create_room.png" alt="SoundMesh Create Room Screen" width="100%">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <strong>Join Room</strong><br><br>
+      <a href="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/join_room.png">
+        <img src="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/join_room.png" alt="SoundMesh Join Room Screen" width="100%">
+      </a>
+    </td>
+    <td align="center">
+      <strong>QR Code</strong><br><br>
+      <a href="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/qrcode_modal_popup.png">
+        <img src="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/qrcode_modal_popup.png" alt="SoundMesh QR Code Modal" width="100%">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <strong>Room Dashboard</strong><br><br>
+      <a href="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/room_dashboard.png">
+        <img src="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/room_dashboard.png" alt="SoundMesh Room Dashboard" width="100%">
+      </a>
+    </td>
+    <td align="center">
+      <strong>Connected Devices</strong><br><br>
+      <a href="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/room_devices_screen.png">
+        <img src="https://raw.githubusercontent.com/farazkayan/SoundMesh/main/app/assets/images/room_devices_screen.png" alt="SoundMesh Connected Devices Screen" width="100%">
+      </a>
+    </td>
+  </tr>
+</table>
+
+</details>
+
+---
+
+# Why Synchronized Audio Is Hard
+
+Playing the same audio file on several phones is easy.
+
+Getting several independent phones to behave like **one system** is a distributed-systems problem.
+
+Every phone has its own:
+
+* clock
+* processor
+* audio pipeline
+* buffering
+* speaker hardware
+* network conditions
+* operating-system behavior
+* processing latency
+* timing drift
+
+A tiny difference in playback timing can turn one intended sound into several obvious speakers.
+
+SoundMesh therefore doesn't treat synchronization as:
+
+> "Send the same command to every phone."
+
+It treats synchronization as:
+
+> **Measure the devices, build a shared timing model, and schedule playback against it.**
 
 ---
 
@@ -376,9 +422,9 @@ SoundMesh is designed around a host with multiple participants.
       Participant   Participant   Participant
 ```
 
-Participant connections and room membership are tracked independently.
+Room membership and participant connections are maintained as part of the room lifecycle.
 
-That gives the room architecture a foundation for handling devices individually rather than treating the entire room as one undifferentiated connection.
+The architecture is designed to treat devices individually rather than as one undifferentiated connection.
 
 ---
 
@@ -502,7 +548,7 @@ SoundMesh divides responsibilities between Flutter and native Android.
 
 ```text
 ┌────────────────────────────────────────────┐
-│                  FLUTTER                  │
+│                  FLUTTER                   │
 │                                            │
 │  UI                                        │
 │  Navigation                                │
@@ -580,8 +626,6 @@ RevenueCat Test Store
 
 This keeps the RevenueCat integration testable without requiring real purchase transactions during development.
 
-For Android internal release builds, the repository includes the required local plugin configuration so the Test Store can continue functioning in the release build.
-
 ---
 
 # UI & Design
@@ -629,7 +673,7 @@ SoundMesh brings together several difficult engineering problems:
          └──────────────┼──────────────┘
                         │
                         ▼
-                Device Lifecycle
+                 Device Lifecycle
                         │
                         ▼
                  One Experience
@@ -694,7 +738,6 @@ The current Android implementation includes:
 * audio transport
 * synchronized playback scheduling
 * clock synchronization
-* participant-scoped synchronization
 * room lifecycle handling
 * recovery flows
 * responsive UI
@@ -865,6 +908,8 @@ For meaningful changes:
 
 Prefer the smallest correct change over a broad rewrite.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution guide.
+
 ---
 
 # The Engineering Challenge
@@ -929,6 +974,14 @@ A speaker is normally one device.
 SoundMesh asks:
 
 > **What if the speaker could be the devices you already have?**
+
+---
+
+# Website
+
+Explore the SoundMesh website:
+
+**https://getsoundmesh.pages.dev**
 
 ---
 
