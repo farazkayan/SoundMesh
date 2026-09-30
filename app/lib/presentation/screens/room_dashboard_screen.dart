@@ -42,7 +42,7 @@ class _RoomDashboardScreenState
         isHost && isInRoom && backgroundUsageDisabled;
 
     final showHostEndedModal =
-        !isHost && lifecycleState.hostEndedRoom && isInRoom;
+        !isHost && lifecycleState.hostEndedRoom;
 
     final showHostEndedModalForHost =
         isHost && lifecycleState.hostEndedRoom;
@@ -372,6 +372,12 @@ class _RoomDashboardScreenState
     RoomLifecycleStateData lifecycleState,
     CaptureUiStateData captureState,
   ) {
+    // Host-ended room: modal handles all UI, show minimal backdrop
+    final isHost = appState.isHost == true;
+    if (!isHost && lifecycleState.hostEndedRoom) {
+      return const SizedBox.shrink();
+    }
+
     switch (appState.state) {
       case SMAppState.error:
         return _buildErrorContent(

@@ -315,6 +315,11 @@ class JoinRoomFlowNotifier extends StateNotifier<JoinRoomFlowState> {
       return;
     }
 
+    // Reset host-ended flag from previous room so new room starts clean
+    if (ref != null) {
+      ref.read(roomLifecycleProvider.notifier).resetForNewRoom();
+    }
+
     developer.log(
       '[JOIN_TRACE] JoinRoomFlowNotifier: Setting status to connecting',
       name: 'SoundMesh.JoinRoomFlow',
