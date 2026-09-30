@@ -197,7 +197,16 @@ class ProtocolMessage {
     required String participantId,
     int generation = 0,
     int? timestamp,
+    List<Map<String, dynamic>>? members,
   }) {
+    final payload = <String, dynamic>{
+      'roomId': roomId,
+      'hostParticipantId': hostParticipantId,
+      'participantId': participantId,
+    };
+    if (members != null) {
+      payload['members'] = members;
+    }
     return ProtocolMessage(
       protocolVersion: currentProtocolVersion,
       messageId: generateUuidV4(),
@@ -206,11 +215,7 @@ class ProtocolMessage {
       senderId: hostParticipantId,
       generation: generation,
       timestamp: timestamp ?? DateTime.now().millisecondsSinceEpoch,
-      payload: {
-        'roomId': roomId,
-        'hostParticipantId': hostParticipantId,
-        'participantId': participantId,
-      },
+      payload: payload,
     );
   }
 

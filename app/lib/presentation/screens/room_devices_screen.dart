@@ -4,6 +4,7 @@ import 'package:soundmesh/core/router/app_router.dart';
 import 'package:soundmesh/presentation/components/index.dart';
 import 'package:soundmesh/presentation/state_compat.dart';
 import 'package:soundmesh/application/providers/room_lifecycle_provider.dart';
+import 'package:soundmesh/application/repositories/network_repository.dart';
 import 'package:soundmesh/application/room/room_lifecycle.dart';
 
 class RoomDevicesScreen extends ConsumerWidget {
@@ -13,7 +14,9 @@ class RoomDevicesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final appState = ref.watch(applicationStateProvider);
     final lifecycleState = ref.watch(roomLifecycleProvider);
+    final networkRepo = ref.watch(networkRepositoryProvider);
     final isHost = appState.isHost == true;
+    final currentParticipantId = networkRepo.participantId;
 
     return Scaffold(
       backgroundColor: TSXColors.background,
@@ -47,6 +50,7 @@ class RoomDevicesScreen extends ConsumerWidget {
                           appState,
                           lifecycleState,
                           isHost,
+                          currentParticipantId,
                         ),
                       ),
                     ),
@@ -91,6 +95,7 @@ Widget _buildDevicesContent(
   ApplicationState appState,
   RoomLifecycleStateData lifecycleState,
   bool isHost,
+  String currentParticipantId,
 ) {
   final safeBottom = MediaQuery.paddingOf(context).bottom;
   final state = appState.state;
@@ -112,7 +117,7 @@ Widget _buildDevicesContent(
     case SMAppState.idle:
     case SMAppState.creatingRoom:
     case SMAppState.joiningRoom:
-      content = _devicesListContent(context, appState, lifecycleState, isHost);
+      content = _devicesListContent(context, appState, lifecycleState, isHost, currentParticipantId);
       break;
 
     case SMAppState.stopping:
@@ -179,6 +184,7 @@ Widget _devicesListContent(
   ApplicationState appState,
   RoomLifecycleStateData lifecycleState,
   bool isHost,
+  String currentParticipantId,
 ) {
   final members = lifecycleState.members;
 
@@ -203,7 +209,7 @@ Widget _devicesListContent(
           children: [
             Text('Devices', style: TSXTypography.metadata),
             SizedBox(height: TSXSpacing.md),
-            ..._buildDeviceRows(members, isHost),
+            ..._buildDeviceRows(members, isHost, currentParticipantId),
             SizedBox(height: TSXSpacing.sm),
             if (members.where((m) => m.role == RoomRole.participant).isEmpty && isHost) ...[
               Row(
@@ -223,7 +229,7 @@ Widget _devicesListContent(
   );
 }
 
-List<Widget> _buildDeviceRows(List<RoomMember> members, bool isHost) {
+List<Widget> _buildDeviceRows(List<RoomMember> members, bool isHost, String currentParticipantId) {
   final rows = <Widget>[];
   final participantMembers = members
       .where((m) => m.role == RoomRole.participant)
@@ -244,15 +250,18 @@ List<Widget> _buildDeviceRows(List<RoomMember> members, bool isHost) {
   // Participant rows
   for (int i = 0; i < participantMembers.length; i++) {
     final member = participantMembers[i];
+    final isCurrentDevice = member.participantId == currentParticipantId;
     if (i > 0) {
       rows.add(Divider(color: TSXColors.surfaceBorder, height: TSXSpacing.lg));
     }
     rows.add(
       DeviceRow.tsx(
-        name: member.displayName ?? 'Participant ${i + 1}',
-        role: 'PARTICIPANT',
-        roleColor: TSXColors.secondaryText,
-        isCurrent: false,
+        name: isCurrentDevice
+            ? 'This Device'
+            : (member.displayName ?? 'Participant ${i + 1}'),
+        role: isCurrentDevice ? 'YOU' : 'PARTICIPANT',
+        roleColor: isCurrentDevice ? TSXColors.accent : TSXColors.secondaryText,
+        isCurrent: isCurrentDevice,
       ),
     );
   }
