@@ -143,6 +143,19 @@ class RoomLifecycleNotifier extends StateNotifier<RoomLifecycleStateData> {
 
     // Initial sync after subscriptions are established
     _syncRoleAndParticipantState();
+    // Sync membership from NetworkRepository (handles lazy initialization where ROOM_STATE was missed)
+    _syncMembershipFromNetworkRepository();
+  }
+
+  /// Syncs membership from NetworkRepository's authoritative state.
+  /// This handles the case where RoomLifecycleNotifier is created lazily after
+  /// the initial ROOM_STATE has already been processed by NetworkRepository.
+  void _syncMembershipFromNetworkRepository() {
+    final membership = _networkRepository.currentMembership;
+    if (membership.isNotEmpty) {
+      debugPrint('[UILifecycle] RoomLifecycle: Syncing membership from NetworkRepository: ${membership.map((m) => "${m.participantId}(${m.role.name})").join(", ")}');
+      state = state.copyWith(members: membership);
+    }
   }
 
   /// Handle ROOM_STATE message: update membership list
