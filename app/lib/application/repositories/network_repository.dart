@@ -87,6 +87,7 @@ class NetworkRepository {
   String? _participantDisplayName;
   final Set<String> _joinedParticipantIds = <String>{};
   final Map<String, String> _participantDisplayNames = <String, String>{};
+  final Map<String, RoomRole> _participantRoles = <String, RoomRole>{};
   String? _roomClosedReason;
 
   NetworkRepository() : _platform = NetworkHostPlatform() {
@@ -199,6 +200,32 @@ class NetworkRepository {
   
   String? get roomClosedReason => _roomClosedReason;
 
+  /// Returns the current room membership as a list of RoomMember objects.
+  /// Includes host (if host) and all joined participants.
+  List<RoomMember> get currentMembership {
+    final members = <RoomMember>[];
+    // Add all known participants with their roles
+    for (final pid in _joinedParticipantIds) {
+      final role = _participantRoles[pid] ?? RoomRole.participant;
+      members.add(RoomMember(
+        participantId: pid,
+        displayName: _participantDisplayNames[pid],
+        role: role,
+        joinedAt: DateTime.now(),
+      ));
+    }
+    // Ensure host is included (host might not be in _joinedParticipantIds on participant side)
+    if (_isHost && !_joinedParticipantIds.contains(_participantId)) {
+      members.add(RoomMember(
+        participantId: _participantId,
+        displayName: _participantDisplayName,
+        role: RoomRole.host,
+        joinedAt: DateTime.now(),
+      ));
+    }
+    return members;
+  }
+
   Stream<NetworkConnectionState> get connectionStateStream =>
       _stateController.stream;
 
@@ -292,6 +319,7 @@ class NetworkRepository {
 
   Future<void> disconnect() async {
     debugPrint('[DartLifecycle] disconnect() called');
+    _transitionTo(NetworkConnectionState.disconnected);
     try {
       await _platform.disconnect();
     } catch (e) {
@@ -567,15 +595,24 @@ class NetworkRepository {
     debugPrint('[RoomLifecycle] Received ROOM_STATE with ${members.length} members');
     _joinedParticipantIds.clear();
     _participantDisplayNames.clear();
+    _participantRoles.clear();
     for (final member in members) {
       final pid = member['participantId'] as String?;
       final displayName = member['displayName'] as String?;
+      final roleStr = member['role'] as String?;
       if (pid != null) {
         _joinedParticipantIds.add(pid);
         if (displayName != null && displayName.isNotEmpty) {
           _participantDisplayNames[pid] = displayName;
         }
+        if (roleStr != null) {
+          _participantRoles[pid] = roleStr == 'HOST' ? RoomRole.host : RoomRole.participant;
+        }
       }
+    }
+    // Ensure host role is set for host participant ID
+    if (_isHost) {
+      _participantRoles[_participantId] = RoomRole.host;
     }
   }
 
@@ -588,6 +625,7 @@ class NetworkRepository {
     debugPrint('[RoomLifecycle] Received PARTICIPANT_LEFT for $participantId');
     _joinedParticipantIds.remove(participantId);
     _participantDisplayNames.remove(participantId);
+    _participantRoles.remove(participantId);
     
     if (_isHost) {
       // Host: broadcast updated ROOM_STATE to remaining participants (and update own UI)
@@ -604,6 +642,7 @@ class NetworkRepository {
     debugPrint('[RoomLifecycle] Received INTERNAL_PARTICIPANT_LEFT for $participantId (from native)');
     _joinedParticipantIds.remove(participantId);
     _participantDisplayNames.remove(participantId);
+    _participantRoles.remove(participantId);
     
     if (_isHost) {
       // Host: broadcast updated ROOM_STATE to remaining participants (and update own UI)
@@ -888,13 +927,18 @@ class NetworkRepository {
       debugPrint('[RoomLifecycle] Participant: Received membership list with ${members.length} members');
       _joinedParticipantIds.clear();
       _participantDisplayNames.clear();
+      _participantRoles.clear();
       for (final member in members) {
         final pid = member['participantId'] as String?;
         final displayName = member['displayName'] as String?;
+        final roleStr = member['role'] as String?;
         if (pid != null) {
           _joinedParticipantIds.add(pid);
           if (displayName != null && displayName.isNotEmpty) {
             _participantDisplayNames[pid] = displayName;
+          }
+          if (roleStr != null) {
+            _participantRoles[pid] = roleStr == 'HOST' ? RoomRole.host : RoomRole.participant;
           }
         }
       }
@@ -1034,6 +1078,7 @@ class NetworkRepository {
     debugPrint('[DartLifecycle] _resetHostParticipantState called, resetIds=$resetIds');
     _joinedParticipantIds.clear();
     _participantDisplayNames.clear();
+    _participantRoles.clear();
     if (resetIds) {
       _sessionId = null;
       _roomId = null;

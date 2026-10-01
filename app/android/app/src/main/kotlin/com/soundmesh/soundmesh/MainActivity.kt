@@ -1252,7 +1252,12 @@ class MainActivity : FlutterActivity(), DevicePlatform, TimingPlatform, NetworkH
     override fun disconnect() {
         Log.d(TAG, "[HostLifecycle] disconnect() called")
         stopAll()
-        scope.launch { notifyState("disconnected") }
+        // NOTE: Dart side (NetworkRepository.closeRoom/leaveRoom) already emits
+        // NetworkConnectionState.disconnected BEFORE calling this method.
+        // Emitting "disconnected" here causes a duplicate stale notification that
+        // can arrive after a new room creation has started, incorrectly failing it.
+        // The reader job's finally block handles unexpected disconnections with
+        // generation checking to avoid stale notifications.
     }
 
     override fun getLocalIpAddress(): String {
