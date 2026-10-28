@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="690" viewBox="0 0 1200 690" role="img" aria-labelledby="title desc">
+<title id="title">SoundMesh architecture</title><desc id="desc">Flutter handles UI and orchestration, connected over a typed platform bridge to native Android audio, timing and networking. Phones coordinate over a local network and render audio through their own speakers.</desc>
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b141a"/><stop offset="1" stop-color="#10262c"/></linearGradient>
+ <linearGradient id="teal" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#46dcb6"/><stop offset="1" stop-color="#83f4d6"/></linearGradient>
+ <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".25"/></filter>
+ <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#66e9c8"/></marker>
+</defs>
+<rect width="1200" height="690" rx="24" fill="url(#bg)"/>
+<g opacity=".12" stroke="#83bdb4" stroke-width="1"><path d="M0 70H1200M0 140H1200M0 210H1200M0 280H1200M0 350H1200M0 420H1200M0 490H1200M0 560H1200M0 630H1200"/><path d="M70 0V690M140 0V690M210 0V690M280 0V690M350 0V690M420 0V690M490 0V690M560 0V690M630 0V690M700 0V690M770 0V690M840 0V690M910 0V690M980 0V690M1050 0V690M1120 0V690"/></g>
+<text x="52" y="56" fill="#eefaf6" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="27" font-weight="700">Inside SoundMesh</text>
+<text x="52" y="83" fill="#9bbab8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15">One simple experience, split across app logic and Android's time-critical runtime.</text>
+<!-- Flutter card -->
+<g filter="url(#shadow)"><rect x="48" y="125" width="280" height="250" rx="18" fill="#14252c" stroke="#437c78" stroke-width="1.5"/></g>
+<rect x="48" y="125" width="280" height="54" rx="18" fill="#1d3b3c"/><path d="M48 160H328V179H48Z" fill="#1d3b3c"/>
+<text x="74" y="160" fill="#a5f5de" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="20" font-weight="700">FLUTTER / DART</text>
+<text x="74" y="210" fill="#effaf7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="16" font-weight="700">App experience</text>
+<g fill="#b8d1ce" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15"><text x="76" y="244">• Screens and navigation</text><text x="76" y="274">• Room and participant state</text><text x="76" y="304">• User actions and orchestration</text><text x="76" y="334">• High-level session flow</text></g>
+<!-- Bridge -->
+<path d="M330 252H445" stroke="url(#teal)" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="340" y="206" width="93" height="36" rx="10" fill="#173a3b" stroke="#4eaa98"/>
+<text x="386.5" y="221" fill="#b2f7e4" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" text-anchor="middle">TYPED</text><text x="386.5" y="234" fill="#b2f7e4" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="11" text-anchor="middle">BRIDGE</text>
+<!-- Native Android -->
+<g filter="url(#shadow)"><rect x="448" y="125" width="704" height="250" rx="18" fill="#14252c" stroke="#468d82" stroke-width="1.5"/></g>
+<rect x="448" y="125" width="704" height="54" rx="18" fill="#17413d"/><path d="M448 160H1152V179H448Z" fill="#17413d"/>
+<text x="474" y="160" fill="#a5f5de" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="20" font-weight="700">NATIVE ANDROID RUNTIME</text>
+<g>
+ <rect x="474" y="201" width="196" height="142" rx="12" fill="#102127" stroke="#315c5b"/><text x="492" y="230" fill="#a5f5de" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="16" font-weight="700">Audio path</text><text x="492" y="260" fill="#d2e5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14">Capture / encode</text><text x="492" y="284" fill="#d2e5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14">Receive / buffer</text><text x="492" y="308" fill="#d2e5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14">AudioTrack output</text>
+ <rect x="694" y="201" width="196" height="142" rx="12" fill="#102127" stroke="#315c5b"/><text x="712" y="230" fill="#a5f5de" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="16" font-weight="700">Timing engine</text><text x="712" y="260" fill="#d2e5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14">Clock estimation</text><text x="712" y="284" fill="#d2e5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14">Shared timeline</text><text x="712" y="308" fill="#d2e5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14">Scheduled playback</text>
+ <rect x="914" y="201" width="212" height="142" rx="12" fill="#102127" stroke="#315c5b"/><text x="932" y="230" fill="#a5f5de" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="16" font-weight="700">Connection layer</text><text x="932" y="260" fill="#d2e5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14">Local discovery</text><text x="932" y="284" fill="#d2e5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14">Room transport</text><text x="932" y="308" fill="#d2e5e1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14">Session lifecycle</text>
+</g>
+<!-- Local network -->
+<path d="M800 376V424" stroke="#66e9c8" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="398" y="425" width="404" height="56" rx="16" fill="#173d3c" stroke="#5bd7b6" stroke-width="1.5"/>
+<text x="600" y="448" fill="#b5f7e4" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="700" text-anchor="middle">NEARBY LOCAL NETWORK</text><text x="600" y="466" fill="#91c9be" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" text-anchor="middle">Room coordination • audio transport • timing messages</text>
+<!-- devices -->
+<path d="M600 482V518M214 518H986M214 518V540M600 518V540M986 518V540" stroke="#66e9c8" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+<g font-family="Inter,Segoe UI,Arial,sans-serif" text-anchor="middle">
+ <rect x="112" y="544" width="204" height="93" rx="14" fill="#14252c" stroke="#467d77"/><text x="214" y="572" fill="#edfaf6" font-size="16" font-weight="700">Host phone</text><text x="214" y="596" fill="#abcac5" font-size="13">Capture + coordinate</text><text x="214" y="616" fill="#74e7c7" font-size="13">Own speaker output</text>
+ <rect x="498" y="544" width="204" height="93" rx="14" fill="#14252c" stroke="#467d77"/><text x="600" y="572" fill="#edfaf6" font-size="16" font-weight="700">Participant phone</text><text x="600" y="596" fill="#abcac5" font-size="13">Receive + schedule</text><text x="600" y="616" fill="#74e7c7" font-size="13">Own speaker output</text>
+ <rect x="884" y="544" width="204" height="93" rx="14" fill="#14252c" stroke="#467d77"/><text x="986" y="572" fill="#edfaf6" font-size="16" font-weight="700">Participant phone</text><text x="986" y="596" fill="#abcac5" font-size="13">Receive + schedule</text><text x="986" y="616" fill="#74e7c7" font-size="13">Own speaker output</text>
+</g>
+<text x="600" y="665" fill="#7fa9a8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" text-anchor="middle">Flutter runs the experience. Android handles the time-critical machinery.</text>
+</svg>
